@@ -21,12 +21,15 @@ from copy import deepcopy
 from typing import Any, Mapping, Sequence
 
 from .bootstrap_contract import (
+    BST_FINEST_LADDER_INTERVAL,
     BST_METHOD_TYPE,
     BootstrapContractError,
     bootstrap_simulated_reserves,
+    ladder_percentile_steps,
     normalize_bootstrap_method,
     normalize_summary_block,
 )
+from .bootstrap_simulation import summarize_reserves
 from .dataset_display_contract import normalize_show_subtotal
 from .dfm_contract import aggregate_vector_values, canonical_number
 from .revision_contract import fingerprint
@@ -482,6 +485,42 @@ def consolidate_stochastic_method(
     which is how ResQ's own ranks reproduce ResQ.
     """
 
+    return _consolidated(payload, segment_inputs, ranks=ranks, timestamp=timestamp)[0]
+
+
+def consolidate_stochastic_method_with_ladder(
+    payload: Mapping[str, Any],
+    segment_inputs: Sequence[Mapping[str, Any]],
+    *,
+    timestamp: Any = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """``consolidate_stochastic_method`` plus the run's finest percentile ladder.
+
+    The stored summary holds every half percent.  The ladder at
+    ``BST_FINEST_LADDER_INTERVAL`` is taken from the same simulations, keyed as
+    the stored one is, and is never stored: a page keeps it for the finer Full
+    Ladder intervals until its next run.
+    """
+
+    method, combined = _consolidated(payload, segment_inputs, timestamp=timestamp)
+    steps = ladder_percentile_steps(BST_FINEST_LADDER_INTERVAL)
+    block = summarize_reserves(combined["reserves"], percentiles=steps)
+    ladder = {
+        "interval": BST_FINEST_LADDER_INTERVAL,
+        "scaled": {key: _numbers(values) for key, values in block["percentiles"].items()},
+    }
+    return method, ladder
+
+
+def _consolidated(
+    payload: Mapping[str, Any],
+    segment_inputs: Sequence[Mapping[str, Any]],
+    *,
+    ranks: Sequence[Sequence[int]] | None = None,
+    timestamp: Any = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The refreshed payload and the combined simulations it summarizes."""
+
     refreshed_at = _timestamp(timestamp)
     method = normalize_stochastic_consolidation_method(payload, require_complete=True, timestamp=refreshed_at)
     bootstraps = _segment_inputs_checked(method, segment_inputs)
@@ -523,7 +562,7 @@ def consolidate_stochastic_method(
     method["method_metadata"]["data_refreshed"] = refreshed_at
     # Round-trip through normalization so a consolidated payload equals the
     # same payload re-read from disk, whichever producer wrote it.
-    return normalize_stochastic_consolidation_method(method, require_complete=True, timestamp=refreshed_at)
+    return normalize_stochastic_consolidation_method(method, require_complete=True, timestamp=refreshed_at), combined
 
 
 def stale_segments(
@@ -718,6 +757,7 @@ __all__ = [
     "bootstrap_segment_revision",
     "build_stochastic_consolidation_output_sidecar",
     "consolidate_stochastic_method",
+    "consolidate_stochastic_method_with_ladder",
     "derived_projection",
     "method_revisions",
     "normalize_stochastic_consolidation_method",

@@ -28,6 +28,7 @@ from arcrho_api.stochastic_consolidation_contract import (
     bootstrap_segment_revision,
     build_stochastic_consolidation_output_sidecar,
     consolidate_stochastic_method,
+    consolidate_stochastic_method_with_ladder,
     normalize_stochastic_consolidation_method,
     run_input_revision,
     stale_segments,
@@ -175,6 +176,23 @@ def test_consolidation_stores_the_run_it_describes(reference, bootstraps, consol
     ultimate = method["results_tab"]["consolidation_ultimate"]
     for index, value in enumerate(ultimate):
         assert value == pytest.approx(latest[index] + summary["scaled"]["mean"][index + 1], abs=1e-5)
+
+
+def test_a_run_with_its_ladder_stores_the_same_run_and_every_finer_step(reference, bootstraps, consolidated):
+    # The ladder comes from the run's own simulations and is never stored: the
+    # payload is the plain run's, and the ladder holds every stored half-percent
+    # step with the stored values, so a page can serve every finer interval.
+    method, ladder = consolidate_stochastic_method_with_ladder(
+        _consolidation(reference), _inputs(bootstraps), timestamp=STAMP
+    )
+    assert persisted_json_text(method) == persisted_json_text(consolidated)
+    assert ladder["interval"] == 0.01
+    steps = ladder["scaled"]
+    assert len(steps) == 10001
+    stored = consolidated["results_tab"]["simulation_summary"]["scaled"]["percentiles"]
+    for key, values in stored.items():
+        assert steps[key] == values
+    assert len(steps["99.99"]) == len(stored["50"])
 
 
 def test_a_mismatched_base_type_is_refused_with_the_method_named(reference, bootstraps):

@@ -466,6 +466,20 @@ def run_bootstrap_simulation(payload: Mapping[str, Any]) -> dict[str, Any]:
 BST_FINEST_LADDER_INTERVAL = 0.01
 
 
+def ladder_percentile_steps(interval: float) -> list[float]:
+    """Every percentile from 0 to 100 at ``interval`` percent, a Full Ladder's rows.
+
+    Shared by the Bootstrap and the Stochastic Consolidation ladders, so a
+    coarser interval's steps are exactly some of a finer one's.
+    """
+
+    count = round(100 / float(interval)) if interval else 0
+    if interval < BST_FINEST_LADDER_INTERVAL or count < 1 or abs(count * interval - 100) > 1e-9:
+        raise BootstrapContractError(f"{interval}% is not an interval that divides 100%.")
+    # index * 100 / count is the correctly rounded percent, as the page computes it.
+    return [index * 100 / count for index in range(count + 1)]
+
+
 def bootstrap_percentile_ladder(payload: Mapping[str, Any], interval: float) -> dict[str, Any]:
     """The percentile ladder of a stored run at ``interval`` percent, scaled and unscaled.
 
@@ -476,11 +490,7 @@ def bootstrap_percentile_ladder(payload: Mapping[str, Any], interval: float) -> 
     shown beside that run's statistics.
     """
 
-    count = round(100 / float(interval)) if interval else 0
-    if interval < BST_FINEST_LADDER_INTERVAL or count < 1 or abs(count * interval - 100) > 1e-9:
-        raise BootstrapContractError(f"{interval}% is not an interval that divides 100%.")
-    # index * 100 / count is the correctly rounded percent, as the page computes it.
-    steps = [index * 100 / count for index in range(count + 1)]
+    steps = ladder_percentile_steps(interval)
     stored = normalize_bootstrap_method(payload, require_complete=False)["results_tab"]["simulation_summary"]
     simulations = bootstrap_simulated_reserves(payload)
     ladders: dict[str, Any] = {"interval": float(interval)}
@@ -1184,6 +1194,7 @@ __all__ = [
     "build_bootstrap_output_sidecar",
     "derived_projection",
     "dfm_snapshot_from_method",
+    "ladder_percentile_steps",
     "method_revisions",
     "normalize_bootstrap_method",
     "normalize_summary_block",

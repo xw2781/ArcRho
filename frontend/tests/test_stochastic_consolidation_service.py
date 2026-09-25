@@ -261,6 +261,12 @@ class StochasticConsolidationServiceTests(unittest.TestCase):
         self.assertEqual(response["run_state"], service.STATE_UP_TO_DATE)
         self.assertFalse(response["sidecar"]["exists"])
         self.assertEqual(self.host_files(), [])
+        # The run's finest ladder comes back beside the method, never inside it.
+        ladder = response["finer_ladder"]
+        self.assertEqual(ladder["interval"], 0.01)
+        self.assertEqual(len(ladder["scaled"]), 10001)
+        self.assertEqual(ladder["scaled"]["99.5"], method["results_tab"]["simulation_summary"]["scaled"]["percentiles"]["99.5"])
+        self.assertNotIn("finer_ladder", method["results_tab"])
 
     def test_save_publishes_the_run_and_reopens_up_to_date(self) -> None:
         run = service.consolidate_stochastic_consolidation_method(PROJECT, HOST, self.consolidation())

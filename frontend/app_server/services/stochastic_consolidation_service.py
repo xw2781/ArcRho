@@ -36,6 +36,7 @@ from arcrho_api.stochastic_consolidation_contract import (
     apply_owned_patch,
     build_stochastic_consolidation_output_sidecar,
     consolidate_stochastic_method,
+    consolidate_stochastic_method_with_ladder,
     method_revisions,
     normalize_stochastic_consolidation_method,
     run_input_revision,
@@ -599,16 +600,22 @@ def consolidate_stochastic_consolidation_method(
     """Run the consolidation a page describes and return it without writing.
 
     Every segment is re-simulated from its bootstrap's seed, so the result is
-    exactly what a save of the same inputs publishes.
+    exactly what a save of the same inputs publishes. The run's finest
+    percentile ladder comes back beside the method and is never stored.
     """
 
     project, reserving = _required(project_name, reserving_class)
     incoming = _contract_call(normalize_stochastic_consolidation_method, method, require_complete=True)
     _identity(incoming)
     reads = _read_segments(project, incoming)
-    consolidated = _consolidate(project, incoming, reads)
+    consolidated, ladder = _contract_call(
+        consolidate_stochastic_method_with_ladder,
+        incoming,
+        _segment_inputs(project, incoming, reads),
+        timestamp=_now(),
+    )
     rows = _segment_rows(consolidated, reads)
-    return _method_response(project, reserving, consolidated, {}, rows)
+    return {**_method_response(project, reserving, consolidated, {}, rows), "finer_ladder": ladder}
 
 
 def list_stochastic_consolidation_candidates(
