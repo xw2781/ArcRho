@@ -40,16 +40,21 @@ import {
   escapeRangeHtml as escapeHtml,
   formatRangeNumber as formatNumber,
   formatRangePercent as formatPercent,
-  ladderTableMarkup,
+  ladderLoadingMarkup,
+  ladderTableParts,
   summaryTableMarkup,
-} from "/ui/shared/components/reserve_range/reserve_range_table.js?v=20260924a";
+} from "/ui/shared/components/reserve_range/reserve_range_table.js?v=20260924b";
+import { createVirtualRows } from "/ui/shared/components/virtual_rows/virtual_rows.js";
 import {
   RANGE_DEFAULT_PERCENTILES,
+  RANGE_LADDER_INTERVAL_OPTIONS,
   RANGE_MEASURE_OPTIONS,
+  RANGE_STORED_LADDER_INTERVAL,
   distributionChartData,
   fanChartData,
   formatPercentileList,
   formatRunDuration,
+  ladderIntervalIsStored,
   parsePercentileList,
   resultsClipboardText,
   resultsCsvText,
@@ -129,7 +134,12 @@ const state = {
     measure: "reserves",
     percentiles: RANGE_DEFAULT_PERCENTILES.slice(),
     fullLadder: false,
+    interval: RANGE_STORED_LADDER_INTERVAL,
   },
+  // The run's finest ladder ({ run, scaled }), which Consolidate hands over
+  // with the run, and the request working one out for a stored run.
+  finerLadder: null,
+  ladderRequest: null,
 };
 
 let cleanSnapshot = "";
@@ -176,6 +186,7 @@ const els = {
   percentileInput: document.getElementById("sconPercentileInput"),
   percentileResetBtn: document.getElementById("sconPercentileResetBtn"),
   fullLadderInput: document.getElementById("sconFullLadderInput"),
+  intervalButton: document.getElementById("sconIntervalButton"),
   copyResultsBtn: document.getElementById("sconCopyResultsBtn"),
   downloadResultsBtn: document.getElementById("sconDownloadResultsBtn"),
   resultsStale: document.getElementById("sconResultsStale"),
@@ -249,10 +260,33 @@ const detailsDependencies = createDetailsDependenciesController({
 // The value grids select and copy like the other method pages' grids. The
 // correlation matrices join as they are drawn, since each draw builds new
 // tables.
+// A full ladder longer than this draws only the rows in view: a 0.01% ladder
+// is some 10,000 rows.
+const VIRTUAL_LADDER_ROWS = 300;
+let ladderParts = null;
+const resultsRows = createVirtualRows({
+  host: els.resultsTableBody.closest(".sconTableWrap"),
+  body: els.resultsTableBody,
+  onRender: () => cellSelection.applyDom(),
+});
+const resultsVirtual = {
+  bounds: () => (resultsRows.isActive()
+    ? { maxRow: resultsRows.rowCount() - 1, maxCol: ladderParts.rows[0].values.length - 1 }
+    : undefined),
+  cellValue: ({ r, c }) => (resultsRows.isActive() ? ladderParts.copyValue(r, c) : undefined),
+  scrollToRow: (r) => {
+    if (resultsRows.isActive()) resultsRows.scrollToRow(r);
+  },
+};
 const cellSelection = createMethodGridSelection({
   tables: [els.resultsTableBody, els.breakdownBody].map((body, index) => {
     const table = body.closest("table");
-    return { key: `grid${index}`, table, scrollHost: table.closest(".sconTableWrap") };
+    return {
+      key: `grid${index}`,
+      table,
+      scrollHost: table.closest(".sconTableWrap"),
+      virtual: index === 0 ? resultsVirtual : null,
+    };
   }),
   contextMenu: els.cellContextMenu,
   onCopied: () => postStatus("Copied the selected values."),
@@ -771,8 +805,95 @@ function commitMatrixInput(input) {
    reserves only, so there is no Scaled / Unscaled switch.
 --------------------------------------------------------------------------- */
 
+// A run is known by its seed, size and means, so a Save or a reload of the
+// same run keeps the ladder that came with it.
+function runKey(method) {
+  const summary = method?.results_tab?.simulation_summary || {};
+  return JSON.stringify([summary.random_seed, summary.simulation_count, summary.scaled?.mean]);
+}
+
+// The full ladder at a finer interval than the stored one reads the run's
+// finest ladder; until the page has it, the table waits for it.
+function finerLadderNeeded() {
+  return state.results.fullLadder && !ladderIntervalIsStored(state.results.interval);
+}
+
+function finerLadderReady() {
+  return state.finerLadder?.run === runKey(state.method);
+}
+
 function currentResultsView() {
-  return resultsView(state.method, { basis: "scaled", measure: state.results.measure });
+  const finerLadder = finerLadderNeeded() && finerLadderReady() ? state.finerLadder.scaled : null;
+  return resultsView(state.method, { basis: "scaled", measure: state.results.measure, finerLadder });
+}
+
+// Consolidate hands the finest ladder over with each run. A stored run gets it
+// by consolidating its own inputs again, taken only when that reproduces the
+// stored run, since a segment may have changed since.
+async function loadFinerLadder() {
+  const method = state.method;
+  const run = runKey(method);
+  if (finerLadderReady() || state.ladderRequest?.run === run) return;
+  const request = { run };
+  state.ladderRequest = request;
+  try {
+    const result = await consolidateStochasticConsolidation({
+      project_name: state.project,
+      reserving_class: state.reservingClass,
+      method,
+    });
+    if (state.ladderRequest !== request) return;
+    if (runKey(result?.method) !== run || !result?.finer_ladder) {
+      throw new Error("the segments changed since this run; consolidate again to see a finer interval.");
+    }
+    state.finerLadder = { run, scaled: result.finer_ladder.scaled };
+  } catch (err) {
+    if (state.ladderRequest !== request) return;
+    postStatus(`Could not work out the finer percentiles: ${String(err?.message || err)}`, "error");
+    state.results.interval = RANGE_STORED_LADDER_INTERVAL;
+  } finally {
+    if (state.ladderRequest === request) state.ladderRequest = null;
+  }
+  renderResults();
+}
+
+function renderResultsTable(view) {
+  if (finerLadderNeeded() && !finerLadderReady()) {
+    resultsRows.hide();
+    const { head, body } = ladderLoadingMarkup(view, { cssPrefix: "scon" });
+    els.resultsHead.innerHTML = head;
+    els.resultsTableBody.innerHTML = body;
+    void loadFinerLadder();
+    return;
+  }
+  const options = { cssPrefix: "scon", interval: state.results.interval };
+  if (!state.results.fullLadder) {
+    resultsRows.hide();
+    const { head, body } = summaryTableMarkup(view, state.results.percentiles, options);
+    els.resultsHead.innerHTML = head;
+    els.resultsTableBody.innerHTML = body;
+    refreshGrid(els.resultsTableBody);
+    return;
+  }
+  ladderParts = ladderTableParts(view, state.results.percentiles, options);
+  const { head, rows, rowMarkup } = ladderParts;
+  els.resultsHead.innerHTML = head;
+  if (rows.length <= VIRTUAL_LADDER_ROWS) {
+    resultsRows.hide();
+    els.resultsTableBody.innerHTML = rows.map((_, r) => rowMarkup(r)).join("");
+    refreshGrid(els.resultsTableBody);
+    return;
+  }
+  // The statistics at the top and the far end of the ladder hold the widest
+  // figures, so the columns are sized with them drawn.
+  const last = rows.length - 1;
+  resultsRows.show({
+    rowCount: rows.length,
+    columnCount: rows[0].values.length + 1,
+    rowMarkup,
+    rowLabel: (r) => rows[r]?.label,
+    widthRows: [0, 1, 2, 3, 4, last - 1, last],
+  });
 }
 
 function renderBreakdown() {
@@ -829,13 +950,10 @@ function renderResults() {
     els.percentileInput.value = formatPercentileList(state.results.percentiles);
   }
   els.fullLadderInput.checked = state.results.fullLadder;
+  setDropdown(els.intervalButton, RANGE_LADDER_INTERVAL_OPTIONS, state.results.interval, !state.results.fullLadder);
   if (!view) return;
   els.resultsBody.classList.toggle("isFullLadder", state.results.fullLadder);
-  const build = state.results.fullLadder ? ladderTableMarkup : summaryTableMarkup;
-  const { head, body } = build(view, state.results.percentiles, { cssPrefix: "scon" });
-  els.resultsHead.innerHTML = head;
-  els.resultsTableBody.innerHTML = body;
-  refreshGrid(els.resultsTableBody);
+  renderResultsTable(view);
   els.resultsCaption.textContent = `Consolidated scaled ${view.measure} over ${formatNumber(view.simulationCount)} simulations, seed ${view.randomSeed ?? ""}.`;
   const noun = view.measure === "ultimates" ? "Ultimate" : "Reserve";
   els.distributionTitle.textContent = `Distribution Of Total ${noun}`;
@@ -869,14 +987,22 @@ function flashDone(button) {
   }, 1400);
 }
 
+// The table as shown; null while a finer ladder is still being worked out.
 function resultsTableOptions() {
-  return { percentiles: state.results.percentiles, fullLadder: state.results.fullLadder };
+  if (finerLadderNeeded() && !finerLadderReady()) {
+    postStatus("The percentiles are still being worked out.", "warn");
+    return null;
+  }
+  const { percentiles, fullLadder, interval } = state.results;
+  return { percentiles, fullLadder, interval };
 }
 
 // Download CSV saves the Results table as it is shown, through the desktop
 // host's save dialog.
 async function downloadResultsCsv() {
-  const payload = resultsCsvText(currentResultsView(), resultsTableOptions());
+  const options = resultsTableOptions();
+  if (!options) return;
+  const payload = resultsCsvText(currentResultsView(), options);
   const host = window.ADAHost || window.top?.ADAHost || null;
   if (!payload) return;
   if (typeof host?.saveTextFile !== "function") {
@@ -895,10 +1021,9 @@ async function downloadResultsCsv() {
 }
 
 async function copyResults() {
-  const payload = resultsClipboardText(currentResultsView(), {
-    percentiles: state.results.percentiles,
-    fullLadder: state.results.fullLadder,
-  });
+  const options = resultsTableOptions();
+  if (!options) return;
+  const payload = resultsClipboardText(currentResultsView(), options);
   if (!payload) return;
   try {
     await navigator.clipboard.writeText(payload);
@@ -1020,6 +1145,9 @@ async function consolidateFromUser() {
     });
     state.lastRunMs = performance.now() - started;
     state.method = { ...(state.method || {}), ...result.method };
+    // The run's finest ladder comes with it and serves every finer interval
+    // until the next run.
+    state.finerLadder = result.finer_ladder ? { run: runKey(state.method), scaled: result.finer_ladder.scaled } : null;
     state.segmentInfo = segmentInfoMap(state.candidates, Array.from(state.segmentInfo.values()), result?.segments);
     state.runSnapshot = runInputSnapshot(settings);
     state.segmentChanged = false;
@@ -1297,8 +1425,18 @@ function wireInputs() {
     state.results.fullLadder = els.fullLadderInput.checked;
     renderResults();
   });
+  els.intervalButton.addEventListener("click", () => {
+    openMenu(els.intervalButton, RANGE_LADDER_INTERVAL_OPTIONS, state.results.interval, (value) => {
+      state.results.interval = value;
+      renderResults();
+    });
+  });
   els.copyResultsBtn.addEventListener("click", () => void copyResults());
   els.downloadResultsBtn.addEventListener("click", () => void downloadResultsCsv());
+  // The two show only their icons, so the tooltip names them.
+  for (const button of [els.copyResultsBtn, els.downloadResultsBtn]) {
+    attachArcrhoTooltip(button, button.dataset.label);
+  }
   for (const button of [els.consolidateBtn, els.emptyConsolidateBtn, els.staleConsolidateBtn]) {
     button.addEventListener("click", () => void consolidateFromUser());
   }

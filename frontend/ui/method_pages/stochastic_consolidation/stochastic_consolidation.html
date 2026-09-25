@@ -13,7 +13,8 @@
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/table_colors_window.css?v=20260924b">
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260802a">
   <link rel="stylesheet" href="/ui/shared/styles/framed_scrollbars.css?v=20260824a">
-  <link rel="stylesheet" href="/ui/method_pages/stochastic_consolidation/stochastic_consolidation.css?v=20260923c">
+  <link rel="stylesheet" href="/ui/shared/components/virtual_rows/virtual_rows.css?v=20260924a">
+  <link rel="stylesheet" href="/ui/method_pages/stochastic_consolidation/stochastic_consolidation.css?v=20260924c">
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260923c">
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260923c">
   <link rel="stylesheet" href="/ui/shared/styles/themes/revolutionary.css?v=20260923c">
@@ -94,72 +95,76 @@
         </section>
 
         <section class="sconPage" id="sconSegmentsPage" data-page="segments" role="tabpanel">
-          <div class="sconToolbar">
-            <div class="sconToolGroup">
-              <span class="sconToolTitle">Segments</span>
-              <div class="sconToolControls">
-                <button class="sconButton sconToolButton" id="sconAddSegmentBtn" type="button" aria-haspopup="listbox" aria-expanded="false">Add Segment</button>
-                <button class="sconButton sconToolButton" id="sconRemoveSegmentBtn" type="button">Remove</button>
-                <button class="sconButton sconToolButton" id="sconMoveUpBtn" type="button">Move Up</button>
-                <button class="sconButton sconToolButton" id="sconMoveDownBtn" type="button">Move Down</button>
+          <div class="sconTableBlock">
+            <div class="sconToolbar">
+              <div class="sconToolGroup">
+                <span class="sconToolTitle">Segments</span>
+                <div class="sconToolControls">
+                  <button class="sconButton sconToolButton" id="sconAddSegmentBtn" type="button" aria-haspopup="listbox" aria-expanded="false">Add Segment</button>
+                  <button class="sconButton sconToolButton" id="sconRemoveSegmentBtn" type="button">Remove</button>
+                  <button class="sconButton sconToolButton" id="sconMoveUpBtn" type="button">Move Up</button>
+                  <button class="sconButton sconToolButton" id="sconMoveDownBtn" type="button">Move Down</button>
+                </div>
               </div>
             </div>
+            <div class="ar-framed-scroll sconTableWrap sconSegmentsWrap">
+              <table class="sconTable sconSegmentsTable" aria-label="Included bootstraps">
+                <thead>
+                  <tr>
+                    <th class="sconIndexHead">#</th>
+                    <th class="sconTextHead">Reserving Class</th>
+                    <th class="sconTextHead sconMethodHead">Method</th>
+                    <th>Factor</th>
+                    <th>Simulations</th>
+                    <th>Mean Reserve</th>
+                    <th>Std. Deviation</th>
+                    <th>CV</th>
+                    <th class="sconTextHead sconIssueHead">Check</th>
+                  </tr>
+                </thead>
+                <tbody id="sconSegmentsBody"></tbody>
+              </table>
+            </div>
+            <p class="sconCaption" id="sconSegmentsCaption"></p>
           </div>
-          <div class="ar-framed-scroll sconTableWrap sconSegmentsWrap">
-            <table class="sconTable sconSegmentsTable" aria-label="Included bootstraps">
-              <thead>
-                <tr>
-                  <th class="sconIndexHead">#</th>
-                  <th class="sconTextHead">Reserving Class</th>
-                  <th class="sconTextHead sconMethodHead">Method</th>
-                  <th>Factor</th>
-                  <th>Simulations</th>
-                  <th>Mean Reserve</th>
-                  <th>Std. Deviation</th>
-                  <th>CV</th>
-                  <th class="sconTextHead sconIssueHead">Check</th>
-                </tr>
-              </thead>
-              <tbody id="sconSegmentsBody"></tbody>
-            </table>
-          </div>
-          <p class="sconCaption" id="sconSegmentsCaption"></p>
         </section>
 
         <section class="sconPage" id="sconCorrelationPage" data-page="correlation" role="tabpanel">
-          <div class="sconToolbar">
-            <div class="sconToolGroup">
-              <span class="sconToolTitle">Correlation</span>
-              <div class="sconToolControls">
-                <div class="sconSegmented" id="sconCorrelationControl" role="radiogroup" aria-label="Correlation"></div>
+          <div class="sconTableBlock">
+            <div class="sconToolbar">
+              <div class="sconToolGroup">
+                <span class="sconToolTitle">Correlation</span>
+                <div class="sconToolControls">
+                  <div class="sconSegmented" id="sconCorrelationControl" role="radiogroup" aria-label="Correlation"></div>
+                </div>
+              </div>
+              <div class="sconToolGroup">
+                <span class="sconToolTitle">Dependency</span>
+                <div class="sconToolControls">
+                  <button class="sconDropdownButton sconDependencyButton" id="sconDependencyButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Dependency structure">
+                    <span class="sconDropdownValue"></span><span class="sconDropdownCaret" aria-hidden="true"></span>
+                  </button>
+                  <span class="sconToolField" id="sconDegreesField" hidden>
+                    <label class="sconToolLabel" for="sconDegreesInput">Degrees Of Freedom : </label>
+                    <input class="sconNumberInput" id="sconDegreesInput" type="text" inputmode="decimal" autocomplete="off">
+                  </span>
+                </div>
+              </div>
+              <div class="sconToolGroup">
+                <span class="sconToolTitle">Matrix</span>
+                <div class="sconToolControls">
+                  <div class="sconSegmented sconSegmentedCompact" id="sconMatrixViewControl" role="radiogroup" aria-label="Matrix shown"></div>
+                </div>
               </div>
             </div>
-            <div class="sconToolGroup">
-              <span class="sconToolTitle">Dependency</span>
-              <div class="sconToolControls">
-                <button class="sconDropdownButton sconDependencyButton" id="sconDependencyButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Dependency structure">
-                  <span class="sconDropdownValue"></span><span class="sconDropdownCaret" aria-hidden="true"></span>
-                </button>
-                <span class="sconToolField" id="sconDegreesField" hidden>
-                  <label class="sconToolLabel" for="sconDegreesInput">Degrees Of Freedom : </label>
-                  <input class="sconNumberInput" id="sconDegreesInput" type="text" inputmode="decimal" autocomplete="off">
-                </span>
-              </div>
-            </div>
-            <div class="sconToolGroup">
-              <span class="sconToolTitle">Matrix</span>
-              <div class="sconToolControls">
-                <div class="sconSegmented sconSegmentedCompact" id="sconMatrixViewControl" role="radiogroup" aria-label="Matrix shown"></div>
-              </div>
-            </div>
+            <div class="sconMatrices" id="sconMatrices"></div>
+            <p class="sconCaption sconMatrixError" id="sconMatrixError" role="alert"></p>
+            <p class="sconCaption" id="sconMatrixCaption"></p>
           </div>
-          <div class="sconMatrices" id="sconMatrices"></div>
-          <p class="sconCaption sconMatrixError" id="sconMatrixError" role="alert"></p>
-          <p class="sconCaption" id="sconMatrixCaption"></p>
         </section>
 
         <section class="sconPage" id="sconResultsPage" data-page="results" role="tabpanel">
-          <div class="sconResultsBody" id="sconResultsBody" hidden>
+          <div class="sconResultsBody sconTableBlock" id="sconResultsBody" hidden>
             <div class="sconToolbar">
               <div class="sconToolGroup">
                 <span class="sconToolTitle">View</span>
@@ -174,6 +179,10 @@
                     spellcheck="false" aria-label="Chosen percentiles">
                   <button class="sconLinkButton" id="sconPercentileResetBtn" type="button">Default</button>
                   <label class="sconToolCheck"><input id="sconFullLadderInput" type="checkbox"> Full Ladder</label>
+                  <button class="sconDropdownButton sconIntervalButton" id="sconIntervalButton" type="button" aria-haspopup="listbox"
+                    aria-expanded="false" aria-label="Full ladder interval">
+                    <span class="sconDropdownValue"></span><span class="sconDropdownCaret" aria-hidden="true"></span>
+                  </button>
                 </div>
               </div>
               <div class="sconTableActions">
@@ -189,11 +198,13 @@
               <span id="sconResultsStaleText"></span>
               <button class="sconButton primary sconToolButton" id="sconStaleConsolidateBtn" type="button">Consolidate</button>
             </div>
-            <div class="ar-framed-scroll sconTableWrap sconResultsWrap">
-              <table class="arSpreadsheetTable sconTable sconResultsTable" aria-label="Consolidated results">
-                <thead id="sconResultsHead"></thead>
-                <tbody id="sconResultsTableBody"></tbody>
-              </table>
+            <div class="sconResultsFrame">
+              <div class="ar-framed-scroll sconTableWrap sconResultsWrap">
+                <table class="arSpreadsheetTable sconTable sconResultsTable" aria-label="Consolidated results">
+                  <thead id="sconResultsHead"></thead>
+                  <tbody id="sconResultsTableBody"></tbody>
+                </table>
+              </div>
             </div>
             <p class="sconCaption" id="sconResultsCaption"></p>
             <div class="sconResultsCharts">
@@ -283,6 +294,6 @@
   </div>
 
   <script src="/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d" data-auto="1"></script>
-  <script type="module" src="/ui/method_pages/stochastic_consolidation/stochastic_consolidation_main.js?v=20260924d"></script>
+  <script type="module" src="/ui/method_pages/stochastic_consolidation/stochastic_consolidation_main.js?v=20260924f"></script>
 </body>
 </html>

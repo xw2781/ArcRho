@@ -288,10 +288,17 @@ body {
 .bstMenuOption:focus { outline: none; background: #f1f5f9; }
 .bstMenuOption[aria-selected="true"] { background: #eaf2ff; color: #0d6efd; }
 
+/* A table block is only as wide as its table: the toolbar, notice, captions
+   and charts around the table take the table's width but never widen it. The
+   toolbar keeps to one line, running past a table narrower than itself. */
+.bstTableBlock { width: fit-content; max-width: 100%; }
+.bstTableBlock :is(.bstToolbar, .bstNotice, .bstCaption, .bstChartPanel, .bstResultsCharts) { contain: inline-size; }
+/* With no residual grid the toolbar stands alone at the page's width. */
+.bstTableBlock:has(> .bstResidualsSplit[hidden]) { width: auto; }
+
 /* Tab toolbars: framed groups on one row, like the other method pages. */
 .bstToolbar {
   display: flex;
-  flex-wrap: wrap;
   gap: 12px 8px;
   margin: 6px 0 10px;
 }
@@ -304,8 +311,9 @@ body {
   border: 1px solid #cfd8e690;
   border-radius: 2px;
 }
-/* Copy Table and Download CSV: quiet icon commands at the toolbar's right
-   end; each turns into a green check for a moment once it has done its job. */
+/* Copy Table and Download CSV: quiet icon buttons at the toolbar's right end,
+   named by their tooltip; each turns into a green check for a moment once it
+   has done its job. */
 .bstTableActions {
   display: flex;
   align-self: flex-end;
@@ -315,9 +323,10 @@ body {
 .bstTableAction {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  width: 28px;
   height: 28px;
-  padding: 0 10px;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: var(--tabbed-page-control-radius, 4px);
   background: transparent;
@@ -341,6 +350,13 @@ body {
   -webkit-mask-image: url("../../shared/icons/library/download.svg?v=20260908a");
   mask-image: url("../../shared/icons/library/download.svg?v=20260908a");
 }
+.bstTableActionLabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
 .bstTableAction.isDone { color: #15803d; }
 .bstTableAction.isDone .bstTableActionIcon {
   -webkit-mask-image: url("../../shared/icons/library/check.svg?v=20260908a");
@@ -358,7 +374,7 @@ body {
 .bstToolControls {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 12px;
 }
 .bstToolField,
 .bstToolCheck {
@@ -383,7 +399,7 @@ body {
 .bstTargetField .bstFieldControl { width: 320px; }
 .bstToolInput { height: 28px; }
 
-/* Residuals: the grid takes the full width and the chart sits below it. */
+/* Residuals: the grid, then the chart below it at the grid's width. */
 .bstResidualsSplit {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -567,9 +583,36 @@ table.bstTable {
 .bstResultsBody[hidden] { display: none; }
 .bstSegmentedCompact { height: 28px; }
 .bstSegmentedCompact .bstSegment { padding: 0 12px; }
-.bstPercentileInput { width: 200px; }
-.bstIntervalButton { width: 150px; height: 28px; }
-.bstTable tr.bstLadderLoading td { padding: 10px 12px; color: var(--bst-muted); white-space: nowrap; }
+.bstPercentileInput { width: 160px; }
+.bstIntervalButton { width: 140px; height: 28px; }
+/* While a finer ladder is worked out, placeholder bars flow through the rows
+   under the real header. */
+.bstTable tr.bstSkeletonRow { pointer-events: none; }
+.bstSkeletonBar {
+  display: block;
+  width: 70%;
+  height: 9px;
+  margin: 0 auto;
+  border-radius: 3px;
+  background-color: var(--ar-color-surface-muted, #e9eef4);
+  background-image: linear-gradient(90deg, var(--ar-color-surface-muted, #e9eef4) 25%,
+    var(--ar-color-surface-raised, #f6f9fc) 37%, var(--ar-color-surface-muted, #e9eef4) 63%);
+  background-size: 400% 100%;
+  animation: bstSkeletonSweep 1.15s ease-in-out infinite;
+}
+.bstSkeletonRow:nth-child(2n) .bstSkeletonBar { width: 56%; }
+.bstSkeletonRow:nth-child(3n) .bstSkeletonBar { width: 82%; }
+@keyframes bstSkeletonSweep {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+/* The results table and, for a long ladder, the scroll lane beside it. */
+.bstResultsFrame {
+  --ar-virtual-lane-border: var(--bst-border);
+  display: flex;
+  max-width: 100%;
+}
+.bstResultsFrame .bstResultsWrap { min-width: 0; max-width: none; }
 .bstToolButton { height: 28px; }
 .bstNotice {
   display: flex;

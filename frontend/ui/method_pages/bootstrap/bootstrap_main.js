@@ -41,7 +41,12 @@ import {
 import { createResidualChart } from "/ui/method_pages/bootstrap/bootstrap_residual_chart.js?v=20260923a";
 import { createDistributionChart } from "/ui/shared/components/reserve_range/reserve_distribution_chart.js?v=20260924b";
 import { createFanChart } from "/ui/shared/components/reserve_range/reserve_fan_chart.js?v=20260924b";
-import { ladderTableMarkup, summaryTableMarkup } from "/ui/shared/components/reserve_range/reserve_range_table.js?v=20260924a";
+import {
+  ladderLoadingMarkup,
+  ladderTableParts,
+  summaryTableMarkup,
+} from "/ui/shared/components/reserve_range/reserve_range_table.js?v=20260924b";
+import { createVirtualRows } from "/ui/shared/components/virtual_rows/virtual_rows.js";
 import { createMethodGridSelection, tagMethodGridCells } from "/ui/shared/components/spreadsheet/method_grid_selection.js";
 import { showSimulationRun } from "/ui/shared/components/simulation_run/simulation_run.js";
 import { wireFramedScrollActivity } from "/ui/shared/styles/framed_scroll_activity.js";
@@ -119,8 +124,8 @@ const state = {
     fullLadder: false,
     interval: BST_STORED_LADDER_INTERVAL,
   },
-  // A full ladder finer than the stored one, worked out for the run on screen
-  // ({ method, interval, scaled, unscaled }), and the request working one out.
+  // The finest ladder, worked out once for the run on screen
+  // ({ run, scaled, unscaled }), and the request working one out.
   finerLadder: null,
   ladderRequest: null,
 };
@@ -249,12 +254,31 @@ const detailsDependencies = createDetailsDependenciesController({
   setStatus: (message) => postStatus(message),
 });
 // The grids select and copy like the other method pages' grids.
+// A full ladder longer than this draws only the rows in view: a 0.01% ladder
+// is some 10,000 rows, which took seconds to open and lagged on scroll.
+const VIRTUAL_LADDER_ROWS = 300;
+let ladderParts = null;
+const resultsRows = createVirtualRows({
+  host: els.resultsTableBody.closest(".bstTableWrap"),
+  body: els.resultsTableBody,
+  onRender: () => cellSelection.applyDom(),
+});
+const resultsVirtual = {
+  bounds: () => (resultsRows.isActive()
+    ? { maxRow: resultsRows.rowCount() - 1, maxCol: ladderParts.rows[0].values.length - 1 }
+    : undefined),
+  cellValue: ({ r, c }) => (resultsRows.isActive() ? ladderParts.copyValue(r, c) : undefined),
+  scrollToRow: (r) => {
+    if (resultsRows.isActive()) resultsRows.scrollToRow(r);
+  },
+};
 const gridTables = [els.residualBody, els.targetsBody, els.resultsTableBody].map((body) => body.closest("table"));
 const cellSelection = createMethodGridSelection({
   tables: gridTables.map((table, index) => ({
     key: String(index),
     table,
     scrollHost: table.closest(".bstTableWrap"),
+    virtual: index === 2 ? resultsVirtual : null,
   })),
   contextMenu: els.cellContextMenu,
   onCopied: () => postStatus("Copied the selected values."),
@@ -666,9 +690,18 @@ function finerLadderNeeded() {
   return state.results.fullLadder && !ladderIntervalIsStored(state.results.interval);
 }
 
+// The finest interval the menu offers; its ladder holds every coarser step.
+const BST_FINEST_LADDER_INTERVAL = BST_LADDER_INTERVAL_OPTIONS.at(-1).value;
+
+// A run is known by its seed, size and means, so a Save or a reload of the
+// same run keeps the ladder worked out for it.
+function runKey(method) {
+  const summary = method?.results_tab?.simulation_summary || {};
+  return JSON.stringify([summary.random_seed, summary.simulation_count, summary.scaled?.mean, summary.unscaled?.mean]);
+}
+
 function finerLadderReady() {
-  const finer = state.finerLadder;
-  return !!finer && finer.method === state.method && finer.interval === state.results.interval;
+  return state.finerLadder?.run === runKey(state.method);
 }
 
 function currentResultsView() {
@@ -678,20 +711,27 @@ function currentResultsView() {
   return resultsView(state.method, { basis: state.results.basis, measure: state.results.measure, finerLadder });
 }
 
+// Every run works out the finest ladder in the background, once: each finer
+// interval reads its steps from it, so switching intervals never runs again
+// until the next Simulate.
 async function loadFinerLadder() {
-  const { interval } = state.results;
   const method = state.method;
-  if (state.ladderRequest?.method === method && state.ladderRequest.interval === interval) return;
-  const request = { method, interval };
+  const run = runKey(method);
+  if (!hasSimulationRun(method) || finerLadderReady() || state.ladderRequest?.run === run) return;
+  const request = { run };
   state.ladderRequest = request;
   try {
-    const result = await loadBootstrapLadder({ method, interval });
+    const result = await loadBootstrapLadder({ method, interval: BST_FINEST_LADDER_INTERVAL });
     if (state.ladderRequest !== request) return;
-    state.finerLadder = { method, interval, scaled: result.scaled, unscaled: result.unscaled };
+    state.finerLadder = { run, scaled: result.scaled, unscaled: result.unscaled };
   } catch (err) {
     if (state.ladderRequest !== request) return;
-    postStatus(`Could not work out the ${interval}% percentiles: ${String(err?.message || err)}`, "error");
-    if (state.results.interval === interval) state.results.interval = BST_STORED_LADDER_INTERVAL;
+    // Worked out ahead of time it fails quietly; on screen it says why and
+    // falls back to the stored interval.
+    if (finerLadderNeeded()) {
+      postStatus(`Could not work out the finer percentiles: ${String(err?.message || err)}`, "error");
+      state.results.interval = BST_STORED_LADDER_INTERVAL;
+    }
   } finally {
     if (state.ladderRequest === request) state.ladderRequest = null;
   }
@@ -700,17 +740,41 @@ async function loadFinerLadder() {
 
 function renderResultsTable(view) {
   if (finerLadderNeeded() && !finerLadderReady()) {
-    els.resultsHead.innerHTML = "";
-    els.resultsTableBody.innerHTML = `<tr class="bstLadderLoading"><td>Working out the ${
-      escapeHtml(state.results.interval)}% percentiles from this run's seed...</td></tr>`;
+    resultsRows.hide();
+    const { head, body } = ladderLoadingMarkup(view, { cssPrefix: "bst" });
+    els.resultsHead.innerHTML = head;
+    els.resultsTableBody.innerHTML = body;
     void loadFinerLadder();
     return;
   }
-  const build = state.results.fullLadder ? ladderTableMarkup : summaryTableMarkup;
-  const { head, body } = build(view, state.results.percentiles, { cssPrefix: "bst", interval: state.results.interval });
+  const options = { cssPrefix: "bst", interval: state.results.interval };
+  if (!state.results.fullLadder) {
+    resultsRows.hide();
+    const { head, body } = summaryTableMarkup(view, state.results.percentiles, options);
+    els.resultsHead.innerHTML = head;
+    els.resultsTableBody.innerHTML = body;
+    refreshGrid(els.resultsTableBody);
+    return;
+  }
+  ladderParts = ladderTableParts(view, state.results.percentiles, options);
+  const { head, rows, rowMarkup } = ladderParts;
   els.resultsHead.innerHTML = head;
-  els.resultsTableBody.innerHTML = body;
-  refreshGrid(els.resultsTableBody);
+  if (rows.length <= VIRTUAL_LADDER_ROWS) {
+    resultsRows.hide();
+    els.resultsTableBody.innerHTML = rows.map((_, r) => rowMarkup(r)).join("");
+    refreshGrid(els.resultsTableBody);
+    return;
+  }
+  // The statistics at the top and the far end of the ladder hold the widest
+  // figures, so the columns are sized with them drawn.
+  const last = rows.length - 1;
+  resultsRows.show({
+    rowCount: rows.length,
+    columnCount: rows[0].values.length + 1,
+    rowMarkup,
+    rowLabel: (r) => rows[r]?.label,
+    widthRows: [0, 1, 2, 3, 4, last - 1, last],
+  });
 }
 
 function renderResultsCharts(view) {
@@ -852,6 +916,10 @@ function wireResults() {
   });
   els.copyResultsBtn.addEventListener("click", () => void copyResults());
   els.downloadResultsBtn.addEventListener("click", () => void downloadResultsCsv());
+  // The two show only their icons, so the tooltip names them.
+  for (const button of [els.copyResultsBtn, els.downloadResultsBtn]) {
+    attachArcrhoTooltip(button, button.dataset.label);
+  }
   for (const button of [els.simulateBtn, els.emptySimulateBtn, els.staleSimulateBtn]) {
     button.addEventListener("click", () => void simulateFromUser());
   }
@@ -1068,6 +1136,7 @@ async function simulateFromUser() {
     renderAll();
     markDirty();
   }
+  void loadFinerLadder();
 }
 
 /* ---------------------------------------------------------------------------
@@ -1302,6 +1371,8 @@ function initTabbedPage() {
       closeMenu();
       if (tabId === "residuals") requestAnimationFrame(() => residualChart?.refresh());
       if (tabId === "results") {
+        // A run loaded from disk works its finest ladder out once it is looked at.
+        void loadFinerLadder();
         requestAnimationFrame(() => {
           distributionChart?.refresh();
           fanChart?.refresh();

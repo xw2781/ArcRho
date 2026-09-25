@@ -1,0 +1,94 @@
+/* The lane that stands in for a virtual table's vertical scrollbar
+   (virtual_rows.js). It paints like the framed scroll tray it replaces: a pale
+   lane that continues the table frame, one arrow at each end, and a quiet
+   thumb that strengthens while the lane is hovered, dragged or scrolled.
+
+   A host may set `--ar-virtual-lane-border` to its table frame's colour. */
+
+.ar-framed-scroll.arVirtualRowsActive { border-right-width: 0; }
+.ar-framed-scroll.arVirtualRowsActive::-webkit-scrollbar { width: 0; }
+
+/* Spacer rows stand in for rows not drawn: no padding, rule or hover. */
+tr.arVirtualSpacer { pointer-events: none; }
+tr.arVirtualSpacer > td {
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.arVirtualLane {
+  --ar-virtual-lane-track: var(--ar-color-scrollbar-track, #f1f3f5);
+  --ar-virtual-lane-thumb: var(--ar-color-scrollbar-thumb, rgba(182, 182, 182, 0.2));
+  --ar-virtual-lane-thumb-active: var(--ar-color-scrollbar-thumb-active, rgba(120, 120, 120, 0.267));
+  position: relative;
+  display: flex;
+  flex: 0 0 20px;
+  flex-direction: column;
+  width: 20px;
+  border: 1px solid var(--ar-virtual-lane-border, var(--ar-color-border, #d7dde6));
+  border-left: 0;
+  background: var(--ar-virtual-lane-track);
+  user-select: none;
+}
+.arVirtualLane[hidden] { display: none; }
+
+.arVirtualLaneArrow {
+  flex: 0 0 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background-color: var(--ar-virtual-lane-track);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 12px 12px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 7.8 6 3.8l3.8 4z'/%3E%3C/svg%3E");
+  cursor: default;
+}
+.arVirtualLaneArrow[data-step="1"] {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%2398a2b3' d='M2.2 4.2 6 8.2l3.8-4z'/%3E%3C/svg%3E");
+}
+.arVirtualLaneArrow:hover { background-color: var(--ar-color-surface-hover, #e5e9ef); }
+.arVirtualLaneArrow:active { background-color: var(--ar-color-surface-selected, #d9dee7); }
+
+.arVirtualLaneTrack {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.arVirtualLaneThumb {
+  position: absolute;
+  top: 0;
+  left: 3px;
+  right: 3px;
+  border-radius: 5px;
+  background: var(--ar-virtual-lane-thumb);
+  transition: background-color 150ms ease;
+}
+.arVirtualLane:hover .arVirtualLaneThumb,
+.arVirtualLane.isDragging .arVirtualLaneThumb,
+.ar-framed-scroll.isScrolling + .arVirtualLane .arVirtualLaneThumb {
+  background: var(--ar-virtual-lane-thumb-active);
+}
+
+/* While the thumb is dragged the rows stay put; this tag beside the thumb
+   names the row the view will land on. */
+.arVirtualLaneHint {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 6px);
+  z-index: 5;
+  margin-top: -11px;
+  padding: 3px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+  color: #1f2937;
+  font-size: 12px;
+  line-height: 14px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.arVirtualLaneHint[hidden] { display: none; }
+
+.arVirtualLaneCorner { flex: 0 0 auto; }

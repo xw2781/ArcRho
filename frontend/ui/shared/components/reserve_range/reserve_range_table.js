@@ -42,10 +42,14 @@ export function formatRangePercent(value, decimals = 1) {
 }
 
 // A selected cell copies its raw figure, so a percentage copies as its fraction.
-function cell(prefix, value, kind, extra = "") {
-  const shown = kind === "percent" ? formatRangePercent(value) : formatRangeNumber(value);
+function copyText(value) {
   const raw = numberOrNull(value);
-  return `<td class="${prefix}Cell${extra ? ` ${extra}` : ""}" data-copy-value="${raw === null ? "" : raw}">${shown}</td>`;
+  return raw === null ? "" : String(raw);
+}
+
+function cell(prefix, value, kind, extra = "", position = "") {
+  const shown = kind === "percent" ? formatRangePercent(value) : formatRangeNumber(value);
+  return `<td class="${prefix}Cell${extra ? ` ${extra}` : ""}"${position} data-copy-value="${copyText(value)}">${shown}</td>`;
 }
 
 /* The summary table: one row per origin, then the total. */
@@ -61,14 +65,41 @@ export function summaryTableMarkup(view, percentiles, { cssPrefix = "bst" } = {}
   return { head, body };
 }
 
-/* The full ladder: statistics down the side, the chosen percentiles marked. */
-export function ladderTableMarkup(view, percentiles, { cssPrefix = "bst", interval } = {}) {
+/* The full ladder: statistics down the side, the chosen percentiles marked.
+   The parts let a page draw only the rows in view, so each row and header
+   cell carries its grid position rather than counting on its place in the
+   body. */
+export function ladderTableParts(view, percentiles, { cssPrefix = "bst", interval } = {}) {
   const p = cssPrefix;
   const rows = ladderTableRows(view, percentiles, interval);
+  const labels = [...view.rows.map((row) => row.label), "Total"];
   const head = `<tr><th class="${p}OriginHead">Statistic</th>${
-    view.rows.map((row) => `<th>${escapeRangeHtml(row.label)}</th>`).join("")}<th>Total</th></tr>`;
-  const body = rows.map((row) => `<tr${row.chosen ? ` class="${p}ChosenRow"` : ""}>
-    <td class="${p}OriginCell">${escapeRangeHtml(row.label)}</td>${
-    row.values.map((value, index) => cell(p, value, row.kind, index === row.values.length - 1 ? `${p}TotalCell` : "")).join("")}</tr>`).join("");
-  return { head, body };
+    labels.map((label, c) => `<th data-c="${c}">${escapeRangeHtml(label)}</th>`).join("")}</tr>`;
+  const rowMarkup = (r) => {
+    const row = rows[r];
+    const last = row.values.length - 1;
+    return `<tr${row.chosen ? ` class="${p}ChosenRow"` : ""}>
+    <td class="${p}OriginCell" data-r="${r}">${escapeRangeHtml(row.label)}</td>${
+      row.values.map((value, c) => cell(p, value, row.kind, c === last ? `${p}TotalCell` : "", ` data-r="${r}" data-c="${c}"`)).join("")}</tr>`;
+  };
+  const copyValue = (r, c) => copyText(rows[r]?.values[c]);
+  return { head, rows, rowMarkup, copyValue };
+}
+
+export function ladderTableMarkup(view, percentiles, options = {}) {
+  const { head, rows, rowMarkup } = ladderTableParts(view, percentiles, options);
+  return { head, body: rows.map((_, r) => rowMarkup(r)).join("") };
+}
+
+/* The ladder's header over placeholder rows, while a finer ladder is still
+   being worked out; the header keeps the table at its coming width. */
+export function ladderLoadingMarkup(view, { cssPrefix = "bst", rowCount = 18 } = {}) {
+  const p = cssPrefix;
+  const labels = [...view.rows.map((row) => row.label), "Total"];
+  const head = `<tr><th class="${p}OriginHead">Statistic</th>${
+    labels.map((label) => `<th>${escapeRangeHtml(label)}</th>`).join("")}</tr>`;
+  const bar = `<span class="${p}SkeletonBar"></span>`;
+  const row = `<tr class="${p}SkeletonRow"><td class="${p}OriginCell">${bar}</td>${
+    labels.map(() => `<td>${bar}</td>`).join("")}</tr>`;
+  return { head, body: row.repeat(rowCount) };
 }

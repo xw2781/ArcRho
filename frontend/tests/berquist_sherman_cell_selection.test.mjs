@@ -21,7 +21,7 @@ test("B&S grids take their selection from the shared spreadsheet controller", ()
     selection,
     /import \{ scrollSpreadsheetCellIntoView \} from "\/ui\/shared\/components\/spreadsheet\/table_selection\.js\?v=20260726a"/u,
   );
-  assert.match(selection, /getCellValue: \(_position, cell\) => cellCopyValue\(cell\)/u);
+  assert.match(selection, /getCellValue: \(position, cell\) => \(cell \? cellCopyValue\(cell\) : virtual\?\.cellValue\(position\) \?\? ""\)/u);
   assert.match(selection, /if \(cell\?\.dataset\?\.copyValue !== undefined\) return cell\.dataset\.copyValue;/u);
   // Row labels and column headers select their line; value cells carry both
   // positions.

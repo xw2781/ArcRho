@@ -184,13 +184,15 @@ export function createMethodGridSelection({
   }
 
   // A grid rebuilt with a new table element is added again under its key,
-  // which replaces the old entry.
-  function addTable({ key, table, scrollHost = null }) {
+  // which replaces the old entry. A grid that draws only the rows in view
+  // passes its own bounds, the value of a cell not drawn, and a way to bring
+  // a row into view; each returns undefined to fall back to the drawn cells.
+  function addTable({ key, table, scrollHost = null, virtual = null }) {
     if (!table) return;
     const selection = { ranges: [], activeCell: null, anchorCell: null };
     const controller = createSpreadsheetTableController({
       getRoot: () => table,
-      getBounds: () => tableBounds(table),
+      getBounds: () => virtual?.bounds() ?? tableBounds(table),
       readSelection: () => selection,
       writeSelection: ({ ranges, activeCell, anchorCell }) => {
         selection.ranges = ranges;
@@ -200,9 +202,10 @@ export function createMethodGridSelection({
       cellSelector: CELL_SELECTOR,
       rowHeaderSelector: ROW_LABEL_SELECTOR,
       columnHeaderSelector: COLUMN_HEADER_SELECTOR,
-      getCellValue: (_position, cell) => cellCopyValue(cell),
+      getCellValue: (position, cell) => (cell ? cellCopyValue(cell) : virtual?.cellValue(position) ?? ""),
       onAfterCopy: onCopied,
       scrollCellIntoView: ({ r, c }) => {
+        virtual?.scrollToRow(r);
         const cell = table.querySelector(`td[data-r="${r}"][data-c="${c}"]`);
         if (cell) scrollSpreadsheetCellIntoView(cell, scrollHost);
       },

@@ -286,10 +286,17 @@ body {
 .sconMenuOption:focus { outline: none; background: #f1f5f9; }
 .sconMenuOption[aria-selected="true"] { background: #eaf2ff; color: #0d6efd; }
 
+/* A table block is only as wide as its tables: the toolbar, notice, captions
+   and charts around them take the tables' width but never widen it. The
+   toolbar keeps to one line, running past tables narrower than itself. */
+.sconTableBlock { width: fit-content; max-width: 100%; }
+.sconTableBlock :is(.sconToolbar, .sconNotice, .sconCaption, .sconResultsCharts) { contain: inline-size; }
+/* With no matrix yet the toolbar stands alone at the page's width. */
+.sconTableBlock:has(.sconMatrixEmpty) { width: auto; }
+
 /* Tab toolbars: framed groups on one row, like the other method pages. */
 .sconToolbar {
   display: flex;
-  flex-wrap: wrap;
   gap: 12px 8px;
   margin: 6px 0 10px;
 }
@@ -302,8 +309,9 @@ body {
   border: 1px solid #cfd8e690;
   border-radius: 2px;
 }
-/* Copy Table and Download CSV: quiet icon commands at the toolbar's right
-   end; each turns into a green check for a moment once it has done its job. */
+/* Copy Table and Download CSV: quiet icon buttons at the toolbar's right end,
+   named by their tooltip; each turns into a green check for a moment once it
+   has done its job. */
 .sconTableActions {
   display: flex;
   align-self: flex-end;
@@ -313,9 +321,10 @@ body {
 .sconTableAction {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  width: 28px;
   height: 28px;
-  padding: 0 10px;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: var(--tabbed-page-control-radius, 4px);
   background: transparent;
@@ -339,6 +348,13 @@ body {
   -webkit-mask-image: url("../../shared/icons/library/download.svg?v=20260908a");
   mask-image: url("../../shared/icons/library/download.svg?v=20260908a");
 }
+.sconTableActionLabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
 .sconTableAction.isDone { color: #15803d; }
 .sconTableAction.isDone .sconTableActionIcon {
   -webkit-mask-image: url("../../shared/icons/library/check.svg?v=20260908a");
@@ -356,7 +372,7 @@ body {
 .sconToolControls {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 12px;
 }
 .sconToolField,
 .sconToolCheck {
@@ -541,7 +557,7 @@ table.sconTable {
 .sconResultsBody[hidden] { display: none; }
 .sconSegmentedCompact { height: 28px; }
 .sconSegmentedCompact .sconSegment { padding: 0 12px; }
-.sconPercentileInput { width: 200px; }
+.sconPercentileInput { width: 160px; }
 .sconToolButton { height: 28px; }
 .sconNotice {
   display: flex;
@@ -555,8 +571,37 @@ table.sconTable {
   color: var(--scon-warning);
 }
 .sconNotice[hidden] { display: none; }
+.sconIntervalButton { width: 140px; height: 28px; }
 .sconResultsWrap { width: max-content; max-height: 360px; }
 .sconResultsBody.isFullLadder .sconResultsWrap { max-height: 520px; }
+/* While a finer ladder is worked out, placeholder bars flow through the rows
+   under the real header. */
+.sconTable tr.sconSkeletonRow { pointer-events: none; }
+.sconSkeletonBar {
+  display: block;
+  width: 70%;
+  height: 9px;
+  margin: 0 auto;
+  border-radius: 3px;
+  background-color: var(--ar-color-surface-muted, #e9eef4);
+  background-image: linear-gradient(90deg, var(--ar-color-surface-muted, #e9eef4) 25%,
+    var(--ar-color-surface-raised, #f6f9fc) 37%, var(--ar-color-surface-muted, #e9eef4) 63%);
+  background-size: 400% 100%;
+  animation: sconSkeletonSweep 1.15s ease-in-out infinite;
+}
+.sconSkeletonRow:nth-child(2n) .sconSkeletonBar { width: 56%; }
+.sconSkeletonRow:nth-child(3n) .sconSkeletonBar { width: 82%; }
+@keyframes sconSkeletonSweep {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+/* The results table and, for a long ladder, the scroll lane beside it. */
+.sconResultsFrame {
+  --ar-virtual-lane-border: var(--scon-border);
+  display: flex;
+  max-width: 100%;
+}
+.sconResultsFrame .sconResultsWrap { min-width: 0; max-width: none; }
 .sconTable tr.sconChosenRow td { font-weight: 700; }
 .sconTable tr.sconChosenRow td.sconOriginCell { color: #1d4ed8; }
 .sconTable td.sconTotalCell { font-weight: 700; }
