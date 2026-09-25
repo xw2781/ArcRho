@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   BST_DEFAULT_PERCENTILES,
+  BST_LADDER_INTERVAL_OPTIONS,
   BST_LADDER_PERCENTILES,
   BST_RESIDUAL_FLAG_MULTIPLE,
   applyBootstrapSettings,
@@ -15,6 +16,7 @@ import {
   formatAxisTick,
   formatPercentileList,
   formatRunDuration,
+  ladderIntervalIsStored,
   ladderTableRows,
   parsePercentileList,
   resultsClipboardText,
@@ -309,10 +311,28 @@ test("the full ladder lists every half percent between the minimum and maximum a
   assert.equal(rows.length, 5 + 201 + 1);
   assert.deepEqual(rows.slice(0, 5).map((row) => row.label), ["Latest", "Mean Reserve", "Std. Deviation", "CV", "Minimum"]);
   assert.equal(rows.at(-1).label, "Maximum");
-  const median = rows.find((row) => row.label === "50%");
+  const median = rows.find((row) => row.label === "50.0%");
   assert.equal(median.chosen, true);
   assert.deepEqual(median.values, [60, 70, 80], "origins first, then the total");
-  assert.equal(rows.find((row) => row.label === "75%").chosen, false);
+  assert.equal(rows.find((row) => row.label === "75.0%").chosen, false);
+});
+
+test("the ladder interval reads 5%, 1% and 0.5% from the stored ladder and takes finer steps from a re-run", () => {
+  assert.deepEqual(BST_LADDER_INTERVAL_OPTIONS.map((option) => option.value), ["5", "1", "0.5", "0.1", "0.01"]);
+  assert.deepEqual(["5", "1", "0.5", "0.1", "0.01"].map(ladderIntervalIsStored), [true, true, true, false, false]);
+  const view = resultsView(resultsMethod());
+  const coarse = ladderTableRows(view, [], "5");
+  assert.equal(coarse.length, 5 + 21 + 1);
+  assert.deepEqual(coarse.slice(5, 8).map((row) => row.label), ["0%", "5%", "10%"]);
+  const finer = { "99.99": [1, 2, 3], "0.07": [4, 5, 6] };
+  const fine = ladderTableRows(resultsView(resultsMethod(), { finerLadder: finer }), [], "0.01");
+  assert.equal(fine.length, 5 + 10001 + 1);
+  // Stored vectors lead with the total; the ladder shows it last.
+  assert.deepEqual(fine.find((row) => row.label === "99.99%").values, [2, 3, 1]);
+  assert.deepEqual(fine.find((row) => row.label === "0.07%").values, [5, 6, 4]);
+  assert.deepEqual(fine.find((row) => row.label === "50.00%").values, [60, 70, 80], "stored steps still read");
+  const copied = resultsClipboardText(view, { fullLadder: true, interval: "1" }).split("\r\n");
+  assert.equal(copied.length, 1 + 5 + 101 + 1);
 });
 
 test("copying the results gives tab-separated plain numbers", () => {

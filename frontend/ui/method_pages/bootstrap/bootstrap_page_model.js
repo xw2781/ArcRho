@@ -12,7 +12,7 @@ import {
   hasRangeRun as hasSimulationRun,
   rangeOriginLabels as originLabels,
   rangeSummary as simulationSummary,
-} from "../../shared/components/reserve_range/reserve_range_model.js?v=20260923a";
+} from "../../shared/components/reserve_range/reserve_range_model.js?v=20260924a";
 
 export const BST_METHOD_TYPE = "Bootstrap";
 export const BST_JSON_FORMAT = "arcrho-bootstrap-v4";
@@ -326,6 +326,9 @@ export {
   RANGE_DEFAULT_PERCENTILES as BST_DEFAULT_PERCENTILES,
   RANGE_MAX_PERCENTILES as BST_MAX_PERCENTILES,
   RANGE_LADDER_PERCENTILES as BST_LADDER_PERCENTILES,
+  RANGE_LADDER_INTERVAL_OPTIONS as BST_LADDER_INTERVAL_OPTIONS,
+  RANGE_STORED_LADDER_INTERVAL as BST_STORED_LADDER_INTERVAL,
+  ladderIntervalIsStored,
   RANGE_BASIS_OPTIONS as BST_BASIS_OPTIONS,
   RANGE_MEASURE_OPTIONS as BST_MEASURE_OPTIONS,
   percentileKey,
@@ -343,4 +346,4 @@ export {
   distributionChartData,
   formatAxisTick,
   formatRunDuration,
-} from "../../shared/components/reserve_range/reserve_range_model.js?v=20260923a";
+} from "../../shared/components/reserve_range/reserve_range_model.js?v=20260924a";

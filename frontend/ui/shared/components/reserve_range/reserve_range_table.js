@@ -5,7 +5,7 @@
    only formats them. Class names take the page's prefix (cssPrefix), so each
    page styles its own table. */
 
-import { ladderTableRows, summaryTableColumns } from "./reserve_range_model.js?v=20260923a";
+import { ladderTableRows, summaryTableColumns } from "./reserve_range_model.js?v=20260924a";
 
 function numberOrNull(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -21,12 +21,19 @@ export function escapeRangeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+// One formatter per decimal count: toLocaleString with options builds a new
+// one per call, which took seconds over a 0.01% ladder's 100,000 cells.
+const numberFormats = new Map();
+
 export function formatRangeNumber(value, decimals = 0) {
   const n = numberOrNull(value);
   if (n === null) return "";
   // A value that rounds to zero shows as 0, not -0.
   const shown = Math.abs(n) < 0.5 * 10 ** -decimals ? 0 : n;
-  return shown.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  if (!numberFormats.has(decimals)) {
+    numberFormats.set(decimals, new Intl.NumberFormat(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }));
+  }
+  return numberFormats.get(decimals).format(shown);
 }
 
 export function formatRangePercent(value, decimals = 1) {
@@ -55,9 +62,9 @@ export function summaryTableMarkup(view, percentiles, { cssPrefix = "bst" } = {}
 }
 
 /* The full ladder: statistics down the side, the chosen percentiles marked. */
-export function ladderTableMarkup(view, percentiles, { cssPrefix = "bst" } = {}) {
+export function ladderTableMarkup(view, percentiles, { cssPrefix = "bst", interval } = {}) {
   const p = cssPrefix;
-  const rows = ladderTableRows(view, percentiles);
+  const rows = ladderTableRows(view, percentiles, interval);
   const head = `<tr><th class="${p}OriginHead">Statistic</th>${
     view.rows.map((row) => `<th>${escapeRangeHtml(row.label)}</th>`).join("")}<th>Total</th></tr>`;
   const body = rows.map((row) => `<tr${row.chosen ? ` class="${p}ChosenRow"` : ""}>

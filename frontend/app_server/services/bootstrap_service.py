@@ -26,6 +26,7 @@ from arcrho_api.bootstrap_contract import (
     BootstrapContractError,
     apply_owned_patch,
     bootstrap_output_variants,
+    bootstrap_percentile_ladder,
     build_bootstrap_output_sidecar,
     dfm_snapshot_from_method,
     method_revisions,
@@ -979,6 +980,16 @@ def simulate_bootstrap_method(
         merged = incoming
     refreshed = _run_merged(project, reserving, current or None, merged)
     return _method_response(project, reserving, refreshed, {})
+
+
+def percentile_ladder(method: Dict[str, Any], interval: float) -> Dict[str, Any]:
+    """The percentile ladder of the run a page shows, at a finer interval.
+
+    The method the page holds carries its own DFM snapshot and targets, so the
+    re-run reads no project data and runs where the page's app server runs.
+    """
+
+    return {"ok": True, **_contract_call(bootstrap_percentile_ladder, method, interval)}
 
 
 def save_bootstrap_method(

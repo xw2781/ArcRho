@@ -462,6 +462,36 @@ def run_bootstrap_simulation(payload: Mapping[str, Any]) -> dict[str, Any]:
     return summarize_bootstrap_simulations(bootstrap_simulated_reserves(payload))
 
 
+#: The finest ladder interval, in percent: ResQ's 0.01% Percentiles.
+BST_FINEST_LADDER_INTERVAL = 0.01
+
+
+def bootstrap_percentile_ladder(payload: Mapping[str, Any], interval: float) -> dict[str, Any]:
+    """The percentile ladder of a stored run at ``interval`` percent, scaled and unscaled.
+
+    The stored summary holds every half percent; a finer interval re-runs the
+    simulation from the stored seed and keeps only the ladder, keyed as the
+    stored one is (``percentile_key``).  A re-run whose means differ from the
+    stored summary is not the run on screen, so it is refused rather than
+    shown beside that run's statistics.
+    """
+
+    count = round(100 / float(interval)) if interval else 0
+    if interval < BST_FINEST_LADDER_INTERVAL or count < 1 or abs(count * interval - 100) > 1e-9:
+        raise BootstrapContractError(f"{interval}% is not an interval that divides 100%.")
+    # index * 100 / count is the correctly rounded percent, as the page computes it.
+    steps = [index * 100 / count for index in range(count + 1)]
+    stored = normalize_bootstrap_method(payload, require_complete=False)["results_tab"]["simulation_summary"]
+    simulations = bootstrap_simulated_reserves(payload)
+    ladders: dict[str, Any] = {"interval": float(interval)}
+    for basis in ("scaled", "unscaled"):
+        block = summarize_reserves(simulations[basis]["reserves"], percentiles=steps)
+        if _numbers(block["mean"]) != stored[basis].get("mean"):
+            raise BootstrapContractError("This run no longer reproduces; simulate again to see a finer interval.")
+        ladders[basis] = {key: _numbers(values) for key, values in block["percentiles"].items()}
+    return ladders
+
+
 def _empty_summary() -> dict[str, Any]:
     return {
         "simulation_count": 0,
@@ -1137,6 +1167,7 @@ def build_bootstrap_output_sidecar(
 
 __all__ = [
     "BST_FILE_PREFIX",
+    "BST_FINEST_LADDER_INTERVAL",
     "BST_JSON_FORMAT",
     "BST_METHOD_TYPE",
     "BST_METHOD_TYPE_CODE",
@@ -1147,6 +1178,7 @@ __all__ = [
     "BstContractError",
     "apply_owned_patch",
     "bootstrap_output_variants",
+    "bootstrap_percentile_ladder",
     "bootstrap_precedent_names",
     "bootstrap_simulated_reserves",
     "build_bootstrap_output_sidecar",

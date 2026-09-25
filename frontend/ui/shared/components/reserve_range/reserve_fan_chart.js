@@ -7,7 +7,7 @@
    the colour theme changes, and names the origin's figures on hover. Legend
    items take the page's class prefix (cssPrefix), so each page styles them. */
 
-import { formatAxisTick } from "./reserve_range_model.js?v=20260923a";
+import { formatAxisTick } from "./reserve_range_model.js?v=20260924a";
 
 const COLORS = Object.freeze({
   band: [43, 109, 246],

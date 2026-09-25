@@ -61,6 +61,12 @@ export function simulateBootstrapMethod({ project_name, reserving_class, method 
   }, options);
 }
 
+/* Re-runs the run a method holds and returns its percentile ladder at the
+   interval (in percent), scaled and unscaled; nothing is read or written. */
+export function loadBootstrapLadder({ method, interval } = {}, options = {}) {
+  return requestJson("/bootstrap/ladder", { method, interval: Number(interval) }, options);
+}
+
 export function planBootstrapSave(input = {}, options = {}) {
   return requestJson("/bootstrap/save/plan", saveBody(input), options);
 }

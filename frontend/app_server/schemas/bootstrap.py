@@ -17,6 +17,11 @@ class BootstrapRunRequest(BaseModel):
     method: Dict[str, Any]
 
 
+class BootstrapLadderRequest(BaseModel):
+    method: Dict[str, Any]
+    interval: float = Field(..., gt=0)
+
+
 class BootstrapSaveRequest(BaseModel):
     project_name: str = Field(..., min_length=1)
     reserving_class: str = Field(..., min_length=1)

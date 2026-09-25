@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260923c">
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260802a">
   <link rel="stylesheet" href="/ui/shared/styles/framed_scrollbars.css?v=20260824a">
-  <link rel="stylesheet" href="/ui/method_pages/bootstrap/bootstrap.css?v=20260923c">
+  <link rel="stylesheet" href="/ui/method_pages/bootstrap/bootstrap.css?v=20260924a">
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260923c">
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260923c">
   <link rel="stylesheet" href="/ui/shared/styles/themes/revolutionary.css?v=20260923c">
@@ -230,6 +230,10 @@
                     spellcheck="false" aria-label="Chosen percentiles">
                   <button class="bstLinkButton" id="bstPercentileResetBtn" type="button">Default</button>
                   <label class="bstToolCheck"><input id="bstFullLadderInput" type="checkbox"> Full Ladder</label>
+                  <button class="bstDropdownButton bstIntervalButton" id="bstIntervalButton" type="button" aria-haspopup="listbox"
+                    aria-expanded="false" aria-label="Full ladder interval">
+                    <span class="bstDropdownValue"></span><span class="bstDropdownCaret" aria-hidden="true"></span>
+                  </button>
                 </div>
               </div>
               <div class="bstTableActions">
@@ -319,6 +323,6 @@
   </div>
 
   <script src="/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d" data-auto="1"></script>
-  <script type="module" src="/ui/method_pages/bootstrap/bootstrap_main.js?v=20260923d"></script>
+  <script type="module" src="/ui/method_pages/bootstrap/bootstrap_main.js?v=20260924a"></script>
 </body>
 </html>

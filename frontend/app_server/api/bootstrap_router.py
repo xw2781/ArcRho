@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from arcrho_api.bootstrap_contract import BST_JSON_FORMAT, owned_projection
 from app_server.schemas.bootstrap import (
     BootstrapIdentityRequest,
+    BootstrapLadderRequest,
     BootstrapRunRequest,
     BootstrapSaveRequest,
 )
@@ -62,6 +63,13 @@ def simulate_bootstrap(req: BootstrapRunRequest) -> Dict[str, Any]:
             method,
         ),
     )
+
+
+@router.post("/bootstrap/ladder")
+def bootstrap_ladder(req: BootstrapLadderRequest) -> Dict[str, Any]:
+    # Re-runs the method the page sends, which carries everything the run
+    # needs, so nothing is read from the project and it runs locally.
+    return bootstrap_service.percentile_ladder(req.method, req.interval)
 
 
 def _bootstrap_save_call(req: BootstrapSaveRequest) -> Dict[str, Any]:

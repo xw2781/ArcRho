@@ -568,6 +568,8 @@ table.bstTable {
 .bstSegmentedCompact { height: 28px; }
 .bstSegmentedCompact .bstSegment { padding: 0 12px; }
 .bstPercentileInput { width: 200px; }
+.bstIntervalButton { width: 150px; height: 28px; }
+.bstTable tr.bstLadderLoading td { padding: 10px 12px; color: var(--bst-muted); white-space: nowrap; }
 .bstToolButton { height: 28px; }
 .bstNotice {
   display: flex;

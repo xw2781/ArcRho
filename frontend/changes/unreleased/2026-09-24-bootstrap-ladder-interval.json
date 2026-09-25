@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "bootstrap",
+  "audience": "user",
+  "summary": "The Bootstrap Results tab's Full Ladder can now step by 5%, 1%, 0.5%, 0.1% or 0.01%, as ResQ's Percentiles choice does.",
+  "details": [
+    "Pick the interval from the dropdown beside Full Ladder; Copy Table and Download CSV follow it.",
+    "0.1% and 0.01% re-run the simulation from its seed, so the ladder takes a moment and matches the run on screen exactly."
+  ]
+}

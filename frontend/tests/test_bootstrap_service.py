@@ -740,6 +740,21 @@ class BootstrapServiceTests(unittest.TestCase):
             run["method"]["results_tab"]["bootstrap_ultimate"],
         )
 
+    def test_a_finer_ladder_reruns_the_run_on_screen_and_writes_nothing(self) -> None:
+        run = self.simulate()
+        before = self._workspace_state()
+
+        ladder = bootstrap_service.percentile_ladder(run["method"], 0.1)
+
+        self.assertEqual(self._workspace_state(), before)
+        stored = run["method"]["results_tab"]["simulation_summary"]["scaled"]["percentiles"]
+        self.assertEqual(len(ladder["scaled"]), 1001)
+        self.assertEqual(ladder["scaled"]["99.5"], stored["99.5"])
+        self.assertIn("99.9", ladder["unscaled"])
+        with self.assertRaises(HTTPException) as bad:
+            bootstrap_service.percentile_ladder(run["method"], 0.3)
+        self.assertEqual(bad.exception.status_code, 422)
+
     def test_simulate_requires_a_dfm_and_a_known_format_on_disk(self) -> None:
         with self.assertRaises(HTTPException) as no_dfm:
             self.simulate(self.method_payload(details_tab={"dfm_method": ""}))

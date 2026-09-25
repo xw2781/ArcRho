@@ -21,6 +21,7 @@ from arcrho_api.bootstrap_contract import (
     BootstrapContractError,
     apply_owned_patch,
     bootstrap_output_variants,
+    bootstrap_percentile_ladder,
     bootstrap_precedent_names,
     bootstrap_simulated_reserves,
     build_bootstrap_output_sidecar,
@@ -653,6 +654,27 @@ def test_stored_summary_equals_one_recomputed_from_the_simulations(method):
     assert persisted_json_text(recomputed) == persisted_json_text(
         method["results_tab"]["simulation_summary"]
     )
+
+
+def test_a_finer_ladder_extends_the_stored_one(method):
+    ladder = bootstrap_percentile_ladder(method, 0.01)
+    summary = method["results_tab"]["simulation_summary"]
+    keys = [percentile_key(index * 100 / 10000) for index in range(10001)]
+    assert keys[:3] == ["0", "0.01", "0.02"] and keys[-2:] == ["99.99", "100"]
+    for block_name in ("scaled", "unscaled"):
+        assert list(ladder[block_name]) == keys
+        # Every half percent the stored summary holds reads the same.
+        for key in HALF_PERCENT_KEYS:
+            assert ladder[block_name][key] == summary[block_name]["percentiles"][key]
+
+
+def test_a_finer_ladder_refuses_a_run_it_cannot_reproduce(method):
+    drifted = deepcopy(method)
+    drifted["results_tab"]["simulation_summary"]["scaled"]["mean"][0] += 1
+    with pytest.raises(BootstrapContractError, match="simulate again"):
+        bootstrap_percentile_ladder(drifted, 0.1)
+    with pytest.raises(BootstrapContractError, match="divides 100"):
+        bootstrap_percentile_ladder(method, 0.03)
 
 
 def test_a_summary_saved_before_the_half_percent_ladder_still_opens(method):

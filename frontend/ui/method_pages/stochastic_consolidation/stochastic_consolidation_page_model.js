@@ -9,7 +9,7 @@
    edits the owned fields its apply_owned_patch accepts and never computes a
    derived value a run would recompute. */
 
-import { hasRangeRun, rangeSummary } from "../../shared/components/reserve_range/reserve_range_model.js?v=20260923a";
+import { hasRangeRun, rangeSummary } from "../../shared/components/reserve_range/reserve_range_model.js?v=20260924a";
 
 export const SCON_METHOD_TYPE = "Stochastic Consolidation";
 export const SCON_JSON_FORMAT = "arcrho-stochastic-consolidation-v4";

@@ -33,22 +33,26 @@ import {
 import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
 import { BOOTSTRAP_TAB_DEFS, windowTabIds } from "/ui/shared/tabs/window_tab_catalog.js?v=20260903a";
 import {
+  loadBootstrapLadder,
   loadBootstrapMethod,
   saveBootstrapMethod,
   simulateBootstrapMethod,
-} from "/ui/method_pages/bootstrap/bootstrap_method_api.js?v=20260923b";
+} from "/ui/method_pages/bootstrap/bootstrap_method_api.js?v=20260924a";
 import { createResidualChart } from "/ui/method_pages/bootstrap/bootstrap_residual_chart.js?v=20260923a";
-import { createDistributionChart } from "/ui/shared/components/reserve_range/reserve_distribution_chart.js?v=20260923a";
-import { createFanChart } from "/ui/shared/components/reserve_range/reserve_fan_chart.js?v=20260923a";
-import { ladderTableMarkup, summaryTableMarkup } from "/ui/shared/components/reserve_range/reserve_range_table.js?v=20260923a";
+import { createDistributionChart } from "/ui/shared/components/reserve_range/reserve_distribution_chart.js?v=20260924a";
+import { createFanChart } from "/ui/shared/components/reserve_range/reserve_fan_chart.js?v=20260924a";
+import { ladderTableMarkup, summaryTableMarkup } from "/ui/shared/components/reserve_range/reserve_range_table.js?v=20260924a";
 import { createMethodGridSelection, tagMethodGridCells } from "/ui/shared/components/spreadsheet/method_grid_selection.js";
 import { showSimulationRun } from "/ui/shared/components/simulation_run/simulation_run.js";
 import { wireFramedScrollActivity } from "/ui/shared/styles/framed_scroll_activity.js";
 import {
   BST_BASIS_OPTIONS,
   BST_DEFAULT_PERCENTILES,
+  BST_LADDER_INTERVAL_OPTIONS,
   BST_MEASURE_OPTIONS,
+  BST_STORED_LADDER_INTERVAL,
   availableBases,
+  ladderIntervalIsStored,
   distributionChartData,
   fanChartData,
   formatPercentileList,
@@ -78,7 +82,7 @@ import {
   residualGrid,
   runInputSnapshot,
   targetRows,
-} from "/ui/method_pages/bootstrap/bootstrap_page_model.js?v=20260923d";
+} from "/ui/method_pages/bootstrap/bootstrap_page_model.js?v=20260924a";
 
 const ALLOWED_TABS = windowTabIds("bootstrap");
 const params = new URLSearchParams(window.location.search || "");
@@ -109,7 +113,12 @@ const state = {
     measure: "reserves",
     percentiles: BST_DEFAULT_PERCENTILES.slice(),
     fullLadder: false,
+    interval: BST_STORED_LADDER_INTERVAL,
   },
+  // A full ladder finer than the stored one, worked out for the run on screen
+  // ({ method, interval, scaled, unscaled }), and the request working one out.
+  finerLadder: null,
+  ladderRequest: null,
 };
 
 let cleanSnapshot = "";
@@ -167,6 +176,7 @@ const els = {
   percentileInput: document.getElementById("bstPercentileInput"),
   percentileResetBtn: document.getElementById("bstPercentileResetBtn"),
   fullLadderInput: document.getElementById("bstFullLadderInput"),
+  intervalButton: document.getElementById("bstIntervalButton"),
   copyResultsBtn: document.getElementById("bstCopyResultsBtn"),
   downloadResultsBtn: document.getElementById("bstDownloadResultsBtn"),
   resultsStale: document.getElementById("bstResultsStale"),
@@ -646,15 +656,54 @@ function segmentedMarkup(options, current, available = null) {
   }).join("");
 }
 
+// The full ladder at a finer interval than the stored one needs that ladder
+// worked out for the run on screen; until it is, the table waits for it.
+function finerLadderNeeded() {
+  return state.results.fullLadder && !ladderIntervalIsStored(state.results.interval);
+}
+
+function finerLadderReady() {
+  const finer = state.finerLadder;
+  return !!finer && finer.method === state.method && finer.interval === state.results.interval;
+}
+
 function currentResultsView() {
   const bases = availableBases(state.method);
   if (bases.length && !bases.includes(state.results.basis)) state.results.basis = bases[0];
-  return resultsView(state.method, { basis: state.results.basis, measure: state.results.measure });
+  const finerLadder = finerLadderNeeded() && finerLadderReady() ? state.finerLadder[state.results.basis] : null;
+  return resultsView(state.method, { basis: state.results.basis, measure: state.results.measure, finerLadder });
+}
+
+async function loadFinerLadder() {
+  const { interval } = state.results;
+  const method = state.method;
+  if (state.ladderRequest?.method === method && state.ladderRequest.interval === interval) return;
+  const request = { method, interval };
+  state.ladderRequest = request;
+  try {
+    const result = await loadBootstrapLadder({ method, interval });
+    if (state.ladderRequest !== request) return;
+    state.finerLadder = { method, interval, scaled: result.scaled, unscaled: result.unscaled };
+  } catch (err) {
+    if (state.ladderRequest !== request) return;
+    postStatus(`Could not work out the ${interval}% percentiles: ${String(err?.message || err)}`, "error");
+    if (state.results.interval === interval) state.results.interval = BST_STORED_LADDER_INTERVAL;
+  } finally {
+    if (state.ladderRequest === request) state.ladderRequest = null;
+  }
+  renderResults();
 }
 
 function renderResultsTable(view) {
+  if (finerLadderNeeded() && !finerLadderReady()) {
+    els.resultsHead.innerHTML = "";
+    els.resultsTableBody.innerHTML = `<tr class="bstLadderLoading"><td>Working out the ${
+      escapeHtml(state.results.interval)}% percentiles from this run's seed...</td></tr>`;
+    void loadFinerLadder();
+    return;
+  }
   const build = state.results.fullLadder ? ladderTableMarkup : summaryTableMarkup;
-  const { head, body } = build(view, state.results.percentiles, { cssPrefix: "bst" });
+  const { head, body } = build(view, state.results.percentiles, { cssPrefix: "bst", interval: state.results.interval });
   els.resultsHead.innerHTML = head;
   els.resultsTableBody.innerHTML = body;
   refreshGrid(els.resultsTableBody);
@@ -686,6 +735,7 @@ function renderResults() {
     els.percentileInput.value = formatPercentileList(state.results.percentiles);
   }
   els.fullLadderInput.checked = state.results.fullLadder;
+  setDropdown(els.intervalButton, BST_LADDER_INTERVAL_OPTIONS, state.results.interval, !state.results.fullLadder);
   if (!view) return;
   els.resultsBody.classList.toggle("isFullLadder", state.results.fullLadder);
   renderResultsTable(view);
@@ -718,14 +768,22 @@ function flashDone(button) {
   }, 1400);
 }
 
+// The table as shown; null while a finer ladder is still being worked out.
 function resultsTableOptions() {
-  return { percentiles: state.results.percentiles, fullLadder: state.results.fullLadder };
+  if (finerLadderNeeded() && !finerLadderReady()) {
+    postStatus("The percentiles are still being worked out.", "warn");
+    return null;
+  }
+  const { percentiles, fullLadder, interval } = state.results;
+  return { percentiles, fullLadder, interval };
 }
 
 // Download CSV saves the Results table as it is shown, through the desktop
 // host's save dialog.
 async function downloadResultsCsv() {
-  const payload = resultsCsvText(currentResultsView(), resultsTableOptions());
+  const options = resultsTableOptions();
+  if (!options) return;
+  const payload = resultsCsvText(currentResultsView(), options);
   const host = window.ADAHost || window.top?.ADAHost || null;
   if (!payload) return;
   if (typeof host?.saveTextFile !== "function") {
@@ -744,11 +802,9 @@ async function downloadResultsCsv() {
 }
 
 async function copyResults() {
-  const view = currentResultsView();
-  const payload = resultsClipboardText(view, {
-    percentiles: state.results.percentiles,
-    fullLadder: state.results.fullLadder,
-  });
+  const options = resultsTableOptions();
+  if (!options) return;
+  const payload = resultsClipboardText(currentResultsView(), options);
   if (!payload) return;
   try {
     await navigator.clipboard.writeText(payload);
@@ -783,6 +839,12 @@ function wireResults() {
   els.fullLadderInput.addEventListener("change", () => {
     state.results.fullLadder = els.fullLadderInput.checked;
     renderResults();
+  });
+  els.intervalButton.addEventListener("click", () => {
+    openMenu(els.intervalButton, BST_LADDER_INTERVAL_OPTIONS, state.results.interval, (value) => {
+      state.results.interval = value;
+      renderResults();
+    });
   });
   els.copyResultsBtn.addEventListener("click", () => void copyResults());
   els.downloadResultsBtn.addEventListener("click", () => void downloadResultsCsv());

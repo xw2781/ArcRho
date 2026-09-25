@@ -31,18 +31,18 @@ import {
   wireSamePropagationScopePause,
 } from "/ui/shared/services/object_change_watch.js?v=20260820a";
 import { STOCHASTIC_CONSOLIDATION_TAB_DEFS, windowTabIds } from "/ui/shared/tabs/window_tab_catalog.js?v=20260903a";
-import { createDistributionChart } from "/ui/shared/components/reserve_range/reserve_distribution_chart.js?v=20260923a";
+import { createDistributionChart } from "/ui/shared/components/reserve_range/reserve_distribution_chart.js?v=20260924a";
 import { createMethodGridSelection, tagMethodGridCells } from "/ui/shared/components/spreadsheet/method_grid_selection.js";
 import { showSimulationRun } from "/ui/shared/components/simulation_run/simulation_run.js";
 import { wireFramedScrollActivity } from "/ui/shared/styles/framed_scroll_activity.js";
-import { createFanChart } from "/ui/shared/components/reserve_range/reserve_fan_chart.js?v=20260923a";
+import { createFanChart } from "/ui/shared/components/reserve_range/reserve_fan_chart.js?v=20260924a";
 import {
   escapeRangeHtml as escapeHtml,
   formatRangeNumber as formatNumber,
   formatRangePercent as formatPercent,
   ladderTableMarkup,
   summaryTableMarkup,
-} from "/ui/shared/components/reserve_range/reserve_range_table.js?v=20260923a";
+} from "/ui/shared/components/reserve_range/reserve_range_table.js?v=20260924a";
 import {
   RANGE_DEFAULT_PERCENTILES,
   RANGE_MEASURE_OPTIONS,
@@ -54,7 +54,7 @@ import {
   resultsClipboardText,
   resultsCsvText,
   resultsView,
-} from "/ui/shared/components/reserve_range/reserve_range_model.js?v=20260923a";
+} from "/ui/shared/components/reserve_range/reserve_range_model.js?v=20260924a";
 import {
   consolidateStochasticConsolidation,
   listStochasticConsolidationCandidates,
@@ -88,7 +88,7 @@ import {
   setTargetCorrelation,
   storedAdjustedMatrix,
   usedCorrelationMatrix,
-} from "/ui/method_pages/stochastic_consolidation/stochastic_consolidation_page_model.js?v=20260923a";
+} from "/ui/method_pages/stochastic_consolidation/stochastic_consolidation_page_model.js?v=20260924a";
 
 const ALLOWED_TABS = windowTabIds("stochastic_consolidation");
 const params = new URLSearchParams(window.location.search || "");

@@ -5,7 +5,7 @@
    it, redraws itself when its box changes size or the colour theme changes,
    and shows a bar's range and share on hover. */
 
-import { formatAxisTick } from "./reserve_range_model.js?v=20260923a";
+import { formatAxisTick } from "./reserve_range_model.js?v=20260924a";
 
 const COLORS = Object.freeze({
   bar: "rgba(43, 109, 246, 0.22)",

@@ -51,7 +51,31 @@ export function rangeOriginLabels(method) {
 
 export const RANGE_DEFAULT_PERCENTILES = Object.freeze([50, 75, 90, 95, 99, 99.5]);
 export const RANGE_MAX_PERCENTILES = 12;
-export const RANGE_LADDER_PERCENTILES = Object.freeze(Array.from({ length: 201 }, (_, step) => step / 2));
+
+/* The full ladder's interval, as ResQ's Percentiles choice offers it. The
+   stored ladder holds every half percent, so 5%, 1% and 0.5% read it as is;
+   a finer interval needs its ladder worked out from a re-run. */
+export const RANGE_STORED_LADDER_INTERVAL = "0.5";
+export const RANGE_LADDER_INTERVAL_OPTIONS = Object.freeze([
+  { value: "5", label: "5% Percentiles" },
+  { value: "1", label: "1% Percentiles" },
+  { value: "0.5", label: "0.5% Percentiles" },
+  { value: "0.1", label: "0.1% Percentiles" },
+  { value: "0.01", label: "0.01% Percentiles" },
+]);
+
+export function ladderIntervalIsStored(interval) {
+  return Number.isInteger(Number(interval) / Number(RANGE_STORED_LADDER_INTERVAL));
+}
+
+/* Every percentile from 0 to 100 at an interval given in percent; index * 100
+   / count is the correctly rounded percent, so its key matches the server's. */
+export function ladderPercentiles(interval = RANGE_STORED_LADDER_INTERVAL) {
+  const count = Math.round(100 / Number(interval));
+  return Array.from({ length: count + 1 }, (_, index) => (index * 100) / count);
+}
+
+export const RANGE_LADDER_PERCENTILES = Object.freeze(ladderPercentiles());
 
 export const RANGE_BASIS_OPTIONS = Object.freeze([
   { value: "scaled", label: "Scaled" },
@@ -68,8 +92,12 @@ export function percentileKey(percent) {
   return String(Number(percent));
 }
 
-export function percentileLabel(percent) {
-  return `${Number(percent)}%`;
+/* With an interval the label carries the interval's decimals, so a ladder's
+   labels line up (0.10%, 0.11%) as ResQ's do. */
+export function percentileLabel(percent, interval = null) {
+  if (interval === null) return `${Number(percent)}%`;
+  const decimals = (String(Number(interval)).split(".")[1] || "").length;
+  return `${Number(percent).toFixed(decimals)}%`;
 }
 
 export function formatPercentileList(percentiles) {
@@ -114,8 +142,10 @@ function sumOrNull(values) {
    Each row knows its latest, mean, standard deviation, CV, extremes and any
    ladder percentile in the chosen measure, the mean of the other measure, and
    the DFM's figure in the chosen measure. An ultimate is the latest plus the
-   reserve, so its percentiles are the reserve's moved by the latest. */
-export function resultsView(method, { basis = "scaled", measure = "reserves" } = {}) {
+   reserve, so its percentiles are the reserve's moved by the latest. A finer
+   ladder worked out for this basis (finerLadder, keyed as the stored one)
+   adds its percentiles to the stored ones. */
+export function resultsView(method, { basis = "scaled", measure = "reserves", finerLadder = null } = {}) {
   const summary = rangeSummary(method);
   const block = summary?.[basis];
   if (!block || !Array.isArray(block.mean) || !block.mean.length) return null;
@@ -131,7 +161,10 @@ export function resultsView(method, { basis = "scaled", measure = "reserves" } =
   const latest = [sumOrNull(originLatest), ...originLatest];
   const dfmReserve = [sumOrNull(originDfm), ...originDfm];
   const ultimates = measure === "ultimates";
-  const ladder = block.percentiles && typeof block.percentiles === "object" ? block.percentiles : {};
+  const ladder = {
+    ...(block.percentiles && typeof block.percentiles === "object" ? block.percentiles : {}),
+    ...(finerLadder || {}),
+  };
   const at = (vector, index) => (Array.isArray(vector) ? numberOrNull(vector[index]) : null);
   const toUltimate = (value, index) => (value === null || latest[index] === null ? null : value + latest[index]);
   const shift = (value, index) => (ultimates ? toUltimate(value, index) : value);
@@ -199,10 +232,10 @@ export function summaryTableColumns(measure, percentiles, { dfm = true } = {}) {
 }
 
 /* The full ladder is ResQ's Detail grid: statistics down the side, origins
-   and the total across, every half percent from 0 to 100 between the minimum
-   and the maximum. The chosen percentiles are marked so they stay easy to
-   find. */
-export function ladderTableRows(view, percentiles = []) {
+   and the total across, every percentile at the interval from 0 to 100
+   between the minimum and the maximum. The chosen percentiles are marked so
+   they stay easy to find. */
+export function ladderTableRows(view, percentiles = [], interval = RANGE_STORED_LADDER_INTERVAL) {
   if (!view) return [];
   const columns = [...view.rows, view.total];
   const chosen = new Set((percentiles || []).map(percentileKey));
@@ -213,9 +246,9 @@ export function ladderTableRows(view, percentiles = []) {
     stat("sd", "Std. Deviation", "number", (row) => row.sd),
     stat("cv", "CV", "percent", (row) => row.cv),
     stat("minimum", "Minimum", "number", (row) => row.minimum),
-    ...RANGE_LADDER_PERCENTILES.map((percent) => ({
+    ...ladderPercentiles(interval).map((percent) => ({
       key: `p${percentileKey(percent)}`,
-      label: percentileLabel(percent),
+      label: percentileLabel(percent, interval),
       kind: "number",
       chosen: chosen.has(percentileKey(percent)),
       values: columns.map((row) => row.percentile(percent)),
@@ -234,12 +267,12 @@ function clipboardNumber(value, kind) {
    paste into a spreadsheet as numbers (a CV as a fraction). */
 // The Results table as plain rows, header first: what Copy Table and
 // Download CSV both hand out.
-function resultsTableCells(view, { percentiles = [], fullLadder = false } = {}) {
+function resultsTableCells(view, { percentiles = [], fullLadder = false, interval = RANGE_STORED_LADDER_INTERVAL } = {}) {
   if (!view) return [];
   if (fullLadder) {
     return [
       ["Statistic", ...view.rows.map((row) => row.label), "Total"],
-      ...ladderTableRows(view, percentiles).map((row) => [row.label, ...row.values.map((value) => clipboardNumber(value, row.kind))]),
+      ...ladderTableRows(view, percentiles, interval).map((row) => [row.label, ...row.values.map((value) => clipboardNumber(value, row.kind))]),
     ];
   }
   const columns = summaryTableColumns(view.measure, percentiles, { dfm: view.hasDfm !== false });
