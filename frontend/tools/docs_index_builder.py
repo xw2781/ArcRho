@@ -574,7 +574,7 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/method_pages/bootstrap/bootstrap.html", "Bootstrap iframe page."),
             ("ui/method_pages/bootstrap/bootstrap_main.js", "Bootstrap state, load/save flow, rendering, and tab coordination."),
             ("ui/method_pages/bootstrap/bootstrap_page_model.js", "Pure settings, residual-flag, Targets-row, and Results-view rules the page and its tests share."),
-            ("ui/method_pages/bootstrap/bootstrap_method_api.js", "Bootstrap load/simulate/save transport adapter."),
+            ("ui/method_pages/bootstrap/bootstrap_method_api.js", "Bootstrap load/simulate/ladder/save transport adapter."),
             ("ui/method_pages/bootstrap/bootstrap_residual_chart.js", "Residuals-tab scatter renderer."),
             ("ui/shared/components/reserve_range/reserve_range_model.js", "Results views shared with the Stochastic Consolidation page: rows, columns, ladder, clipboard, fan bands, distribution markers."),
             ("ui/shared/components/reserve_range/reserve_range_table.js", "Shared Results summary-table and full-ladder markup."),
@@ -801,9 +801,9 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
     "bootstrap": {
         "doc": "docs/app_server/domains/bootstrap.md",
         "files": [
-            ("app_server/api/bootstrap_router.py", "Aggregate Bootstrap load/simulate/save/refresh routes."),
+            ("app_server/api/bootstrap_router.py", "Aggregate Bootstrap load/simulate/ladder/save/refresh routes."),
             ("app_server/services/bootstrap_service.py", "V1 contract persistence, transactional publication, and eager dependency refresh."),
-            ("app_server/schemas/bootstrap.py", "Bootstrap identity, run-only simulate, and revision-aware save request models."),
+            ("app_server/schemas/bootstrap.py", "Bootstrap identity, run-only simulate, finer ladder, and revision-aware save request models."),
         ],
     },
     "stochastic_consolidation": {

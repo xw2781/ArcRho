@@ -9,6 +9,7 @@ Own the self-contained Bootstrap v1 contract, aggregate two-file load, revision-
 <!-- AUTO-GEN:BEGIN app_server.bootstrap.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
+| `POST` | `/bootstrap/ladder` | `bootstrap_ladder` | `BootstrapLadderRequest` | [`app_server/schemas/bootstrap.py`](../../../app_server/schemas/bootstrap.py) | `bootstrap_service.percentile_ladder` |
 | `POST` | `/bootstrap/load` | `load_bootstrap` | `BootstrapIdentityRequest` | [`app_server/schemas/bootstrap.py`](../../../app_server/schemas/bootstrap.py) | `bootstrap_service.load_bootstrap_method`, `workspace_read_client.run_workspace_read` |
 | `POST` | `/bootstrap/refresh` | `refresh_bootstrap` | `BootstrapIdentityRequest` | [`app_server/schemas/bootstrap.py`](../../../app_server/schemas/bootstrap.py) | `bootstrap_service.refresh_bootstrap_method` |
 | `POST` | `/bootstrap/save` | `save_bootstrap` | `BootstrapSaveRequest` | [`app_server/schemas/bootstrap.py`](../../../app_server/schemas/bootstrap.py) | `engine_hosted_save_service.run_hosted_save` |
@@ -18,9 +19,9 @@ Own the self-contained Bootstrap v1 contract, aggregate two-file load, revision-
 
 ## Key Files
 <!-- AUTO-GEN:BEGIN app_server.bootstrap.key_files -->
-- [`app_server/api/bootstrap_router.py`](../../../app_server/api/bootstrap_router.py) - Aggregate Bootstrap load/simulate/save/refresh routes.
+- [`app_server/api/bootstrap_router.py`](../../../app_server/api/bootstrap_router.py) - Aggregate Bootstrap load/simulate/ladder/save/refresh routes.
 - [`app_server/services/bootstrap_service.py`](../../../app_server/services/bootstrap_service.py) - V1 contract persistence, transactional publication, and eager dependency refresh.
-- [`app_server/schemas/bootstrap.py`](../../../app_server/schemas/bootstrap.py) - Bootstrap identity, run-only simulate, and revision-aware save request models.
+- [`app_server/schemas/bootstrap.py`](../../../app_server/schemas/bootstrap.py) - Bootstrap identity, run-only simulate, finer ladder, and revision-aware save request models.
 <!-- AUTO-GEN:END -->
 
 ## External Interfaces
@@ -37,6 +38,7 @@ Own the self-contained Bootstrap v1 contract, aggregate two-file load, revision-
 <!-- MANUAL:BEGIN -->
 - `POST /bootstrap/load` is the `bootstrap_load` Server-hosted workspace read: when the Gateway advertises it, the method JSON and sidecar are read on the server host and returned verbatim; otherwise the service runs locally. See [`workspace_reads`](workspace_reads.md).
 - `POST /bootstrap/simulate` is the `bootstrap_simulate` Server-hosted workspace read behind the page's Simulate. The router sends only the owned settings on screen (`owned_projection` plus the format marker), never the stored residuals and results; the service merges them onto the stored method exactly as Save does (`apply_owned_patch`, then re-reading only a source whose name changed), re-simulates from the seed, and returns the recalculated method with `sidecar.exists: false` without writing any file or taking the reserving-class lock. A Save of the same settings therefore publishes the same run. A new method (no file yet) reads both sources.
+- `POST /bootstrap/ladder` serves the Results tab's full ladder at an interval finer than the stored half percent (0.1% or 0.01%). The page sends the whole method it shows, whose embedded DFM snapshot, targets and seed are everything the run needs, so `bootstrap_contract.bootstrap_percentile_ladder` re-runs it without reading project data and returns only the `scaled` and `unscaled` ladders, keyed like the stored one. That is why the route runs in the local app server rather than as a hosted read. A re-run whose means differ from the method's stored summary is refused with `422` and a prompt to simulate again, so a ladder is never shown beside another run's statistics. Nothing is written; about 1.5 seconds for 10,000 simulations.
 - The only supported marker is `arcrho-bootstrap-v4`; the method file is `methods/BST@<Name>.json`.
 - The target ultimate vector is read at its stored period, not its displayed one, and one stored finer than the DFM's origin length is brought to it through `precedent_cache_service.precedent_source`: an Engine-generated target is rebuilt at that period, a hand-entered one is rolled up in memory from its own CSV, and only a coarser target is refused with `422 … uses N-month origins; expected M`.
 - Method JSON owns the DFM name plus an embedded snapshot of everything the bootstrap needs from it (origin and development labels, the observed cumulative triangle, the selected ratios at full precision, which ratios a simulation may re-estimate, and the DFM ultimate vector) with a `dfm_source_revision` hash; the residual grids for all five ResQ residual types; both scale-value blocks; the simulation inputs; the target inputs; timestamps; and deterministic owned/derived/publication revisions.
