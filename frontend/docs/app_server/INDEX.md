@@ -25,7 +25,7 @@ App-server domain map for FastAPI routers, schemas, and services.
 | `field_mapping` | [`app_server/api/field_mapping_router.py`](../../app_server/api/field_mapping_router.py) | 2 | [`field_mapping.md`](domains/field_mapping.md) |
 | `object_change_watch` | [`app_server/api/object_change_watch_router.py`](../../app_server/api/object_change_watch_router.py) | 2 | [`object_change_watch.md`](domains/object_change_watch.md) |
 | `project_settings` | [`app_server/api/project_settings_router.py`](../../app_server/api/project_settings_router.py) | 14 | [`project_settings.md`](domains/project_settings.md) |
-| `reserving_class` | [`app_server/api/reserving_class_router.py`](../../app_server/api/reserving_class_router.py) | 11 | [`reserving_class.md`](domains/reserving_class.md) |
+| `reserving_class` | [`app_server/api/reserving_class_router.py`](../../app_server/api/reserving_class_router.py) | 12 | [`reserving_class.md`](domains/reserving_class.md) |
 | `result_selection` | [`app_server/api/result_selection_router.py`](../../app_server/api/result_selection_router.py) | 3 | [`result_selection.md`](domains/result_selection.md) |
 | `snowflake` | [`app_server/api/snowflake_router.py`](../../app_server/api/snowflake_router.py) | 6 | [`snowflake.md`](domains/snowflake.md) |
 | `source_table` | [`app_server/api/source_table_router.py`](../../app_server/api/source_table_router.py) | 12 | [`source_table.md`](domains/source_table.md) |

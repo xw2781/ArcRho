@@ -5,7 +5,7 @@ Bootstrap method page: an over-dispersed Poisson bootstrap of a DFM, simulated f
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.bootstrap.entry_points -->
-- `ui/method_pages/bootstrap/bootstrap.html`: external scripts `/ui/method_pages/bootstrap/bootstrap_main.js?v=20260924d`, `/ui/shared/services/color_theme.js?v=20260923c`, `/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d`; inline imports _none_.
+- `ui/method_pages/bootstrap/bootstrap.html`: external scripts `/ui/method_pages/bootstrap/bootstrap_main.js?v=20260924g`, `/ui/shared/services/color_theme.js?v=20260923c`, `/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/datasets/cached?${qs.toString()}`
