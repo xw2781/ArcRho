@@ -71,6 +71,7 @@ Detected `arcrho:*` message types in key JS files:
 
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
+- Ratios summary rows keep their short reorder transition without a permanent transform-compositing hint, so resting table text can return to normal painting after minimizing and restoring the window.
 - The [shared formula-bar guide](formula_bar.md) defines array functions, Excel add-in dataset calls, autocomplete, fx previews, and DFM's one-row positive-result requirement.
 - Exchanges `arcrho:*` messages with shell and workflow iframe.
 - Reuses dataset APIs and reserving class selectors.

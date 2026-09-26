@@ -1807,8 +1807,8 @@ body {
   font-weight: 700;
 }
 #ratioWrap .ratioSummaryTable tr {
+  /* Let resting rows return to normal text painting after reorder/restore. */
   transition: transform 160ms ease;
-  will-change: transform;
 }
 
 #resultsPanel,

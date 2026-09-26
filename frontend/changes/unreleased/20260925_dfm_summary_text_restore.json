@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Fixed blurry Ratios summary text after minimizing and restoring a DFM window."
+}
