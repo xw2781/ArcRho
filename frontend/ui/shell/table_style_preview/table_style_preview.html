@@ -1,8 +1,9 @@
 <!doctype html>
 <!-- A still snapshot of one table style for the Home "Color Theme" dialog. It is
-     drawn from the real tab and spreadsheet stylesheets, so it shows exactly what
-     a method page looks like. The style comes from ?tableStyle= and is locked, so
-     the app-wide choice never repaints it; Light or Dark follows the app. -->
+     a DFM Ratios tab: the markup the Ratios tab builds, drawn by the DFM page's
+     own stylesheets, so it shows exactly what a method page looks like. The
+     style comes from ?tableStyle= and is locked, so the app-wide choice never
+     repaints it; Light or Dark follows the app. -->
 <html lang="en" data-arcrho-table-style-locked>
 <head>
   <meta charset="utf-8"/>
@@ -10,37 +11,59 @@
   <title>Table Style Preview</title>
   <link rel="stylesheet" href="/ui/shared/tabbed_page/tabbed_page.css?v=20260824d"/>
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260924a"/>
-  <link rel="stylesheet" href="/ui/shell/table_style_preview/table_style_preview.css?v=20260923c"/>
+  <link rel="stylesheet" href="/ui/shared/components/workspace/workspace.css?v=20260721a"/>
+  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260924c"/>
+  <link rel="stylesheet" href="/ui/shell/table_style_preview/table_style_preview.css?v=20260925a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260923c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260923c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/revolutionary.css?v=20260923c"/>
 </head>
-<body>
-  <div class="tabbedPageTabBar" aria-hidden="true">
-    <button class="tabbedPageTab" type="button" tabindex="-1">Details</button>
-    <button class="tabbedPageTab" type="button" tabindex="-1">Data</button>
-    <button class="tabbedPageTab active" type="button" tabindex="-1" aria-selected="true">Ratios</button>
-    <button class="tabbedPageTab" type="button" tabindex="-1">Results</button>
+<body aria-hidden="true">
+  <div class="dfmTabBar tabbedPageTabBar">
+    <button class="dfmTab tabbedPageTab" type="button" tabindex="-1">Details</button>
+    <button class="dfmTab tabbedPageTab" type="button" tabindex="-1">Data</button>
+    <button class="dfmTab tabbedPageTab active" type="button" tabindex="-1" aria-selected="true">Ratios</button>
+    <button class="dfmTab tabbedPageTab" type="button" tabindex="-1">Curves</button>
+    <button class="dfmTab tabbedPageTab" type="button" tabindex="-1">Results</button>
+    <button class="dfmTab tabbedPageTab" type="button" tabindex="-1">Notes</button>
+    <button class="dfmTab tabbedPageTab" type="button" tabindex="-1">Links</button>
+    <button class="dfmTab tabbedPageTab" type="button" tabindex="-1">Audit Log</button>
   </div>
-  <main class="previewPage" aria-hidden="true">
-    <table class="arSpreadsheetTable previewTable">
-      <thead>
-        <tr>
-          <th>Accident Year</th>
-          <th>12-24</th>
-          <th class="arSpreadsheetSelectedLabel">24-36</th>
-          <th class="arSpreadsheetSelectedLabel">36-48</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr><th>2019</th><td>1.609</td><td>1.253</td><td>1.113</td></tr>
-        <tr><th class="arSpreadsheetSelectedLabel">2020</th><td>1.607</td><td aria-selected="true" class="arSpreadsheetSelectionAnchor">1.256</td><td aria-selected="true">1.112</td></tr>
-        <tr><th class="arSpreadsheetSelectedLabel">2021</th><td>1.588</td><td aria-selected="true">1.199</td><td aria-selected="true">1.155</td></tr>
-        <tr><th>2022</th><td>1.586</td><td>1.080</td><td></td></tr>
-        <tr><th>2023</th><td>1.553</td><td></td><td></td></tr>
-        <tr class="previewSelectedRow"><th>Selected</th><td aria-selected="true">1.596</td><td aria-selected="true">1.199</td><td aria-selected="true">1.108</td></tr>
-      </tbody>
-    </table>
-  </main>
+  <div id="dfmRatiosPage" style="display: block">
+    <div class="panel" id="ratioPanel">
+      <div class="panelInner">
+        <div id="ratioWrapHost">
+          <div id="ratioWrap" data-interaction-mode="edit">
+            <table class="arSpreadsheetTable ratioMainTable">
+              <thead>
+                <tr><th>Accident Year</th><th>(1) 12-24</th><th>(2) 24-36</th><th>(3) 36-48</th><th>(4) 48-60</th><th>60 - Ult</th></tr>
+              </thead>
+              <tbody>
+                <tr><th class="ratioRowHeader">2019</th><td class="cell ratioCell">1.6094</td><td class="cell ratioCell">1.2531</td><td class="cell ratioCell">1.1134</td><td class="cell ratioCell">1.0412</td><td class="cell ratioCell na"></td></tr>
+                <tr><th class="ratioRowHeader">2020</th><td class="cell ratioCell">1.6071</td><td class="cell ratioCell strike">1.3562</td><td class="cell ratioCell">1.1120</td><td class="cell ratioCell na"></td><td class="cell ratioCell na"></td></tr>
+                <tr><th class="ratioRowHeader">2021</th><td class="cell ratioCell">1.5882</td><td class="cell ratioCell">1.1994</td><td class="cell ratioCell na"></td><td class="cell ratioCell na"></td><td class="cell ratioCell na"></td></tr>
+                <tr><th class="ratioRowHeader">2022</th><td class="cell ratioCell">1.5863</td><td class="cell ratioCell na"></td><td class="cell ratioCell na"></td><td class="cell ratioCell na"></td><td class="cell ratioCell na"></td></tr>
+                <tr><th class="ratioRowHeader">2023</th><td class="cell ratioCell na"></td><td class="cell ratioCell na"></td><td class="cell ratioCell na"></td><td class="cell ratioCell na"></td><td class="cell ratioCell na"></td></tr>
+              </tbody>
+            </table>
+            <table class="arSpreadsheetTable ratioSummaryTable">
+              <tbody>
+                <tr data-row-id="volume_all"><th class="summaryDragHandle"><span class="dfmSummaryLabelText">Volume - all</span></th><td class="ratioCell summaryCell ratioSelectedCell">1.5977</td><td class="ratioCell summaryCell">1.2689</td><td class="ratioCell summaryCell">1.1127</td><td class="ratioCell summaryCell">1.0412</td><td class="ratioCell summaryCell"></td></tr>
+                <tr data-row-id="simple_3"><th class="summaryDragHandle"><span class="dfmSummaryLabelText">Simple - 3</span></th><td class="ratioCell summaryCell">1.5939</td><td class="ratioCell summaryCell ratioSelectedCell">1.2263</td><td class="ratioCell summaryCell">1.1127</td><td class="ratioCell summaryCell">1.0412</td><td class="ratioCell summaryCell"></td></tr>
+                <tr data-row-id="user_entry"><th class="summaryDragHandle"><span class="dfmSummaryLabelText">User Entry</span></th><td class="ratioCell summaryCell userEntryEditable"></td><td class="ratioCell summaryCell userEntryEditable"></td><td class="ratioCell summaryCell userEntryEditable ratioSelectedCell">1.1000</td><td class="ratioCell summaryCell userEntryEditable ratioSelectedCell">1.0400</td><td class="ratioCell summaryCell userEntryEditable ratioSelectedCell">1.0150</td></tr>
+              </tbody>
+            </table>
+            <table class="arSpreadsheetTable ratioSelectedTable">
+              <tbody>
+                <tr data-row-id="selected"><th>Selected</th><td>1.5977</td><td>1.2263</td><td>1.1000</td><td>1.0400</td><td>1.0150</td></tr>
+                <tr data-row-id="cumulative"><th>Cumulative</th><td>2.2750</td><td>1.4239</td><td>1.1612</td><td>1.0556</td><td>1.0150</td></tr>
+                <tr data-row-id="percent-developed"><th>% Developed</th><td>43.96%</td><td>70.23%</td><td>86.12%</td><td>94.73%</td><td>98.52%</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

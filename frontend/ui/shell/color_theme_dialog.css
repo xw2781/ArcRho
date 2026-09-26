@@ -20,7 +20,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: min(720px, 100%);
+  width: min(1040px, 100%);
   max-height: 100%;
   padding: 16px;
   overflow: auto;
@@ -80,6 +80,9 @@
 .colorThemeTile {
   display: flex;
   flex-direction: column;
+  /* Electron's Chromium gives a button flex-start, which would shrink the
+     snapshot to the iframe's default 300px. */
+  align-items: stretch;
   gap: 8px;
   min-width: 0;
   padding: 8px;
@@ -114,7 +117,7 @@
    tile around it. */
 .colorThemeTileFrame {
   display: block;
-  height: 196px;
+  height: 284px;
   overflow: hidden;
   border: 1px solid var(--ar-color-border, #d8dde3);
   border-radius: 4px;
