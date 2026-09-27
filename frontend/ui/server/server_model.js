@@ -43,6 +43,7 @@ export function buildServerRows(listing) {
       gatewayUrl: listing.current.gateway_url || "",
       chip: "In Use",
       canSwitch: false,
+      canSignIn: true,
       details: detailsFor(listing.current),
     });
   }
@@ -56,6 +57,7 @@ export function buildServerRows(listing) {
       gatewayUrl: profile.gateway_url || "",
       chip: active ? "Active" : "",
       canSwitch: !launched && !active,
+      canSignIn: active,
       details: detailsFor(profile),
     });
   }
@@ -113,6 +115,20 @@ export function switchResultMessage(result, label) {
     return { text: `Save or close these tabs first: ${dirty.join(", ")}.`, tone: "error" };
   }
   return { text: String(result?.error || "The server could not be switched."), tone: "error" };
+}
+
+// The words every "sign in again" error from the app server ends with; the shell's status bar
+// offers Sign in again beside any message that carries them.
+export const SIGN_IN_PROMPT = "Sign in to the server again";
+
+export function asksToSignIn(text) {
+  return String(text || "").includes(SIGN_IN_PROMPT);
+}
+
+// What the page and the status bar say once a sign-in again went through.
+export function signInResultMessage(data) {
+  const user = String(data?.signed_in?.user || "").trim();
+  return user ? `Signed in again as ${user}.` : "Signed in again.";
 }
 
 // Components panel -----------------------------------------------------------------------------

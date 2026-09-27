@@ -240,9 +240,9 @@ body {
   font-weight: 700;
 }
 
-/* The row in use keeps an invisible Switch button so every row's chip and button line up. */
-.svSwitchBtn.placeholder {
-  visibility: hidden;
+/* Switch and Sign in again share one width, so every row's button lines up. */
+.svRowAction {
+  min-width: 96px;
 }
 
 .svDetails {

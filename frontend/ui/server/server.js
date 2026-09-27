@@ -17,8 +17,9 @@ import {
   serverControlView,
   serverLabel,
   shouldRefreshComponents,
+  signInResultMessage,
   switchResultMessage,
-} from "./server_model.js?v=20260927a";
+} from "./server_model.js?v=20260927b";
 
 const $ = (id) => document.getElementById(id);
 const hostApi = () => window.ADAHost || window.parent?.ADAHost || null;
@@ -114,13 +115,18 @@ function renderRow(row) {
   const chip = makeEl("span", "svChip", row.chip);
   chip.hidden = !row.chip;
 
-  const switchBtn = makeEl("button", "svBtn svSwitchBtn", "Switch");
-  switchBtn.type = "button";
-  switchBtn.disabled = !row.canSwitch;
-  switchBtn.classList.toggle("placeholder", !!row.chip);
-  switchBtn.addEventListener("click", () => openSwitchConfirm(row));
+  // The server in use offers a fresh sign-in; every other row offers a switch to it.
+  const action = makeEl("button", "svBtn svRowAction", row.canSignIn ? "Sign in again" : "Switch");
+  action.type = "button";
+  if (row.canSignIn) {
+    action.id = "svSignInBtn";
+    action.addEventListener("click", () => void signInAgain(action));
+  } else {
+    action.disabled = !row.canSwitch;
+    action.addEventListener("click", () => openSwitchConfirm(row));
+  }
 
-  main.append(toggle, dot, label, chip, switchBtn);
+  main.append(toggle, dot, label, chip, action);
   item.append(main);
   if (expanded) item.append(renderDetails(row));
   return item;
@@ -394,6 +400,24 @@ async function saveServer(event) {
     setMessage(String(error?.message || error), "error");
   } finally {
     saveBtn.disabled = false;
+  }
+}
+
+// Sign in again -----------------------------------------------------------------------------
+
+// Replaces this window's credential with a fresh Windows sign-up; the old one stays if it fails.
+async function signInAgain(button) {
+  button.disabled = true;
+  setMessage("Signing in...");
+  try {
+    state.listing = await readJson(await fetch("/server_profiles/sign_in", { method: "POST" }));
+    render();
+    setMessage(signInResultMessage(state.listing));
+    void checkHealth(buildServerRows(state.listing));
+    if (!components.inFlight) void loadComponents();
+  } catch (error) {
+    setMessage(String(error?.message || error), "error");
+    button.disabled = false;
   }
 }
 

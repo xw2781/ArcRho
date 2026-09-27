@@ -119,6 +119,17 @@ class ServerComponentStatusRouteTests(unittest.TestCase):
         self.assertFalse(status["answering"])
         self.assertEqual(status["detail"], server_profile_service.GATEWAY_NOT_ANSWERING)
 
+    def test_a_refused_sign_in_asks_to_sign_in_again(self) -> None:
+        capabilities = {"workspace_read_kinds": [KIND]}
+        failure = workspace_read_client.GatewayTransportFailure("gateway_rejected:401")
+        with self._remote(), self._no_share_read(), \
+                patch.object(hosted_save_http_client, "probe_gateway", return_value=capabilities), \
+                patch.object(workspace_read_client, "post_signed_json", side_effect=failure):
+            status = server_profile_service.server_component_status()
+
+        self.assertFalse(status["answering"])
+        self.assertEqual(status["detail"], hosted_save_http_client.SIGN_IN_MESSAGE)
+
     def test_a_gateway_too_old_for_the_read_says_it_needs_updating(self) -> None:
         capabilities = {"workspace_read_kinds": ["dataset_index"]}
         with self._remote(), self._no_share_read(), \

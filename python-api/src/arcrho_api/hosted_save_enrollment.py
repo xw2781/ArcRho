@@ -11,6 +11,8 @@ nowhere else.
 The client never reads the server's registry. It proves who it is to the
 Gateway with a Windows (Negotiate) handshake and receives only its own secret,
 sealed with that handshake's session key (:func:`request_windows_enrollment`).
+A credential the server refuses is replaced the same way by
+:func:`sign_in_again`, which the Server tab's "Sign in again" runs.
 The registry itself, ``<root>\config\arcrho_gateway.json``, is written only on
 the server: by the Gateway's sign-up route and by the two server-side tools
 that call :func:`provision_gateway_user`.
@@ -315,23 +317,73 @@ def enroll_once(
         return {"status": "not_configured"}
 
     try:
-        capabilities = (probe or probe_gateway_url)(client_url)
-        if not isinstance(capabilities, dict) or capabilities.get(ENROLLMENT_CAPABILITY) is not True:
-            raise HostedSaveHttpContractError(
-                "This server's Gateway does not offer sign-up yet; it needs updating."
-            )
-        answer = (enroll or request_windows_enrollment)(client_url)
-        with _exclusive_file_lock(local_path.with_name(f".{local_path.name}.lock")):
-            write_json_atomic(
-                local_path,
-                client_credential(
-                    client_url,
-                    answer["user"],
-                    answer["secret"],
-                    str(capabilities.get(SERVER_ID_KEY) or ""),
-                ),
-            )
+        _sign_up(client_url, local_path, probe=probe, enroll=enroll)
     except Exception as exc:  # noqa: BLE001 - any failure must leave no credential
         return {"status": "unavailable", "reason": str(exc)}
 
     return {"status": "enrolled", "path": str(local_path), "url": client_url}
+
+
+class ServerIdMismatch(HostedSaveHttpContractError):
+    """The Gateway reports a different server from the one the credential signed up with."""
+
+
+def sign_in_again(
+    *,
+    gateway_url: str,
+    client_output: str | os.PathLike[str],
+    probe: Callable[[str], Any] | None = None,
+    enroll: Callable[[str], dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    """Replace this PC's credential with a fresh Windows sign-up.
+
+    For a credential the server refuses. The file is replaced only once the
+    new secret has arrived, so a failed sign-up leaves the old one in place.
+    The server id the old credential signed up with is kept: a Gateway that
+    reports another raises :class:`ServerIdMismatch` and nothing is written.
+    Without a ``gateway_url`` the old credential's address is used.
+    """
+
+    local_path = Path(client_output).expanduser()
+    try:
+        previous = _read_object(local_path)
+    except HostedSaveHttpContractError:
+        previous = {}  # an unreadable credential is what signing in again replaces
+    client_url = str(gateway_url or previous.get("url") or "").strip().rstrip("/")
+    if not client_url:
+        raise HostedSaveHttpContractError("No Gateway address is known for this server.")
+    user = _sign_up(
+        client_url,
+        local_path,
+        probe=probe,
+        enroll=enroll,
+        server_id=str(previous.get(SERVER_ID_KEY) or "").strip(),
+    )
+    return {"status": "enrolled", "path": str(local_path), "url": client_url, "user": user}
+
+
+def _sign_up(
+    client_url: str,
+    local_path: Path,
+    *,
+    probe: Callable[[str], Any] | None,
+    enroll: Callable[[str], dict[str, str]] | None,
+    server_id: str = "",
+) -> str:
+    """Probe, sign up and write the credential; nothing is written unless all succeed."""
+
+    capabilities = (probe or probe_gateway_url)(client_url)
+    if not isinstance(capabilities, dict) or capabilities.get(ENROLLMENT_CAPABILITY) is not True:
+        raise HostedSaveHttpContractError(
+            "This server's Gateway does not offer sign-up yet; it needs updating."
+        )
+    reported = str(capabilities.get(SERVER_ID_KEY) or "").strip()
+    if server_id and reported != server_id:
+        raise ServerIdMismatch("The Gateway at this address is another server.")
+    answer = (enroll or request_windows_enrollment)(client_url)
+    with _exclusive_file_lock(local_path.with_name(f".{local_path.name}.lock")):
+        write_json_atomic(
+            local_path,
+            client_credential(client_url, answer["user"], answer["secret"], server_id or reported),
+        )
+    return answer["user"]

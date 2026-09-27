@@ -6,10 +6,13 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from arcrho_api.hosted_save_enrollment import enroll_once
+from fastapi import HTTPException
+
+from arcrho_api.hosted_save_enrollment import ServerIdMismatch, enroll_once
+from arcrho_api.hosted_save_enrollment import sign_in_again as sign_in_again_at
 
 from app_server import config
-from app_server.services import hosted_save_http_client
+from app_server.services import hosted_save_http_client, workspace_read_client
 
 
 LOGGER = logging.getLogger(__name__)
@@ -37,4 +40,32 @@ def auto_enroll_current_user() -> dict[str, Any]:
         LOGGER.warning("Gateway automatic enrollment skipped: %s", result["reason"])
     elif result["status"] == "enrolled":
         LOGGER.info("Gateway credential installed for the current Windows user.")
+    return result
+
+
+def sign_in_again() -> dict[str, Any]:
+    """Replace this window's credential with a fresh Windows sign-up, for a sign-in the server refused.
+
+    The credential is the one this window uses, a launch override included.
+    The old file stays until the new secret has arrived, and a Gateway that
+    reports another server than the credential's is refused (409). The
+    capability cache is cleared so the next request probes with the new
+    credential; nothing else in this process holds it.
+    """
+
+    try:
+        result = sign_in_again_at(
+            gateway_url=config.get_gateway_url(),
+            client_output=Path(config.get_gateway_config_path()),
+            probe=hosted_save_http_client.fetch_gateway_capabilities,
+        )
+    except ServerIdMismatch as exc:
+        raise hosted_save_http_client.GatewayServerMismatch() from exc
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 - the SSPI handshake raises its own error types
+        LOGGER.warning("Gateway sign-in again failed: %s", exc)
+        raise HTTPException(502, f"Sign-in failed: {exc}") from exc
+    workspace_read_client.reset_capability_cache()
+    LOGGER.info("Gateway credential replaced for the current Windows user.")
     return result

@@ -1809,6 +1809,23 @@ select { padding: 6px 10px; }
   gap: 8px;
 }
 #statusText { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* An action offered beside the status message, such as Sign in again after a refused sign-in. */
+.statusAction {
+  flex: 0 0 auto;
+  height: 18px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ar-color-accent-strong, #1d4ed8);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.statusAction:hover:not(:disabled) { background: var(--ar-color-accent-soft, #eaf2ff); text-decoration: underline; }
+.statusAction:focus-visible { outline: 2px solid var(--ar-color-border-focus, #93c5fd); outline-offset: 1px; }
+.statusAction:disabled { color: var(--muted); cursor: default; }
+.statusAction[hidden] { display: none; }
 #statusBar.status-tone-error,
 #statusText.status-tone-error { color: #b91c1c; }
 #statusBar.status-tone-warn,

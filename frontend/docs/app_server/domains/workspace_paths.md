@@ -17,6 +17,7 @@ Runtime workspace path read/update domain, and the server profiles: the servers 
 | `POST` | `/server_profiles/activate` | `activate_server_profile` | `ServerProfileActivateRequest` | [`app_server/schemas/workspace_paths.py`](../../../app_server/schemas/workspace_paths.py) | `server_profile_service.activate_server_profile` |
 | `GET` | `/server_profiles/health` | `get_server_health` | `str` | - | `server_profile_service.server_health` |
 | `GET` | `/server_profiles/inspect` | `inspect_server_folder` | `str` | - | `server_profile_service.inspect_server_folder` |
+| `POST` | `/server_profiles/sign_in` | `sign_in_again` | - | - | `server_profile_service.sign_in_again` |
 | `GET` | `/workspace_paths` | `get_workspace_paths` | - | - | - |
 | `POST` | `/workspace_paths` | `update_workspace_paths` | `WorkspacePathsUpdateRequest` | [`app_server/schemas/workspace_paths.py`](../../../app_server/schemas/workspace_paths.py) | `hosted_save_enrollment_service.auto_enroll_current_user` |
 <!-- AUTO-GEN:END -->
@@ -26,7 +27,7 @@ Runtime workspace path read/update domain, and the server profiles: the servers 
 - [`app_server/api/workspace_paths_router.py`](../../../app_server/api/workspace_paths_router.py) - Read/update workspace path config.
 - [`app_server/config.py`](../../../app_server/config.py) - Config loader and runtime path refresh.
 - [`app_server/schemas/workspace_paths.py`](../../../app_server/schemas/workspace_paths.py) - Workspace path request models.
-- [`app_server/services/server_profile_service.py`](../../../app_server/services/server_profile_service.py) - Server profiles: list, add, activate, what a switch does in this process, and start/stop of a server on this PC.
+- [`app_server/services/server_profile_service.py`](../../../app_server/services/server_profile_service.py) - Server profiles: list, add, activate, sign in again, what a switch does in this process, and start/stop of a server on this PC.
 <!-- AUTO-GEN:END -->
 
 ## External Interfaces
@@ -41,6 +42,8 @@ Runtime workspace path read/update domain, and the server profiles: the servers 
 - `POST /server_profiles` adds a server (or replaces the one with the same `id`; without an `id` one is derived from the name) with its `gateway_url`. The folder must hold a `projects` folder.
 - `POST /server_profiles/activate` makes one server active. When the active server changes, the response carries `restart_required: true` and the caller restarts the app the way File > Restart does (`restartApplication` in `ui/shell/app_lifecycle.js`). The route refreshes runtime paths, clears path caches, and signs up at the new server's address when that server's credential does not exist yet, but restarts nothing itself.
 - Both profile writes are refused with 409 while a launch override is set, because they would change the per-machine file the production app reads.
+- `POST /server_profiles/sign_in` signs this process's own server in again, for a credential the server refuses: it runs the Windows sign-up at `ARCRHO_GATEWAY_URL`, else the active profile's `gateway_url`, else the credential's own address (`arcrho_api.hosted_save_enrollment.sign_in_again`), and replaces the credential file this process uses (the `ARCRHO_GATEWAY_CONFIG` override included, so a launch-time session may use it) only after the new secret has arrived. The server id the old credential signed up with is kept; a Gateway reporting another is refused with 409 before sign-up, a silent one is 503, and a failed handshake is 502 with its reason, each leaving the old file untouched. It then clears the capability cache, the only per-process state tied to the credential (the credential itself is read per request), so the next request uses the new one without a restart. Returns the listing plus `signed_in` (`user`, `url`, `path`).
+- `GET /server/status` reports a refused sign-in as `answering: false` with the "Sign in to the server again" message rather than "Gateway not answering".
 - `GET /server/status` carries `control`: whether this process's server may be started and stopped from this PC (`available`), why not (`detail`), and the roles that covers (`roles`: orchestrator, engine, gateway).
 - `POST /server/start` and `POST /server/stop` act on this process's own server and are refused with 409 unless its folder is on a fixed disk of this PC and is not production (`arcrho_server_control.control_refusal`). Start clears those roles' stop switches (`apps.<role>.kill_all`) and, unless an Orchestrator heartbeat is live, launches `<root>pps\ArcRho Orchestrator\ArcRho Orchestrator.exe` through `start`, so it is not in the app server's process tree and survives the app's exit; it gets `ARCRHO_ROOT=<root>` and none of this process's root or credential overrides. Stop sets the switches and returns at once with `stopped` (whether no live heartbeat remains); the page follows the heartbeats. No process is ever killed. `tools/local_server.py` uses the same module.
 <!-- MANUAL:END -->

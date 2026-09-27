@@ -173,6 +173,13 @@ def activate_server_profile(profile_id: str) -> Dict[str, Any]:
     return _change_profiles(lambda path: api_config.activate_server_profile(profile_id, path))
 
 
+def sign_in_again() -> Dict[str, Any]:
+    """Sign this window in to its server again; allowed in a launch-time session too."""
+
+    signed_in = hosted_save_enrollment_service.sign_in_again()
+    return {**list_server_profiles(), "signed_in": signed_in}
+
+
 def _silent_gateway_detail() -> str:
     """Why the Gateway gave no component status: it is silent, or too old to know the read."""
 
@@ -213,8 +220,10 @@ def server_component_status() -> Dict[str, Any]:
     except HTTPException as exc:
         if exc.status_code not in (401, 503, 504):
             raise
+        # A refused sign-in is said as such, beside the row's Sign in again button.
+        detail = str(exc.detail) if exc.status_code == 401 else _silent_gateway_detail()
         return {
-            "ok": True, "source": "gateway", "answering": False, "detail": _silent_gateway_detail(), "roles": [],
+            "ok": True, "source": "gateway", "answering": False, "detail": detail, "roles": [],
             "control": control,
         }
     return {**status, "source": "gateway", "answering": True, "detail": "", "control": control}

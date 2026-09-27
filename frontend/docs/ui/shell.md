@@ -12,7 +12,7 @@ Detailed menu, floating-window, lifecycle, and bridge behavior belongs in focuse
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.shell.entry_points -->
-- `ui/index.html`: external scripts `/ui/shared/services/color_theme.js?v=20260923c`, `/ui/shell/ui_shell.js?v=20260927c`; inline imports _none_.
+- `ui/index.html`: external scripts `/ui/shared/services/color_theme.js?v=20260923c`, `/ui/shell/ui_shell.js?v=20260927d`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/`
@@ -21,6 +21,7 @@ Detected `fetch(...)` targets in key JS files:
 - `/app/shutdown`
 - `/server_profiles`
 - `/server_profiles/activate`
+- `/server_profiles/sign_in`
 - `/workflow/default_dir`
 - `/workflow/load`
 - `/workspace_paths`
@@ -74,7 +75,7 @@ Detected `arcrho:*` message types in key JS files:
 - [`ui/shell/app_lifecycle.js`](../../ui/shell/app_lifecycle.js) - Refresh, restart, shutdown, and app confirmation flows.
 - [`ui/shell/titlebar_controls.js`](../../ui/shell/titlebar_controls.js) - Electron titlebar minimize, maximize, close, and drag-restore controls.
 - [`ui/shell/server_badge.js`](../../ui/shell/server_badge.js) - Title-bar badge naming this window's server whenever it is not production; opens the Server tab.
-- [`ui/shell/status_bar.js`](../../ui/shell/status_bar.js) - Status bar text, clock, and timestamp helpers.
+- [`ui/shell/status_bar.js`](../../ui/shell/status_bar.js) - Status bar text, the Sign in again action, clock, and timestamp helpers.
 - [`ui/shell/shell_context.js`](../../ui/shell/shell_context.js) - Shared shell dependency registry.
 - [`electron/preload.js`](../../electron/preload.js) - Renderer-safe host bridge APIs.
 - [`electron/main.js`](../../electron/main.js) - Window lifecycle and shell-to-host wiring.
@@ -94,6 +95,7 @@ Detected `arcrho:*` message types in key JS files:
 - The desktop host consumes F5 and Ctrl+F5 as no-op shortcuts so accidental refreshes do not reload the app; Ctrl+R remains the explicit shell refresh shortcut.
 - The shell routes `Ctrl+PageUp` and `Ctrl+PageDown` to the shared tab runtime in the active Dataset, DFM, Bornhuetter Ferguson, Cape Cod, Result Selection, or Project Instance iframe. This makes inner-page tab cycling available before keyboard focus enters the iframe; Project Instance forwards the command again to its active floating Dataset or method window.
 - The desktop window is frameless, so the shell paints its own frame edge through `body::after` and the `--shell-frame-border` custom property. Windows 11 gets right and bottom edges only; Windows 10 gets all four (`body.win10-borders`, applied from the host's `is-windows-11` answer). On Windows 10 an unpackaged launch adds `body.dev-frame` from `app-info`'s `isPackaged`, which retints that same frame to `#528bff` so a development window is unmistakable beside an installed one. It changes only the color - the frame geometry stays owned by the Windows 10 rule, and Windows 11 is untouched because its frame is the operating system's.
+- Any status message carrying "Sign in to the server again" (the app server's refused or missing sign-in, from the shell or a page's `arcrho:status`) shows a `Sign in again` action beside it; it posts `POST /server_profiles/sign_in`, as the Server tab's button does, and reports the result in the same place.
 - The desktop shell uses a 10px left/right workspace gutter; the menubar and status bar run flush to the desktop window border, with the status bar showing a decorative resize glyph only. It does not expose custom drag-to-resize behavior, so window resizing is left to the native Electron window frame while in-shell floating tab windows keep their own resize controls.
 - The Macro and Macro Library windows capture their current dimensions when opened and do not resize with the host desktop window; their own resize handles remain the only way to change their dimensions through the shared floating-window frame.
 - Clear Cache & Reload is available from the Settings menu and `Alt+Q`. It runs immediately, asks open Project Instance tabs for a current state snapshot, stores a one-shot shell restore payload in the Electron host, clears Electron cache/storage, then reloads the shell with a fresh timestamped UI URL and restores the previously active page/tab layout before normal localStorage persistence resumes. Because this command is an explicit forced reload, the Electron host temporarily overrides descendant-page `beforeunload` cancellation while navigating; open nested DFM windows therefore cannot leave the shell stuck at the reload status. File > Restart uses the same Electron cache/storage clear and restore snapshot before posting the app restart requests, so users do not need to run Clear Cache & Reload separately before restarting. If the desktop host cannot perform the cache reload, the shell reports that status and falls back to a browser reload. Project Settings iframes include the shell UI version query parameter so reloads fetch the current Project Settings HTML/module graph consistently.

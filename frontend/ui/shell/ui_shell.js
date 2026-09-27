@@ -1,7 +1,7 @@
 import { getHostApi, registerShellApi } from "./shell_context.js?v=20260510a";
 import { buildShellStateSnapshot, ensureActiveTabInvariant, getFirstDockedTabId, loadState, persistShellStateSnapshot, saveState, state } from "./shell_state.js?v=20260808a";
 import { applyAppFont, applyZoom, adjustZoomByDelta, broadcastAppFont, broadcastColorTheme, broadcastZoomToIframes, closeFontSettingsModal, closeForceRebuildSettingsModal, getColorTheme, getForceRebuildEnabled, getZoomPercent, hideGlobalTooltip, hostZoomAvailable, initFontSettingsModal, initForceRebuildSettingsModal, initShellPreferences, initZoomControls, loadAppFont, loadColorTheme, openFontSettingsModal, openForceRebuildSettingsModal, setColorTheme, setForceRebuildEnabled, setZoomPercent, showGlobalTooltip, updateColorThemeMenuState, ZOOM_STEP } from "./shell_preferences.js?v=20260731a";
-import { clearSavedStatusOnDirty, formatStatusTimestamp, getStatusBarHeight, initClock, updateStatusBar } from "./status_bar.js?v=20260510a";
+import { clearSavedStatusOnDirty, formatStatusTimestamp, getStatusBarHeight, initClock, initStatusSignIn, updateStatusBar } from "./status_bar.js?v=20260927a";
 import { closeRootPathSettingsModal, initRootPathSettingsModal, openRootPathSettingsModal } from "./root_path_settings.js?v=20260927a";
 import { clearCacheAndReload, customHardRefresh, initAppLifecycle, refreshActiveTab, restartApplication, sendShutdownSignal, showAppConfirm, shutdownApplication } from "./app_lifecycle.js?v=20260923c";
 import { clearTestData, getLastWorkflowDir, getLastWorkflowPath, getWorkflowTabState, importWorkflow, postToWorkflowTab, setLastWorkflowPath } from "./workflow_host_actions.js?v=20260510a";
@@ -14,7 +14,7 @@ import { initShellMessages } from "./shell_messages.js?v=20260927a";
 import { initUiAutomation } from "./ui_automation.js?v=20260904resize2";
 import { handleShellFileDragOver, handleShellFileDrop, initShellFileDrops } from "./shell_file_drop.js?v=20260920a";
 import { initTitlebarControls } from "./titlebar_controls.js?v=20260517a";
-import { initServerBadge } from "./server_badge.js?v=20260927a";
+import { initServerBadge } from "./server_badge.js?v=20260927b";
 import { initFullscreenChrome, setFullscreenChrome, syncFullscreenChromeFromHost } from "./fullscreen_chrome.js?v=20260913b";
 import { initAiAssistant } from "../ai-assistant/arcrho.js?v=20260927a";
 import { closeMacroWindow, initMacroWindow, openMacroWindow } from "../macro/macro_window.js?v=20260908b";
@@ -210,6 +210,7 @@ async function bootShell() {
     void syncFullscreenChromeFromHost();
   });
   initClock();
+  initStatusSignIn();
 }
 
 void bootShell();

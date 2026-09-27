@@ -98,6 +98,11 @@ def save_server_profile(req: ServerProfileSaveRequest) -> Dict[str, Any]:
     )
 
 
+@router.post("/server_profiles/sign_in")
+def sign_in_again() -> Dict[str, Any]:
+    return server_profile_service.sign_in_again()
+
+
 @router.post("/server_profiles/activate")
 def activate_server_profile(req: ServerProfileActivateRequest) -> Dict[str, Any]:
     return server_profile_service.activate_server_profile(req.id)

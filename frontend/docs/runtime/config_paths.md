@@ -67,6 +67,7 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `POST` `/server_profiles/activate` handled by `activate_server_profile`
   - `GET` `/server_profiles/health` handled by `get_server_health`
   - `GET` `/server_profiles/inspect` handled by `inspect_server_folder`
+  - `POST` `/server_profiles/sign_in` handled by `sign_in_again`
   - `GET` `/workspace_paths` handled by `get_workspace_paths`
   - `POST` `/workspace_paths` handled by `update_workspace_paths`
 <!-- AUTO-GEN:END -->

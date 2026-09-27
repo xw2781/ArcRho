@@ -5,6 +5,7 @@
   "summary": "Arco now works only while it can reach the server. When the server is down it says \"The server can't be reached\" instead of reading the shared drive, and a sign-in the server no longer accepts asks you to sign in to the server again.",
   "details": [
     "Saving data processing rules needs the server's Engine; it no longer saves another way when the Engine is not running.",
-    "Arco remembers which server this PC signed in to and refuses a different server at the same address."
+    "Arco remembers which server this PC signed in to and refuses a different server at the same address.",
+    "Sign in again, beside that message in the status bar or on the server in use in the Server tab, signs this PC in with your Windows account; the next request uses it without a restart."
   ]
 }

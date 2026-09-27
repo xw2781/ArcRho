@@ -1,4 +1,5 @@
 import { $ } from "./shell_context.js?v=20260510a";
+import { asksToSignIn, signInResultMessage } from "../server/server_model.js?v=20260927b";
 
 export function updateStatusBar(text, options = {}) {
   const tone = String(options?.tone || "").trim().toLowerCase();
@@ -12,12 +13,34 @@ export function updateStatusBar(text, options = {}) {
   };
   applyTone(textEl);
   applyTone(barEl);
+  const signIn = $("statusSignInBtn");
+  if (signIn) signIn.hidden = !asksToSignIn(text);
   if (textEl) {
     textEl.textContent = text || "";
     return;
   }
   if (!barEl) return;
   barEl.textContent = text || "";
+}
+
+// "Sign in again" beside a message asking for it replaces this window's credential with a fresh
+// Windows sign-up, as the Server tab's button does; the next request uses it without a restart.
+export function initStatusSignIn() {
+  const button = $("statusSignInBtn");
+  button?.addEventListener("click", async () => {
+    button.disabled = true;
+    updateStatusBar("Signing in...");
+    try {
+      const response = await fetch("/server_profiles/sign_in", { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(data?.detail || `Sign-in failed (${response.status}).`));
+      updateStatusBar(signInResultMessage(data));
+    } catch (error) {
+      updateStatusBar(String(error?.message || error), { tone: "error" });
+    } finally {
+      button.disabled = false;
+    }
+  });
 }
 
 export function clearSavedStatusOnDirty() {

@@ -167,6 +167,63 @@ test("the shell reads the server once, shows the badge, and opens the Server tab
   assert.match(uiShell, /void initServerBadge\(\);/u);
 });
 
+test("only the server in use offers Sign in again, a launch-time server included", () => {
+  assert.deepEqual(model.buildServerRows(LISTING).map((row) => row.canSignIn), [true, false]);
+  const launched = { ...LISTING, set_at_launch: { root: "C:\Arco Server", gateway_config: "C:\t\g.json" } };
+  assert.deepEqual(model.buildServerRows(launched).map((row) => row.canSignIn), [true, false, false]);
+  assert.equal(model.signInResultMessage({ signed_in: { user: "alice" } }), "Signed in again as alice.");
+  assert.equal(model.signInResultMessage({}), "Signed in again.");
+});
+
+test("every sign-in error the app server raises is one the status bar offers Sign in again for", async () => {
+  const source = await read("../app_server/services/hosted_save_http_client.py");
+  const messages = ["SIGN_IN_MESSAGE", "NOT_SIGNED_IN_MESSAGE"].map(
+    (name) => source.match(new RegExp(`^${name} = "([^"]+)"`, "mu"))?.[1],
+  );
+  for (const message of messages) assert.ok(model.asksToSignIn(message), message);
+  assert.equal(model.asksToSignIn("The server can't be reached. Try again once it is back."), false);
+});
+
+test("the status bar shows Sign in again beside a sign-in error and reports the new sign-in", async () => {
+  const statusBar = await importSource(
+    (await read("../ui/shell/status_bar.js"))
+      .replace(/import \{ \$ \} from "[^"]+";/u, "const $ = (id) => globalThis.__statusEls[id] || null;")
+      .replace(
+        /from "\.\.\/server\/server_model\.js\?v=[^"]+";/u,
+        `from ${JSON.stringify(new URL("../ui/server/server_model.js", import.meta.url).href)};`,
+      ),
+  );
+  const classes = () => ({ add() {}, remove() {} });
+  const button = { hidden: true, disabled: false, listeners: {}, addEventListener(type, fn) { this.listeners[type] = fn; } };
+  const els = { statusText: { textContent: "", classList: classes() }, statusBar: { classList: classes() }, statusSignInBtn: button };
+  globalThis.__statusEls = els;
+  const requests = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    requests.push([url, init?.method]);
+    return { ok: true, json: async () => ({ signed_in: { user: "alice" } }) };
+  };
+  try {
+    statusBar.updateStatusBar("The server did not accept this PC's sign-in. Sign in to the server again.", { tone: "error" });
+    assert.equal(button.hidden, false);
+    statusBar.initStatusSignIn();
+    await button.listeners.click();
+    assert.deepEqual(requests, [["/server_profiles/sign_in", "POST"]]);
+    assert.equal(els.statusText.textContent, "Signed in again as alice.");
+    assert.equal(button.hidden, true);
+  } finally {
+    delete globalThis.__statusEls;
+    globalThis.fetch = realFetch;
+  }
+
+  const [index, uiShell, page] = await Promise.all([
+    read("../ui/index.html"), read("../ui/shell/ui_shell.js"), read("../ui/server/server.js"),
+  ]);
+  assert.match(index, /<span id="statusText">[^<]*<\/span>\n\s*<button id="statusSignInBtn" class="statusAction host-nodrag" type="button" hidden>Sign in again<\/button>/u);
+  assert.match(uiShell, /initStatusSignIn\(\);/u);
+  assert.match(page, /fetch\("\/server_profiles\/sign_in", \{ method: "POST" \}\)/u);
+});
+
 test("adding a server needs a checked folder, a name no saved server uses, and its address", () => {
   const address = "http://staging:28767";
   assert.match(model.addServerProblem(LISTING, { name: "Test", inspectedRoot: "", address }), /folder/u);
