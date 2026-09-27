@@ -36,8 +36,9 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 20 | Signing up to the server no longer needs the shared drive | [x] | 2026-09-27 | 90 min | 35 min | A new PC signs in to the server with your Windows account and receives only your own credential; the Server Connection dialog and Add Server ask for the server's address. Checked on the local test server; production waits for the user. |
 | 21 | Running the test suites can never reach a real server | [x] | 2026-09-27 | 50 min | 34 min | Running the test suites on a developer PC can no longer read from or write to a real server. |
 | 22 | Importing a source only your PC can read uploads it to the server | [x] | 2026-09-27 | 110 min | 36 min | Import Data now uploads a SQL Server table or a CSV only your PC can open to the server, which writes the project table; the progress window shows how much has been sent, an interrupted CSV upload picks up where it stopped, and a failed upload never replaces the table already there. |
+| 23 | A PC whose sign-in the server refuses can sign in again from the app | [ ] | | 40 min | | |
 
-Overall: 18 of 22 steps done. Estimated 1,285 min, actual so far 516 min. Step 21 was added 2026-09-27 and ran before any production deploy. Step 22 was added 2026-09-27 (split from step 15) and fits before step 17.
+Overall: 18 of 23 steps done. Estimated 1,325 min, actual so far 516 min. Step 21 was added 2026-09-27 and ran before any production deploy. Step 22 was added 2026-09-27 (split from step 15) and fits before step 17. Step 23 was added 2026-09-27 after step 18 and must land before the app release that carries step 18.
 
 ## How agents work this plan
 
@@ -99,7 +100,7 @@ None.
 
 ## Rough size
 
-Estimated 1,285 minutes of agent time across 22 steps: 830 minutes of code edit and 455 minutes of test, validation and deploy. Three deploy steps carry most of the validation time that is not test runs.
+Estimated 1,325 minutes of agent time across 23 steps: 855 minutes of code edit and 470 minutes of test, validation and deploy. Three deploy steps carry most of the validation time that is not test runs.
 
 ## Plan
 
@@ -490,3 +491,20 @@ Estimate: code edit 35 min, test/validation 15 min, total 50 min. Actual: code e
 **Done when.** Importing a SQL Server table or a client-only CSV writes nothing on the share from a Client PC, and the previous master table survives any failed upload.
 
 Estimate: code edit 75 min, test/validation 35 min, total 110 min. Actual: code edit 16 min, test/validation 20 min, total 36 min (under half the estimate because the existing mutation transport carried the chunks unchanged once they were sized to fit it; checked on the local root: a scratch copy of the Fake project was pointed at an 88 MB, 346,115-row CSV on C:, an upload was cut at chunk 150 of 337 and resumed without resending the first 150, a full upload took about 9 s (9.4 MB/s over loopback), the master table matched the CSV byte for byte, the refresh job ran on it, the client process opened nothing under the root but `config\config.json` for reading, and the copy was deleted).
+
+### Step 23 — Sign in again from the app
+
+**Goal.** Since step 18, a PC whose server sign-in is refused or missing shows "Sign in to the server again", but nothing in the app does that: startup signs up only when the credential file is missing, so recovery means deleting the file and restarting. Give the message an action. Added 2026-09-27 after step 18; it must land before the app release that carries step 18.
+
+**Read first.** Step 20's Windows sign-up (`python-api/src/arcrho_api/hosted_save_enrollment.py`, `server-components/src/arcrho_gateway/enrollment.py`: it returns the caller's current secret); step 18's error mapping in `frontend/app_server/services/hosted_save_http_client.py` and the 401 messages; the Server tab (`frontend/ui/server/`) and the Server Connection dialog (`frontend/ui/shell/root_path_settings.js`); memory `concise-ui-message-copy`.
+
+**Do.**
+- [ ] An app-server route that re-runs the Windows sign-up for the active server profile and replaces the credential file only after the new one is received (never leaves the PC with no credential), keeping the credential's stored server id and refusing a Gateway whose id differs.
+- [ ] A "Sign in again" button on the active server's row in the Server tab, and a way to reach it from the 401 message (a link in the status message that opens the Server tab is enough).
+- [ ] Clear the process's cached capabilities and credential after a successful sign-in so the next request uses it without a restart.
+
+**Tests.** Route tests: a refused credential is replaced by the sign-up's; a failed sign-up leaves the old file untouched; a different server id is refused. Node test for the button and the message link.
+
+**Done when.** On the local test root, a client with a wrong-secret credential gets the sign-in message, presses Sign in again, and its next read succeeds without a restart.
+
+Estimate: code edit 25 min, test/validation 15 min, total 40 min.
