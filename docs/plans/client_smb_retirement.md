@@ -30,7 +30,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 14 | Dataset-type changes and project copies are submitted and tracked through the server | [x] | 2026-09-27 | 60 min | 27 min | Saving dataset types and copying or cancelling a project copy now go through the server, and while the server cannot be reached the progress window keeps waiting instead of reporting a failure. |
 | 15 | Field mapping, source profile and reserving-class refresh run on the server | [x] | 2026-09-27 | 70 min | 27 min | Saving the field mapping, the import settings and the reserving class types now happens on the server, and Import Data no longer copies a shared source file through your PC when the server's import cannot run; uploading a source only your PC can read moved to step 22. |
 | 16 | Shared macros, ArcBot prompts and the ResQ import request go through the server | [x] | 2026-09-27 | 60 min | 46 min | The Macro Library, the automatic macro updates and ArcBot's shared prompts now load from the server, ArcBot no longer creates prompt files on the server, and the ResQ import macro hands its request to the server once an app release carries that. |
-| 17 | Deploy the server side of steps 13-16 | [ ] | | 20 min | | |
+| 17 | Deploy the server side of steps 13-16 | [ ] | | 20 min | | Local test server done 2026-09-27 (66 reads, 34 writes, 15 saves offered); production and the macro publish wait for the user |
 | 18 | The app stops falling back to the shared drive when the server is unreachable | [ ] | | 75 min | | |
 | 19 | Old shared-drive save path and leftover dead code removed | [ ] | | 55 min | | |
 | 20 | Signing up to the server no longer needs the shared drive | [ ] | | 90 min | | |
@@ -414,6 +414,7 @@ Estimate: code edit 50 min, test/validation 25 min, total 75 min.
 - [ ] Delete the DFM method-file watcher and its external-change highlight helper, bumping module stamps.
 - [x] Move the Snowflake config path to local settings (done 2026-09-26: it is `snowflake_config.txt` in the per-user settings folder).
 - [ ] Delete client-only SMB softeners that nothing uses any more (check `class_folder_scan_cache` and `file_read_cache` callers first; server processes still use them).
+- [ ] ArcBot's AI process (the Codex run ArcBot starts) is still granted read access to the project folder on the share (found by step 16). Move what it reads onto the server reads, or record why it stays; if it needs a design decision, record it under Open decisions instead of guessing.
 
 **Tests.** The suites that covered the deleted code, rewritten or removed.
 
