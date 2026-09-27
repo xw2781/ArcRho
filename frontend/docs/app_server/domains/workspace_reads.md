@@ -53,10 +53,17 @@ No new browser-facing route. These existing routes select the transport per requ
 | `GET /reserving_class_hidden_paths` | `reserving_class_hidden_paths` | `reserving_class_service.read_hidden_paths` (the signed user's file) |
 | `GET /reserving_class_filter_spec` | `reserving_class_filter_spec` | `reserving_class_service.read_filter_spec` (the signed user's file) |
 | `GET /project-user-preferences` | `project_user_preferences` | `project_user_preferences_service.get_preferences` (the signed user's file) |
+| `POST /dataset/sidecar/load` | `dataset_sidecar_load` | `dataset_service.load_dataset_sidecar` |
+| `POST /dataset/calculated/preview` | `dataset_calculated_preview` | `calculated_dataset_service.preview_dependents` |
+| `POST /dfm/method/dataset-references/resolve` | `dfm_dataset_references_resolve` | `dfm_service.resolve_dfm_dataset_references` |
+| `GET /dfm/percent-developed-curve` | `dfm_percent_developed_curve` | `dataset_instance_index_service.get_percent_developed_curve` |
+| `GET /dfm/development-pattern` | `dfm_development_pattern` | `dataset_instance_index_service.get_development_pattern` |
 
 The project configuration reads from `project_settings_sources` down were added by step 7 of [client_smb_retirement.md](../../../../docs/plans/client_smb_retirement.md). Each is called with `gateway_required=True`, so a Client PC answers `503` rather than reading the share, and each service returns the route's whole answer, refusals included, so the two transports answer alike.
 
 The reserving-class and project-user-preference reads from `reserving_class_combinations` down were added by step 8, on the same terms; step 8 also made the existing `reserving_classes_with_data` read Gateway-required.
+
+The dataset and method side reads from `dataset_sidecar_load` down were added by step 9, on the same terms. The dependents preview sends the whole edited grid, so a workspace-read request may be as large as a hosted save request (`MAX_WORKSPACE_READ_REQUEST_BYTES` is the hosted save contract's `MAX_REQUEST_BYTES`).
 
 Gateway side: `POST /api/workspace-reads` on the Gateway (`arcrho_workspace_read_contract.WORKSPACE_READ_PATH`), authenticated with the same per-user HMAC headers as hosted saves. `GET /api/capabilities` advertises `workspace_read_kinds`.
 <!-- MANUAL:END -->

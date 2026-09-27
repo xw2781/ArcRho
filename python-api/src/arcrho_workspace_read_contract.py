@@ -31,6 +31,7 @@ from arcrho_dependent_propagation_contract import (
     validate_request_id,
     validate_reserving_class_path,
 )
+from arcrho_hosted_save_http_contract import MAX_REQUEST_BYTES as MAX_HOSTED_SAVE_REQUEST_BYTES
 
 
 WORKSPACE_READ_FUNCTION = "ArcRhoWorkspaceRead"
@@ -43,7 +44,9 @@ WORKSPACE_ROOT_HEADER = "X-ArcRho-Workspace-Root"
 # summary on local disk; a cached-dataset load may also wait on one Engine
 # header request.
 WORKSPACE_READ_TIMEOUT_SECONDS = 120.0
-MAX_WORKSPACE_READ_REQUEST_BYTES = 256 * 1024
+# The dependents preview sends the whole edited grid, the same grid a dataset
+# save sends, so a read gets the hosted save's request budget.
+MAX_WORKSPACE_READ_REQUEST_BYTES = MAX_HOSTED_SAVE_REQUEST_BYTES
 
 
 class WorkspaceReadContractError(ValueError):
@@ -446,6 +449,37 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "project_user_preferences_service",
         "get_preferences",
         ("project_name",),
+    ),
+    # The dataset and method side panels: the sidecar panel, the unsaved
+    # dependents preview (it carries the edited grid, which is why the request
+    # budget above matches a hosted save's), the DFM's dataset-cell
+    # references, and the two development-pattern reads BF, Cape Cod and the
+    # % Developed curve window make of a DFM.
+    "dataset_sidecar_load": WorkspaceReadKind(
+        "dataset_service",
+        "load_dataset_sidecar",
+        ("project_name", "reserving_class", "dataset_name"),
+    ),
+    "dataset_calculated_preview": WorkspaceReadKind(
+        "calculated_dataset_service",
+        "preview_dependents",
+        ("project_name", "reserving_class", "changed_dataset_name"),
+        ("changed_dataset_type_name", "values", "mask", "origin_labels", "development_labels"),
+    ),
+    "dfm_dataset_references_resolve": WorkspaceReadKind(
+        "dfm_service",
+        "resolve_dfm_dataset_references",
+        ("project_name", "reserving_class", "references"),
+    ),
+    "dfm_percent_developed_curve": WorkspaceReadKind(
+        "dataset_instance_index_service",
+        "get_percent_developed_curve",
+        ("project_name", "reserving_class", "method_name"),
+    ),
+    "dfm_development_pattern": WorkspaceReadKind(
+        "dataset_instance_index_service",
+        "get_development_pattern",
+        ("project_name", "reserving_class", "dataset_name"),
     ),
 }
 

@@ -288,6 +288,14 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ("project_name",),
         ("patch",),
     ),
+    # Rebuilding a reserving class's index.json from its instance folders.
+    # Idempotent because the index is derived from the folder alone and an
+    # unchanged index is not rewritten, so a repeat lands the same file.
+    "dataset_index_rebuild": WorkspaceMutationKind(
+        "dataset_instance_index_service",
+        "rebuild_index",
+        ("project_name", "reserving_class"),
+    ),
 }
 
 HTTP_WORKSPACE_MUTATION_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_MUTATION_KINDS))

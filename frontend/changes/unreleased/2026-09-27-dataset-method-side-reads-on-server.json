@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset and method windows",
+  "audience": "user",
+  "summary": "A dataset's details panel, the live preview of the datasets that depend on an unsaved edit, a DFM's dataset cell references, the % Developed comparison curve and the development pattern that Bornhuetter-Ferguson and Cape Cod read from a DFM now load from the server."
+}

@@ -18,10 +18,16 @@ router = APIRouter()
 
 @router.post("/dfm/method/dataset-references/resolve")
 def resolve_dfm_dataset_references(req: DfmDatasetReferencesResolveRequest) -> Dict[str, Any]:
-    return dfm_service.resolve_dfm_dataset_references(
-        req.project_name,
-        req.reserving_class,
-        [reference.model_dump() for reference in req.references],
+    kwargs = {
+        "project_name": req.project_name,
+        "reserving_class": req.reserving_class,
+        "references": [reference.model_dump() for reference in req.references],
+    }
+    return workspace_read_client.run_workspace_read(
+        "dfm_dataset_references_resolve",
+        kwargs,
+        local=lambda: dfm_service.resolve_dfm_dataset_references(**kwargs),
+        gateway_required=True,
     )
 
 

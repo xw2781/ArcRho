@@ -191,10 +191,16 @@ def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, 
 
 @router.post("/dataset/sidecar/load")
 def load_dataset_sidecar(req: DatasetSidecarLoadRequest) -> Dict[str, Any]:
-    return dataset_service.load_dataset_sidecar(
-        req.project_name,
-        req.reserving_class,
-        req.dataset_name,
+    kwargs = {
+        "project_name": req.project_name,
+        "reserving_class": req.reserving_class,
+        "dataset_name": req.dataset_name,
+    }
+    return workspace_read_client.run_workspace_read(
+        "dataset_sidecar_load",
+        kwargs,
+        local=lambda: dataset_service.load_dataset_sidecar(**kwargs),
+        gateway_required=True,
     )
 
 
@@ -274,15 +280,23 @@ def resolve_dataset_internal_links(req: DatasetInternalLinksResolveRequest) -> D
 
 @router.post("/dataset/calculated/preview")
 def preview_calculated_dataset_dependents(req: DatasetCalculatedPreviewRequest) -> Dict[str, Any]:
-    return calculated_dataset_service.preview_dependents(
-        req.project_name,
-        req.reserving_class,
-        req.changed_dataset_name,
-        changed_dataset_type_name=req.changed_dataset_type_name,
-        values=req.values,
-        mask=req.mask,
-        origin_labels=req.origin_labels,
-        development_labels=req.development_labels,
+    # The preview of an unsaved edit reads every dependent's other inputs, so
+    # it runs where the project files are local disk.
+    kwargs = {
+        "project_name": req.project_name,
+        "reserving_class": req.reserving_class,
+        "changed_dataset_name": req.changed_dataset_name,
+        "changed_dataset_type_name": req.changed_dataset_type_name,
+        "values": req.values,
+        "mask": req.mask,
+        "origin_labels": req.origin_labels,
+        "development_labels": req.development_labels,
+    }
+    return workspace_read_client.run_workspace_read(
+        "dataset_calculated_preview",
+        kwargs,
+        local=lambda: calculated_dataset_service.preview_dependents(**kwargs),
+        gateway_required=True,
     )
 
 
