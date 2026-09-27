@@ -476,7 +476,7 @@ export function openAgentGuideTab() {
   return tab;
 }
 
-// One Server tab: it lists this PC's servers and switches between them.
+// One Server Connections tab: it lists this PC's servers and switches between them.
 export function openServerTab() {
   const existing = shell.state.tabs.find(t => t.type === "server");
   if (existing) {
@@ -484,7 +484,7 @@ export function openServerTab() {
     return existing;
   }
   const id = `sv_${shell.state.nextId++}`;
-  const tab = { id, title: "Server", type: "server", iframe: null, layout: "docked" };
+  const tab = { id, title: "Server Connections", type: "server", iframe: null, layout: "docked" };
   shell.state.tabs.push(tab);
   setDockedActive(id);
   shell.render?.();

@@ -89,7 +89,7 @@ export function renderHomeViewOnce(homeView) {
                 <div class="card clickable" id="cardProjectSettings">${homeCardIcon("project")}<div><h3>Project Explorer</h3><div class="muted">Browse and manage projects.</div></div></div>
                 <div class="card clickable" id="cardBrowsingHistory">${homeCardIcon("history")}<div><h3>Browsing History</h3><div class="muted">Restore recent pages and dataset views.</div></div></div>
                 <div class="card clickable" id="cardColorTheme" role="button" tabindex="0">${homeCardIcon("theme")}<div><h3>Color Theme</h3><div class="muted">Preview table styles and switch between Light and Dark.</div></div></div>
-                <div class="card clickable" id="cardServer">${homeCardIcon("server")}<div><h3>Server</h3><div class="muted">See the servers on this PC and switch between them.</div></div></div>
+                <div class="card clickable" id="cardServer">${homeCardIcon("server")}<div><h3>Server Connections</h3><div class="muted">Connect to Arco servers and databases.</div></div></div>
               </div>
             </div>
             <div id="homeLaunchAutomationGroup" class="homeGroup">

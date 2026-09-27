@@ -34,7 +34,7 @@ const TAB_TYPE_LABELS = {
   agent_guide: "ArcBot Guide",
   file_explorer: "File Browser",
   browsing_history: "Browsing History",
-  server: "Server",
+  server: "Server Connections",
 };
 
 let shortcutsDocument = createEmptyHomeShortcuts();
