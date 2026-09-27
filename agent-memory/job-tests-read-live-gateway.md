@@ -1,15 +1,17 @@
 ---
 name: job-tests-read-live-gateway
-description: "Test suites that patch the root but not the Gateway reach this PC's live (production) Gateway, for reads and even writes; the rules and dataset-type job tests did until 2026-09-27"
+description: "Since 2026-09-27 a guard keeps every test run off real Gateways; before it, tests that patched the root but not the Gateway read and wrote on production's Gateway"
 metadata:
   node_type: memory
   type: project
   originSessionId: dceedf07-29d5-400b-9dfb-1b5d138ebc34
-  modified: 2026-09-27T04:52:39.808Z
+  modified: 2026-09-27T05:10:00.000Z
 ---
 
-Tests that patch `load_workspace_paths` to a temp root but leave the Gateway credential alone still sign requests to whichever Gateway this PC is enrolled with, which on the Client PC is production's. Found 2026-09-26/27 while running docs/plans/client_smb_retirement.md: `test_dataset_types_change_jobs.py` and `test_data_processing_rules*.py` sent hosted plan reads and, after step 3, audit-log appends to production. Nothing was written only because production did not offer the new operation yet. Step 3 (commit 048f9e4a) stubbed the append in those two modules.
+Until 2026-09-27, tests that patched `load_workspace_paths` to a temp root but left the Gateway credential alone signed requests to whichever Gateway this PC was enrolled with (production's, on the Client PC). A socket-level scan found the dataset-type and rules job tests (propagation preflight reads, audit appends), three cached-dataset delete tests (propagation busy reads) and both ResQ import macro test modules (pre-import backup mutation, Bridge liveness read) all reaching production.
 
-**Why:** once production's Gateway offers a kind, an unisolated test writes real entries (and could create "Example Project"/"Demo Project" folders) on production.
+Step 21 of docs/plans/client_smb_retirement.md added `python-api/src/arcrho_api/gateway_test_guard.py`. A process launched as a test run (`python -m unittest`, pytest, a `tests/test_*.py` run directly) and its children get `ARCRHO_GATEWAY_CONFIG` pointed at a missing file, and every Gateway client refuses URLs no test allowed. Tests running their own loopback Gateway call `self.addCleanup(allow_test_gateway(url))`. `ARCRHO_TEST_GATEWAY_RECORD=<file>` records refusals with the test id.
 
-**How to apply:** until the plan's step 21 guard lands, any new test that exercises a route with a registered read/mutation/save kind must stub the Gateway client or set `ARCRHO_GATEWAY_CONFIG` to a missing file; don't treat those modules' failures as regressions without rerunning at the base commit. Related: [[local-test-root]], [[worktree-baseline-masks-new-failures]].
+**Why:** once production's Gateway offers a kind, an unisolated test writes real entries there.
+
+**How to apply:** a Gateway-only path answers 503 in tests now; stub the check, or patch `propagation_gateway_client.is_server_process` to True when the test already points the workspace root at its temp folder. New Gateway clients must build their opener with `gateway_test_guard.gateway_opener()`. The guard does not cover IDE test adapters whose `__main__` is their own script (VS Code's unittest adapter). Related: [[local-test-root]], [[worktree-baseline-masks-new-failures]].
