@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from fastapi import HTTPException
 
@@ -22,6 +22,7 @@ from app_server.helpers import (
     wait_for_file,
 )
 from app_server.schemas.dfm_rpc_bridge import (
+    DfmRpcBridgeApplyRequest,
     DfmRpcBridgeRequest,
     DfmRpcBridgeUpdateRemoteRequest,
 )
@@ -600,6 +601,54 @@ def apply_remote_to_local(req: DfmRpcBridgeRequest) -> Dict[str, Any]:
         "remote_deleted": deleted,
         "paths": paths,
     }
+
+
+# Apply rewrites the method and walks its dependents, so it runs as a hosted
+# save on Arco Engine under the reserving-class lease rather than from the
+# client process. The Engine calls it as (project, class, request): the request
+# is the route body, third so the save log names the method.
+
+
+def _apply_request(
+    project_name: str,
+    reserving_class: str,
+    request: Mapping[str, Any],
+) -> DfmRpcBridgeApplyRequest:
+    fields = {key: value for key, value in dict(request or {}).items() if value is not None}
+    for key, leased in (("project_name", project_name), ("reserving_class", reserving_class)):
+        # The lease covers the job's own class; a body naming another would
+        # write outside it.
+        if _clean_text(fields.setdefault(key, leased)) != _clean_text(leased):
+            raise HTTPException(400, f"The apply request's {key} does not match the save it was sent with.")
+    return DfmRpcBridgeApplyRequest(**fields)
+
+
+def apply_remote_to_local_save(
+    project_name: str,
+    reserving_class: str,
+    request: Mapping[str, Any],
+    **_ignored: Any,
+) -> Dict[str, Any]:
+    return apply_remote_to_local(_apply_request(project_name, reserving_class, request))
+
+
+def save_propagation_roots(
+    project_name: str,
+    reserving_class: str,
+    request: Mapping[str, Any],
+    **_ignored: Any,
+) -> List[Tuple[str, str]]:
+    """Return the roots the apply's DFM save propagates from.
+
+    A patch cannot change the method's output identity (the DFM save refuses
+    that with 409), so the stored method names the same roots the save will.
+    """
+
+    from app_server.services import dfm_service
+
+    req = _apply_request(project_name, reserving_class, request)
+    loaded = dfm_service.load_dfm_method(project_name, reserving_class, req.method_name)
+    return dfm_service.save_propagation_roots(project_name, reserving_class, loaded.get("method") or {})
 
 
 def keep_local(req: DfmRpcBridgeRequest) -> Dict[str, Any]:

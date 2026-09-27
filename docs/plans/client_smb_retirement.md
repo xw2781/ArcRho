@@ -1,6 +1,6 @@
 # Client SMB Retirement: Every Client PC Read and Write Through the Gateway
 
-Status: Audited 2026-09-26 and broken into 20 session-sized steps; the dead SMB code the audit found (workbook routes, the unused dataset list and diagonal routes, the unused Project Instance folder watcher) was removed the same day; the three decisions were settled the same day as recommended, and the Snowflake config path moved off the share; none started.
+Status: Audited 2026-09-26 and broken into 20 session-sized steps; the dead SMB code the audit found (workbook routes, the unused dataset list and diagonal routes, the unused Project Instance folder watcher) was removed the same day; the three decisions were settled the same day as recommended, and the Snowflake config path moved off the share; step 1 of 20 done 2026-09-26 (ResQ bridge apply is a hosted save; its Engine and Gateway deploy is step 6).
 Last updated: 2026-09-26
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finishes; its Phase 3 notifications and Phase 4 small writes are folded in here), [hosted_save_http_transport.md](hosted_save_http_transport.md) (its "Retiring the SMB transport" item is steps 18 and 19 here)
 
@@ -12,7 +12,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 
 | # | Step | Done | Date | Est. | Actual | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| 1 | Applying a ResQ bridge change saves on the server like any other save | [ ] | | 50 min | | |
+| 1 | Applying a ResQ bridge change saves on the server like any other save | [x] | 2026-09-26 | 50 min | 8 min | "Update local from ResQ" in a DFM now saves on the server, under the same protection as the page's own Save. |
 | 2 | Bootstrap refresh, dataset notes and new empty datasets save on the server | [ ] | | 60 min | | |
 | 3 | Audit log entries from two PCs can no longer overwrite each other | [ ] | | 45 min | | |
 | 4 | ArcBot edits go through the normal save instead of writing files directly | [ ] | | 70 min | | |
@@ -33,7 +33,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 19 | Old shared-drive save path and leftover dead code removed | [ ] | | 55 min | | |
 | 20 | Signing up to the server no longer needs the shared drive | [ ] | | 90 min | | |
 
-Overall: 0 of 20 steps done. Estimated 1,125 min, actual so far 0 min.
+Overall: 1 of 20 steps done. Estimated 1,125 min, actual so far 8 min.
 
 ## How agents work this plan
 
@@ -108,15 +108,15 @@ Every new registered kind added by this plan is called with `gateway_required=Tr
 **Read first.** [dfm_rpc_bridge_service.py](../../frontend/app_server/services/dfm_rpc_bridge_service.py) `apply_remote_to_local`; [dfm_rpc_bridge_router.py](../../frontend/app_server/api/dfm_rpc_bridge_router.py); [arcrho_engine_save_contract.py](../../python-api/src/arcrho_engine_save_contract.py) `SAVE_JOB_KINDS`; memory `adding-a-hosted-save-kind`; [completed/hosted_rpc_bridge_transport.md](completed/hosted_rpc_bridge_transport.md) (why apply was deferred).
 
 **Do.**
-- [ ] Add a `dfm_rpc_bridge_apply` save kind whose function is the existing apply, plus its `save_propagation_roots`.
-- [ ] Route `POST /dfm/rpc-bridge/apply` through `run_hosted_save`.
-- [ ] Update [dfm_rpc_bridge.md](../../frontend/docs/app_server/domains/dfm_rpc_bridge.md).
+- [x] Add a `dfm_rpc_bridge_apply` save kind whose function is the existing apply, plus its `save_propagation_roots`.
+- [x] Route `POST /dfm/rpc-bridge/apply` through `run_hosted_save`.
+- [x] Update [dfm_rpc_bridge.md](../../frontend/docs/app_server/domains/dfm_rpc_bridge.md).
 
 **Tests.** `frontend/tests/test_dfm_rpc_bridge_*`: apply goes through the hosted save and never calls the in-process DFM save on a client; `test_save_plan_service` covers the new roots function.
 
 **Done when.** The apply route has no path that writes the DFM JSON from the client process.
 
-Estimate: code edit 30 min, test/validation 20 min, total 50 min.
+Estimate: code edit 30 min, test/validation 20 min, total 50 min. Actual: code edit 2 min, test/validation 6 min, total 8 min (the existing hosted-save recipe made it one table entry, one wrapper and one route; checked end to end on the local root).
 
 ### Step 2 — Bootstrap refresh, dataset notes and empty-dataset create become hosted saves
 

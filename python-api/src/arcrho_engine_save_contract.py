@@ -70,6 +70,10 @@ SAVE_JOB_KINDS: dict[str, tuple[str, str]] = {
         "save_berquist_sherman",
     ),
     "dataset_sidecar": ("dataset_service", "save_dataset_sidecar"),
+    # Applies a ResQ bridge patch to the stored DFM and saves it; the RPC
+    # bridge's other routes are workspace mutations because they write no
+    # method.
+    "dfm_rpc_bridge_apply": ("dfm_rpc_bridge_service", "apply_remote_to_local_save"),
     # Not a single object's save: repoints every Excel reference in one
     # reserving class and refreshes every affected dataset and DFM from the
     # new workbook. It is hosted for the same reason as the saves above plus

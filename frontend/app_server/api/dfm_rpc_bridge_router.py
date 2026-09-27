@@ -12,6 +12,7 @@ from app_server.schemas.dfm_rpc_bridge import (
 )
 from app_server.services import (
     dfm_rpc_bridge_service,
+    engine_hosted_save_service,
     workspace_mutation_client,
     workspace_read_client,
 )
@@ -46,7 +47,14 @@ def compare_dfm_rpc_bridge(req: DfmRpcBridgeRequest) -> Dict[str, Any]:
 
 @router.post("/dfm/rpc-bridge/apply")
 def apply_dfm_rpc_bridge(req: DfmRpcBridgeApplyRequest) -> Dict[str, Any]:
-    return dfm_rpc_bridge_service.apply_remote_to_local(req)
+    # Apply saves the DFM, so it is a hosted save like the page's own Save:
+    # it runs on Arco Engine under the reserving-class lease, never here.
+    return engine_hosted_save_service.run_hosted_save(
+        "dfm_rpc_bridge_apply",
+        req.project_name,
+        req.reserving_class,
+        args=[req.project_name, req.reserving_class, req.model_dump()],
+    )
 
 
 @router.post("/dfm/rpc-bridge/keep-local")

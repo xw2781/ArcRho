@@ -39,7 +39,10 @@ import app_server.api  # noqa: F401  (registers the route submodules)
 
 dfm_rpc_bridge_router = sys.modules["app_server.api.dfm_rpc_bridge_router"]
 
+from fastapi import HTTPException
+
 from app_server.schemas.dfm_rpc_bridge import (
+    DfmRpcBridgeApplyRequest,
     DfmRpcBridgeRequest,
     DfmRpcBridgeUpdateRemoteRequest,
 )
@@ -318,6 +321,67 @@ class CompareReadCountTests(unittest.TestCase):
 
     def test_dfm_compare_opens_each_method_json_once(self) -> None:
         self.assertEqual(self._run(dfm_rpc_bridge_service, dfm_request()), 2)
+
+
+class ApplyHostedSaveTests(unittest.TestCase):
+    """Apply saves the DFM, so it runs on Arco Engine like the page's own Save."""
+
+    def test_the_kind_names_the_hosted_entry_point(self) -> None:
+        from arcrho_engine_save_contract import SAVE_JOB_KINDS
+
+        module_name, function_name = SAVE_JOB_KINDS["dfm_rpc_bridge_apply"]
+        self.assertEqual(module_name, dfm_rpc_bridge_service.__name__.rsplit(".", 1)[-1])
+        self.assertTrue(callable(getattr(dfm_rpc_bridge_service, function_name)))
+
+    def test_the_route_runs_a_hosted_save_and_never_saves_locally(self) -> None:
+        request = DfmRpcBridgeApplyRequest(**dfm_request().model_dump())
+        with (
+            patch.object(
+                dfm_rpc_bridge_router.engine_hosted_save_service,
+                "run_hosted_save",
+                return_value={"ok": True, "status": "applied"},
+            ) as hosted,
+            patch.object(dfm_rpc_bridge_service, "apply_remote_to_local") as local,
+        ):
+            response = dfm_rpc_bridge_router.apply_dfm_rpc_bridge(request)
+        local.assert_not_called()
+        self.assertEqual(response["status"], "applied")
+        self.assertEqual(hosted.call_args.args, ("dfm_rpc_bridge_apply", "Demo", "COL"))
+        args = hosted.call_args.kwargs["args"]
+        self.assertEqual(args[:2], ["Demo", "COL"])
+        # Third so the save log names the method.
+        self.assertEqual(args[2]["method_name"], "M")
+
+    def test_the_entry_point_rebuilds_the_request_and_applies(self) -> None:
+        body = dfm_request().model_dump()
+        with patch.object(dfm_rpc_bridge_service, "apply_remote_to_local", return_value={"ok": True}) as target:
+            dfm_rpc_bridge_service.apply_remote_to_local_save("Demo", "COL", body)
+        passed = target.call_args.args[0]
+        self.assertIsInstance(passed, DfmRpcBridgeApplyRequest)
+        self.assertEqual((passed.project_name, passed.method_name), ("Demo", "M"))
+
+    def test_a_body_naming_another_class_is_refused(self) -> None:
+        body = dfm_request(reserving_class="OTHER").model_dump()
+        with (
+            patch.object(dfm_rpc_bridge_service, "apply_remote_to_local") as target,
+            self.assertRaises(HTTPException) as caught,
+        ):
+            dfm_rpc_bridge_service.apply_remote_to_local_save("Demo", "COL", body)
+        self.assertEqual(caught.exception.status_code, 400)
+        target.assert_not_called()
+
+    def test_the_roots_are_the_stored_methods_output(self) -> None:
+        from app_server.services import dfm_service
+
+        method = {"details_tab": {"name": "M"}}
+        with (
+            patch.object(dfm_service, "load_dfm_method", return_value={"method": method}) as load,
+            patch.object(dfm_service, "save_propagation_roots", return_value=[("Out", "Out")]) as roots,
+        ):
+            result = dfm_rpc_bridge_service.save_propagation_roots("Demo", "COL", dfm_request().model_dump())
+        load.assert_called_once_with("Demo", "COL", "M")
+        roots.assert_called_once_with("Demo", "COL", method)
+        self.assertEqual(result, [("Out", "Out")])
 
 
 if __name__ == "__main__":
