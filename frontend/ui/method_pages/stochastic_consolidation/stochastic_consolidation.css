@@ -461,8 +461,8 @@ table.sconTable {
   max-width: none;
   line-height: normal;
   padding: 0 8px;
-  border-right: 1px solid var(--scon-grid-border);
-  border-bottom: 1px solid var(--scon-grid-border);
+  border-right: var(--ar-spreadsheet-grid-border-width) solid var(--scon-grid-border);
+  border-bottom: var(--ar-spreadsheet-grid-border-width) solid var(--scon-grid-border);
   color: var(--ar-spreadsheet-cell-text);
   text-align: right;
   white-space: nowrap;

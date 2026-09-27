@@ -5,6 +5,9 @@
   --ar-spreadsheet-font: Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
   --ar-spreadsheet-font-size: 14px;
   --ar-spreadsheet-grid-border: #f3f1f1;
+  /* Every grid line in every table reads this width; the user can widen it in
+     Custom Colors (table_colors_model.js). */
+  --ar-spreadsheet-grid-border-width: 1px;
   --ar-spreadsheet-header-fill: #d9dde2;
   --ar-spreadsheet-label-fill: #d9dde2;
   /* Light draws every table's text in pure black, values and labels alike;
@@ -35,6 +38,9 @@
   --ar-spreadsheet-source-selection-fill: #9dcc00;
   --ar-spreadsheet-source-selection-text: #000000;
   --ar-spreadsheet-result-fill: #fdf5a9;
+  /* A result column's text keeps the table's own until the user gives it a
+     colour of its own (table_colors_model.js). */
+  --ar-spreadsheet-result-text: var(--ar-spreadsheet-cell-text);
   --ar-spreadsheet-result-selection-fill: #fde047;
   --ar-spreadsheet-result-selection-text: #000000;
   --ar-spreadsheet-link-error-text: #b91c1c;
@@ -105,8 +111,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   box-sizing: border-box;
-  border-right: 1px solid var(--ar-spreadsheet-grid-border);
-  border-bottom: 1px solid var(--ar-spreadsheet-grid-border);
+  border-right: var(--ar-spreadsheet-grid-border-width) solid var(--ar-spreadsheet-grid-border);
+  border-bottom: var(--ar-spreadsheet-grid-border-width) solid var(--ar-spreadsheet-grid-border);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -374,11 +380,23 @@
    as a shadow just outside the table. A shadow adds no scroll size, so where
    the grid reaches the frame the frame clips it and only its own line is left.
    --------------------------------------------------------------------------- */
+/* A Cell Border the user set (table_colors_model.js) is the grid's outer edge
+   too, so the frame that edge sits on takes the grid line's colour and width.
+   A table cannot paint over its own scroll frame, so the frame itself changes.
+   The doubled attribute outranks the theme sheets' frame colours. */
+:root[data-ar-table-colors~="cell-border-border"][data-ar-table-colors] :is(#ratioWrapHost, #resultsWrap, #dfmCurvesWrapHost, #tableWrap, .bfTableWrap, .ccTableWrap, .bsTableWrap, .bstTableWrap, .sconTableWrap, .rsGridHost) {
+  border-color: var(--ar-spreadsheet-grid-border);
+}
+
+:root[data-ar-table-colors~="cell-border-width"][data-ar-table-colors] :is(#ratioWrapHost, #resultsWrap, #dfmCurvesWrapHost, #tableWrap, .bfTableWrap, .ccTableWrap, .bsTableWrap, .bstTableWrap, .sconTableWrap, .rsGridHost) {
+  border-width: var(--ar-spreadsheet-grid-border-width);
+}
+
 :is(#ratioWrap, #resultsWrap, #dfmCurvesWrap, #tableWrap, .bfTableWrap, .ccTableWrap, .bsTableWrap, .bstTableWrap, .sconTableWrap, .rsGridHost) > table.arSpreadsheetTable {
   box-shadow:
-    1px 0 0 var(--ar-spreadsheet-grid-border),
-    0 1px 0 var(--ar-spreadsheet-grid-border),
-    1px 1px 0 var(--ar-spreadsheet-grid-border);
+    var(--ar-spreadsheet-grid-border-width) 0 0 var(--ar-spreadsheet-grid-border),
+    0 var(--ar-spreadsheet-grid-border-width) 0 var(--ar-spreadsheet-grid-border),
+    var(--ar-spreadsheet-grid-border-width) var(--ar-spreadsheet-grid-border-width) 0 var(--ar-spreadsheet-grid-border);
 }
 
 :is(#ratioWrap, #resultsWrap, #dfmCurvesWrap, #tableWrap, .bfTableWrap, .ccTableWrap, .bsTableWrap, .bstTableWrap, .sconTableWrap, .rsGridHost) > table.arSpreadsheetTable tr > :last-child {

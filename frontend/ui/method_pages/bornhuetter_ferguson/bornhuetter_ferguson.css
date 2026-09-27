@@ -669,6 +669,7 @@ table.bfMethodTable {
 }
 .bfMethodTable td.bfUltimateCell {
   background: var(--bf-method-ultimate-cell);
+  color: var(--ar-spreadsheet-result-text);
 }
 .bfMethodTable tr.bfTotalRow td {
   background: #f8fafc;

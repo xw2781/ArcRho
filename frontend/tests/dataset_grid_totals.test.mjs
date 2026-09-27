@@ -128,11 +128,11 @@ test("the Data grid borrows the scroll wrapper's border as its outer edge", () =
 test("the sticky row-label seam does not cover the dynamic-array left border", () => {
   assert.match(
     dataTabCss,
-    /#tableWrap th:first-child,[\s\S]*?box-shadow:\s*inset -1px 0 0 var\(--ar-spreadsheet-grid-border\)/u,
+    /#tableWrap th:first-child,[\s\S]*?box-shadow:\s*inset calc\(-1 \* var\(--ar-spreadsheet-grid-border-width\)\) 0 0 var\(--ar-spreadsheet-grid-border\)/u,
   );
   assert.doesNotMatch(
     dataTabCss,
-    /#tableWrap th:first-child,[\s\S]*?box-shadow:\s*1px 0 0 var\(--ar-spreadsheet-grid-border\)/u,
+    /#tableWrap th:first-child,[\s\S]*?box-shadow:\s*(?:1px|var\(--ar-spreadsheet-grid-border-width\)) 0 0 var\(--ar-spreadsheet-grid-border\)/u,
   );
 });
 

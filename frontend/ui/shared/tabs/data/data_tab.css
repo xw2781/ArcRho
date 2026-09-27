@@ -143,8 +143,8 @@
   overflow: hidden;
   box-sizing: border-box;
   border: 0;
-  border-right: 1px solid var(--ar-spreadsheet-grid-border);
-  border-bottom: 1px solid var(--ar-spreadsheet-grid-border);
+  border-right: var(--ar-spreadsheet-grid-border-width) solid var(--ar-spreadsheet-grid-border);
+  border-bottom: var(--ar-spreadsheet-grid-border-width) solid var(--ar-spreadsheet-grid-border);
   line-height: var(--cell-h);
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -153,7 +153,7 @@
 }
 
 #tableWrap tr > :last-child {
-  border-right: 1px solid var(--ar-spreadsheet-grid-border);
+  border-right: var(--ar-spreadsheet-grid-border-width) solid var(--ar-spreadsheet-grid-border);
 }
 
 #tableWrap thead th {
@@ -201,7 +201,7 @@
   border-left: 0;
   border-right: 0;
   background: var(--ar-spreadsheet-label-fill);
-  box-shadow: inset -1px 0 0 var(--ar-spreadsheet-grid-border);
+  box-shadow: inset calc(-1 * var(--ar-spreadsheet-grid-border-width)) 0 0 var(--ar-spreadsheet-grid-border);
 }
 
 #tableWrap thead th:first-child {
@@ -286,14 +286,14 @@
 
 #tableWrap tfoot th,
 #tableWrap tfoot td {
-  border-top: 1px solid var(--ar-spreadsheet-grid-border);
+  border-top: var(--ar-spreadsheet-grid-border-width) solid var(--ar-spreadsheet-grid-border);
   color: var(--ar-spreadsheet-cell-text);
   font-weight: 700;
 }
 
 #tableWrap tbody tr:last-child > *,
 #tableWrap tfoot tr:last-child > * {
-  border-bottom: 1px solid var(--ar-spreadsheet-grid-border);
+  border-bottom: var(--ar-spreadsheet-grid-border-width) solid var(--ar-spreadsheet-grid-border);
 }
 
 #tableWrap table.has-total-row tbody tr:last-child > * {

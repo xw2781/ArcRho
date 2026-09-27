@@ -771,8 +771,8 @@ body {
 .rsGrid th,
 .rsGrid td {
   border: 0;
-  border-right: 1px solid var(--rs-grid-border);
-  border-bottom: 1px solid var(--rs-grid-border);
+  border-right: var(--ar-spreadsheet-grid-border-width) solid var(--rs-grid-border);
+  border-bottom: var(--ar-spreadsheet-grid-border-width) solid var(--rs-grid-border);
   max-width: none;
   min-width: 0;
   height: var(--rs-cell-h);
@@ -981,6 +981,9 @@ body {
 .rsUltimateCell {
   background: var(--rs-ultimate-cell);
   font-weight: 400;
+}
+.rsGrid td.rsUltimateCell {
+  color: var(--ar-spreadsheet-result-text);
 }
 .rsGrid td.rsUltimateCell.rsUltimateCustomValue,
 .rsGrid td.rsUltimateCell.rsUltimateCustomValue.rsHighlightedCell {

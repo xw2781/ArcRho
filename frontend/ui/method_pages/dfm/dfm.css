@@ -618,7 +618,7 @@ body {
   position: sticky;
   left: 0;
   z-index: 4;
-  box-shadow: 1px 0 0 var(--ar-spreadsheet-grid-border);
+  box-shadow: var(--ar-spreadsheet-grid-border-width) 0 0 var(--ar-spreadsheet-grid-border);
   white-space: nowrap;
   background-clip: padding-box;
 }
@@ -641,12 +641,12 @@ body {
 
 #ratioWrap table + table {
   margin-top: 14px;
-  border-top: 1px solid var(--ar-spreadsheet-grid-border);
+  border-top: var(--ar-spreadsheet-grid-border-width) solid var(--ar-spreadsheet-grid-border);
 }
 /* The summary table sits under the formula bar rather than another table, but
    still opens on its own top line. */
 #ratioWrap table.ratioSummaryTable {
-  border-top: 1px solid var(--ar-spreadsheet-grid-border);
+  border-top: var(--ar-spreadsheet-grid-border-width) solid var(--ar-spreadsheet-grid-border);
 }
 #ratioWrap td.ratioCell.strike {
   color: var(--dfm-excluded-ratio-color);
@@ -908,8 +908,8 @@ body {
   background: transparent !important;
 }
 #ratioWrap.showNaBorders td.na {
-  border-right: 1px solid var(--ar-spreadsheet-grid-border) !important;
-  border-bottom: 1px solid var(--ar-spreadsheet-grid-border) !important;
+  border-right: var(--ar-spreadsheet-grid-border-width) solid var(--ar-spreadsheet-grid-border) !important;
+  border-bottom: var(--ar-spreadsheet-grid-border-width) solid var(--ar-spreadsheet-grid-border) !important;
   background: transparent !important;
 }
 /* The table's bottom edge is drawn by the shared rule in spreadsheet_table.css,
@@ -978,11 +978,11 @@ body {
 }
 #ratioWrap table.ratioSummaryTable tbody tr + tr th,
 #ratioWrap table.ratioSummaryTable tbody tr + tr td {
-  border-top: 1px solid var(--ar-spreadsheet-grid-border);
+  border-top: var(--ar-spreadsheet-grid-border-width) solid var(--ar-spreadsheet-grid-border);
 }
 #ratioWrap table.ratioSummaryTable tbody tr:last-child th,
 #ratioWrap table.ratioSummaryTable tbody tr:last-child td {
-  border-bottom: 1px solid var(--ar-spreadsheet-grid-border);
+  border-bottom: var(--ar-spreadsheet-grid-border-width) solid var(--ar-spreadsheet-grid-border);
 }
 #ratioWrap tr.dragging {
   opacity: 0;
@@ -2012,7 +2012,7 @@ table.dfmCurvesTable td.dfmCurvesPattern:not(.dfmCurvesSelected):hover::after {
    same pale yellow Result Selection fills its Selected Ultimate column with. */
 table.dfmCurvesTable td.dfmCurvesSelectedValue {
   background: var(--ar-spreadsheet-result-fill);
-  color: var(--ar-spreadsheet-result-selection-text);
+  color: var(--ar-spreadsheet-result-text);
   font-weight: 400;
 }
 /* A period the fits leave out is struck through in the Ratios tab's colour, on
@@ -2176,7 +2176,7 @@ table.dfmCurvesTable td.dfmCurvesEditing {
   color: var(--ar-spreadsheet-label-text);
   border-left: 0;
   border-right: 0;
-  box-shadow: 1px 0 0 var(--ar-spreadsheet-grid-border);
+  box-shadow: var(--ar-spreadsheet-grid-border-width) 0 0 var(--ar-spreadsheet-grid-border);
   background-clip: padding-box;
 }
 #resultsWrap thead th:first-child {

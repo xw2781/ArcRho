@@ -14,7 +14,7 @@ import {
   TABLE_COLORS_ATTRIBUTE,
   normalizeTableColors,
   tableColorCssState,
-} from "/ui/shared/components/spreadsheet/table_colors_model.js?v=20260924b";
+} from "/ui/shared/components/spreadsheet/table_colors_model.js?v=20260927b";
 
 const STORAGE_KEY = "arcrho_table_colors";
 const CHANNEL_NAME = "arcrho:table-colors";
@@ -114,7 +114,7 @@ export function setTableColors(prefs) {
 
 /** Opens the Custom Colors window, or brings the open one forward. */
 export function openTableColorsWindow() {
-  void import("/ui/shared/components/spreadsheet/table_colors_window.js?v=20260924b")
+  void import("/ui/shared/components/spreadsheet/table_colors_window.js?v=20260927b")
     .then((module) => module.openTableColorsWindow());
 }
 

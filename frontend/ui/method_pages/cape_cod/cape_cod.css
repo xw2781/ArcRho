@@ -511,8 +511,8 @@ table.ccUltimatesTable {
   user-select: none;
   -webkit-user-select: none;
   border: 0;
-  border-right: 1px solid var(--cc-method-grid-border);
-  border-bottom: 1px solid var(--cc-method-grid-border);
+  border-right: var(--ar-spreadsheet-grid-border-width) solid var(--cc-method-grid-border);
+  border-bottom: var(--ar-spreadsheet-grid-border-width) solid var(--cc-method-grid-border);
   color: var(--ar-spreadsheet-cell-text);
 }
 .ccMethodTable th:first-child,
@@ -587,6 +587,7 @@ table.ccUltimatesTable {
 }
 .ccMethodTable td.ccUltimateCell {
   background: var(--cc-method-ultimate-cell);
+  color: var(--ar-spreadsheet-result-text);
 }
 .ccMethodTable tr.ccTotalRow td {
   background: #f8fafc;

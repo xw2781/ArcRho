@@ -6,10 +6,12 @@ CSS that paints them.
 
 The preference is one local-user object shared by every method page:
 
-  { version: 1, components: { "<component id>": { font?: "#rrggbb", fill?: "#rrggbb" } } }
+  { version: 1, components: { "<component id>": { font?, fill?, border?: "#rrggbb", width?: 1-3 } } }
+
+`width` is the only value that is not a colour: the grid line width in pixels.
 
 A component with no entry keeps the look the theme and table style give it.
-For each colour that is set, the root carries the token `<id>-<font|fill>` in
+For each value that is set, the root carries the token `<id>-<property>` in
 `data-ar-table-colors` and a custom property holding the colour. The parts
 every table has (the "All Tables" group) name the shared spreadsheet variable
 the part already reads, so setting it on the root repaints every page's tables
@@ -25,7 +27,8 @@ No DOM and no imports, so the node tests can load it directly.
 
 export const TABLE_COLORS_VERSION = 1;
 export const TABLE_COLORS_ATTRIBUTE = "data-ar-table-colors";
-export const TABLE_COLOR_PROPERTIES = ["font", "fill"];
+export const TABLE_COLOR_PROPERTIES = ["font", "fill", "border", "width"];
+export const TABLE_BORDER_WIDTHS = [1, 2, 3];
 
 // A group with a `page` is shown only on that page; the rest are on every page.
 // Page groups come first, so the parts every table shares close the list.
@@ -39,8 +42,10 @@ export const TABLE_COLOR_GROUPS = [
 
 // `probe` describes a stand-in cell the window builds to read the colours a
 // component shows before the user changes them: inside the element whose id is
-// `host`, or in the page body when there is none. `variables` names, for each
-// colour of an every-table part, the shared spreadsheet variable it sets.
+// `host`, or in the page body when there is none. A part each page draws with
+// its own classes has no probe, and the window shows its variables instead.
+// `variables` names, for each colour of an every-table part, the shared
+// spreadsheet variable it sets.
 export const TABLE_COLOR_COMPONENTS = [
   {
     id: "ratio",
@@ -167,6 +172,32 @@ export const TABLE_COLOR_COMPONENTS = [
     probe: { header: "row", classes: "arSpreadsheetSelectedLabel" },
     sample: "2019",
   },
+  {
+    // The yellow a method keeps on its results: BF and CC ultimates, Result
+    // Selection's selected ultimate, Bootstrap results, the DFM Curves value.
+    id: "result-cell",
+    label: "Result Column",
+    group: "tables",
+    properties: ["font", "fill"],
+    variables: { font: "--ar-spreadsheet-result-text", fill: "--ar-spreadsheet-result-fill" },
+    probe: null,
+  },
+  {
+    id: "highlighted-result",
+    label: "Highlighted Result",
+    group: "tables",
+    properties: ["font", "fill"],
+    variables: { font: "--ar-spreadsheet-result-selection-text", fill: "--ar-spreadsheet-result-selection-fill" },
+    probe: null,
+  },
+  {
+    id: "cell-border",
+    label: "Cell Border",
+    group: "tables",
+    properties: ["border", "width"],
+    variables: { border: "--ar-spreadsheet-grid-border", width: "--ar-spreadsheet-grid-border-width" },
+    probe: { classes: "" },
+  },
 ];
 
 // Soft fills first, then strong text colours, so the grid reads as two rows of
@@ -217,12 +248,22 @@ export function normalizeTableColorHex(value) {
   return "";
 }
 
+/** A width offered in TABLE_BORDER_WIDTHS as a number; 0 for anything else. */
+export function normalizeTableBorderWidth(value) {
+  const width = Number.parseInt(String(value ?? ""), 10);
+  return TABLE_BORDER_WIDTHS.includes(width) ? width : 0;
+}
+
+function normalizeTableColorValue(property, value) {
+  return property === "width" ? normalizeTableBorderWidth(value) : normalizeTableColorHex(value);
+}
+
 export function findTableColorPreset(hex) {
   const normalized = normalizeTableColorHex(hex);
   return TABLE_COLOR_PRESETS.find((preset) => preset.hex === normalized) || null;
 }
 
-/** A clean preference: known components and properties only, valid colours only. */
+/** A clean preference: known components and properties only, valid values only. */
 export function normalizeTableColors(raw) {
   const components = {};
   const source = raw && typeof raw === "object" ? raw.components : null;
@@ -231,21 +272,21 @@ export function normalizeTableColors(raw) {
     if (!entry || typeof entry !== "object") continue;
     const colors = {};
     for (const property of component.properties) {
-      const hex = normalizeTableColorHex(entry[property]);
-      if (hex) colors[property] = hex;
+      const value = normalizeTableColorValue(property, entry[property]);
+      if (value) colors[property] = value;
     }
     if (Object.keys(colors).length) components[component.id] = colors;
   }
   return { version: TABLE_COLORS_VERSION, components };
 }
 
-/** The preference with one colour set, or cleared when `hex` is empty. */
-export function setTableColor(prefs, id, property, hex) {
+/** The preference with one value set, or cleared when `value` is empty. */
+export function setTableColor(prefs, id, property, value) {
   const next = normalizeTableColors(prefs);
   const component = getTableColorComponent(id);
   if (!component || !component.properties.includes(property)) return next;
   const colors = { ...(next.components[id] || {}) };
-  const normalized = normalizeTableColorHex(hex);
+  const normalized = normalizeTableColorValue(property, value);
   if (normalized) colors[property] = normalized;
   else delete colors[property];
   next.components = { ...next.components, [id]: colors };
@@ -272,7 +313,7 @@ export function tableColorToken(id, property) {
   return `${id}-${property}`;
 }
 
-/** The custom property that carries a component's colour. */
+/** The custom property that carries a component's value. */
 export function tableColorPropertyName(id, property) {
   return getTableColorComponent(id)?.variables?.[property] || `--ar-table-color-${tableColorToken(id, property)}`;
 }
@@ -288,7 +329,8 @@ export function tableColorCssState(prefs) {
     for (const property of component.properties) {
       if (!colors[property]) continue;
       tokens.push(tableColorToken(component.id, property));
-      properties[tableColorPropertyName(component.id, property)] = colors[property];
+      const value = colors[property];
+      properties[tableColorPropertyName(component.id, property)] = property === "width" ? `${value}px` : value;
     }
   }
   return { tokens, properties };

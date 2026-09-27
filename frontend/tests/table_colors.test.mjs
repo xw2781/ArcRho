@@ -84,6 +84,72 @@ test("setting, clearing and resetting colours", () => {
   assert.deepEqual(setTableColor(prefs, "ratio", "font", ""), { version: 1, components: {} });
 });
 
+test("the cell border keeps a colour and one of the offered widths, and paints the grid variables", () => {
+  let prefs = setTableColor(null, "cell-border", "border", "#94A3B8");
+  prefs = setTableColor(prefs, "cell-border", "width", "2");
+  assert.deepEqual(prefs.components["cell-border"], { border: "#94a3b8", width: 2 });
+  assert.deepEqual(setTableColor(prefs, "cell-border", "width", 7).components["cell-border"], { border: "#94a3b8" });
+  assert.deepEqual(normalizeTableColors({ components: { "cell-border": { width: "3px", font: "#000" } } }).components, {
+    "cell-border": { width: 3 },
+  });
+  assert.deepEqual(tableColorCssState(prefs), {
+    tokens: ["cell-border-border", "cell-border-width"],
+    properties: {
+      "--ar-spreadsheet-grid-border": "#94a3b8",
+      "--ar-spreadsheet-grid-border-width": "2px",
+    },
+  });
+});
+
+test("the result column colours reach every page that keeps a result column", async () => {
+  let prefs = setTableColor(null, "result-cell", "font", "#1e3a8a");
+  prefs = setTableColor(prefs, "highlighted-result", "fill", "#f8e59a");
+  assert.deepEqual(tableColorCssState(prefs).properties, {
+    "--ar-spreadsheet-result-text": "#1e3a8a",
+    "--ar-spreadsheet-result-selection-fill": "#f8e59a",
+  });
+  const pages = [
+    ["../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.css", /td\.bfUltimateCell \{[^}]*color: var\(--ar-spreadsheet-result-text\)/u],
+    ["../ui/method_pages/cape_cod/cape_cod.css", /td\.ccUltimateCell \{[^}]*color: var\(--ar-spreadsheet-result-text\)/u],
+    ["../ui/method_pages/result_selection/result_selection.css", /td\.rsUltimateCell \{[^}]*color: var\(--ar-spreadsheet-result-text\)/u],
+    ["../ui/method_pages/bootstrap/bootstrap.css", /td\.bstResultCell \{[^}]*color: var\(--ar-spreadsheet-result-text\)/u],
+    ["../ui/method_pages/dfm/dfm.css", /td\.dfmCurvesSelectedValue \{[^}]*color: var\(--ar-spreadsheet-result-text\)/u],
+  ];
+  for (const [path, rule] of pages) assert.match(await read(path), rule, path);
+});
+
+test("a set cell border also draws the table frames, so the grid's outer edge matches its lines", async () => {
+  const css = await read("../ui/shared/components/spreadsheet/spreadsheet_table.css");
+  for (const [property, declaration] of [["border", "border-color: var(--ar-spreadsheet-grid-border);"], ["width", "border-width: var(--ar-spreadsheet-grid-border-width);"]]) {
+    const selector = `:root[data-ar-table-colors~="cell-border-${property}"][data-ar-table-colors] :is(`;
+    const start = css.indexOf(selector);
+    assert.ok(start >= 0, `${property} frame rule`);
+    const block = css.slice(start, css.indexOf("}", start));
+    assert.ok(block.includes(declaration), `${property} frame rule sets ${declaration}`);
+    const frames = block.slice(selector.length, block.indexOf(")"));
+    for (const frame of ["#ratioWrapHost", "#tableWrap", ".bfTableWrap", ".rsGridHost"]) assert.ok(frames.includes(frame), `${property}: ${frame}`);
+  }
+});
+
+test("every grid line reads the shared width, never a fixed 1px", async () => {
+  const sheets = [
+    "../ui/shared/components/spreadsheet/spreadsheet_table.css",
+    "../ui/shared/tabs/data/data_tab.css",
+    "../ui/method_pages/dfm/dfm.css",
+    "../ui/method_pages/berquist_sherman/berquist_sherman.css",
+    "../ui/method_pages/bootstrap/bootstrap.css",
+    "../ui/method_pages/cape_cod/cape_cod.css",
+    "../ui/method_pages/result_selection/result_selection.css",
+    "../ui/method_pages/stochastic_consolidation/stochastic_consolidation.css",
+  ];
+  // A frame's `border:` shorthand is the scroll area's edge, not a grid line.
+  const fixedGridLine = /^(?!\s*border:)[^;]*\b1px\b[^;]*var\(--(?:ar-spreadsheet|bf-method|cc-method|rs|bst|scon)-grid-border\)/u;
+  for (const path of sheets) {
+    const css = await read(path);
+    assert.deepEqual(css.split("\n").filter((line) => fixedGridLine.test(line)), [], path);
+  }
+});
+
 test("Reset all on a page clears what that page shows and keeps another page's own colours", () => {
   let prefs = setTableColor(null, "ratio", "font", "#2b6df6");
   prefs = setTableColor(prefs, "column-header", "fill", "#fdf8dc");

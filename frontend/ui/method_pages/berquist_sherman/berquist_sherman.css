@@ -460,7 +460,7 @@ input {
   color: var(--ar-spreadsheet-label-text);
   border-left: 0;
   border-right: 0;
-  box-shadow: 1px 0 0 var(--ar-spreadsheet-grid-border);
+  box-shadow: var(--ar-spreadsheet-grid-border-width) 0 0 var(--ar-spreadsheet-grid-border);
   background-clip: padding-box;
 }
 

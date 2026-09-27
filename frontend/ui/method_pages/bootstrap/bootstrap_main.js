@@ -88,7 +88,7 @@ import {
   runInputSnapshot,
   targetRows,
 } from "/ui/method_pages/bootstrap/bootstrap_page_model.js?v=20260924a";
-import { bootTableColors } from "/ui/shared/components/spreadsheet/table_colors.js?v=20260924b";
+import { bootTableColors } from "/ui/shared/components/spreadsheet/table_colors.js?v=20260927b";
 
 // The user's table colours, shared by every method page.
 bootTableColors();

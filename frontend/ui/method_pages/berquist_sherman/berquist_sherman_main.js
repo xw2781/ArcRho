@@ -64,7 +64,7 @@ import {
 } from "./berquist_sherman_user_values.js";
 import { createBerquistShermanLinksTab } from "./berquist_sherman_links_tab.js";
 import { createMethodGridSelection } from "/ui/shared/components/spreadsheet/method_grid_selection.js";
-import { bootTableColors } from "/ui/shared/components/spreadsheet/table_colors.js?v=20260924b";
+import { bootTableColors } from "/ui/shared/components/spreadsheet/table_colors.js?v=20260927b";
 
 // The user's table colours, shared by every method page.
 bootTableColors();

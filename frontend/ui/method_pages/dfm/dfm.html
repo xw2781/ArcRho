@@ -11,16 +11,16 @@
   <link rel="stylesheet" href="/ui/shared/tabs/notes/notes_tab.css?v=20260911a"/>
   <link rel="stylesheet" href="/ui/shared/tabs/links/links_tab.css?v=20260901b"/>
   <link rel="stylesheet" href="/ui/shared/styles/scrollbars.css?v=20260516a"/>
-  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260924a"/>
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/spreadsheet_table.css?v=20260927c"/>
   <link rel="stylesheet" href="/ui/shared/components/workspace/workspace.css?v=20260721a"/>
   <link rel="stylesheet" href="/ui/shared/components/pickers/picker_fields.css?v=20260820b"/>
   <link rel="stylesheet" href="/ui/shared/components/spreadsheet/numeric_stepper.css?v=20260715a"/>
   <link rel="stylesheet" href="/ui/shared/components/context_menu/context_menu.css?v=20260811b"/>
-  <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260830a"/>
+  <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260927a"/>
   <link rel="stylesheet" href="/ui/shared/components/formula_bar/formula_bar.css?v=20260919a"/>
   <link rel="stylesheet" href="/ui/shared/components/floating_window/window_resize.css?v=20260913a"/>
-  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260927smb19"/>
-  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/table_colors_window.css?v=20260924b"/>
+  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260927smb21"/>
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/table_colors_window.css?v=20260927b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260923c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260923c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/revolutionary.css?v=20260923c"/>
@@ -462,7 +462,7 @@
       // ui/shared/tabbed_page/initial_tab_paint.js.
       try {
         // The user's table colours are painted before the page is revealed.
-        (await import("/ui/shared/components/spreadsheet/table_colors.js?v=20260924b")).bootTableColors({ page: "dfm" });
+        (await import("/ui/shared/components/spreadsheet/table_colors.js?v=20260927b")).bootTableColors({ page: "dfm" });
         await import("/ui/method_pages/dfm/dfm_data_tab_adapter.js?v=20260926a");
         try {
           await window.ADA_DATASET_READY;

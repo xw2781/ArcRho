@@ -5,7 +5,8 @@ opened from the page's table context menus.
 
 One row per recolourable part of the tables: the page's own parts, then the
 parts every table shares. Each row has a preview cell, a Font and a Fill
-swatch, and a reset for that row. A swatch opens a picker inside the window
+swatch, and a reset for that row; the Cell Border row has a border colour
+swatch and a width choice in their place. A swatch opens a picker inside the window
 with the named colours, Default, the system colour dialog and a hex box. Every
 change is painted at once and saved; there is no OK step. The preview and
 swatches show what the tables show, read from stand-in cells built inside the
@@ -14,6 +15,7 @@ here.
 ===============================================================================
 */
 import {
+  TABLE_BORDER_WIDTHS,
   TABLE_COLOR_COMPONENTS,
   TABLE_COLOR_PRESETS,
   findTableColorPreset,
@@ -23,18 +25,18 @@ import {
   resetTableColorsFor,
   setTableColor,
   tableColorGroupsFor,
-} from "/ui/shared/components/spreadsheet/table_colors_model.js?v=20260924b";
+} from "/ui/shared/components/spreadsheet/table_colors_model.js?v=20260927b";
 import {
   getTableColors,
   getTableColorsPage,
   setTableColors,
   subscribeTableColors,
-} from "/ui/shared/components/spreadsheet/table_colors.js?v=20260924b";
+} from "/ui/shared/components/spreadsheet/table_colors.js?v=20260927b";
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260925a";
 
 const SAMPLE_VALUE = "1.052";
 const PRESET_COLUMNS = 12;
-const PROPERTY_LABELS = { font: "Font", fill: "Fill" };
+const PROPERTY_LABELS = { font: "Font", fill: "Fill", border: "Border", width: "Width" };
 const CLOSE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
 const RESET_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.5 8a4.5 4.5 0 1 0 1.4-3.3"/><path d="M3.2 2.6v2.6h2.6"/></svg>';
 
@@ -74,6 +76,7 @@ function buildProbeTable(probe) {
 
 /** Where a component's stand-in cell goes: its named host, or beside the page's first table. */
 function probeHost(probe) {
+  if (!probe) return null;
   if (probe.host) return document.getElementById(probe.host);
   return document.querySelector("table.arSpreadsheetTable")?.parentElement || document.body;
 }
@@ -88,17 +91,29 @@ function measureComponentLooks(components) {
   const holders = new Map();
   const probes = [];
   const rootStyle = getComputedStyle(document.documentElement);
+  // A colour variable read through an element, so one that names another
+  // variable arrives as the colour it resolves to.
+  const resolver = document.createElement("span");
+  resolver.hidden = true;
+  document.body.appendChild(resolver);
+  const resolveColor = (name) => {
+    if (!name) return "";
+    resolver.style.color = `var(${name})`;
+    return getComputedStyle(resolver).color;
+  };
   const bodySurface = getComputedStyle(document.body).backgroundColor;
   for (const component of components) {
     const host = probeHost(component.probe);
     if (!host) {
       // A part whose stand-in table is not on this page shows the shared
       // variables it sets.
-      const variable = (property) => rootStyle.getPropertyValue(component.variables?.[property] || "").trim();
+      const variable = (property) => resolveColor(component.variables?.[property]);
       if (component.variables) {
         looks.set(component.id, {
           font: variable("font"),
           fill: variable("fill"),
+          border: variable("border"),
+          width: rootStyle.getPropertyValue(component.variables.width || "").trim(),
           surface: bodySurface,
           fontStyle: "",
           fontWeight: "",
@@ -123,6 +138,8 @@ function measureComponentLooks(components) {
     looks.set(component.id, {
       font: style.color,
       fill: isTransparent(style.backgroundColor) ? "" : style.backgroundColor,
+      border: style.borderRightColor,
+      width: style.borderRightWidth,
       surface: effectiveSurface(host) || bodySurface,
       fontStyle: style.fontStyle,
       fontWeight: style.fontWeight,
@@ -131,7 +148,16 @@ function measureComponentLooks(components) {
     });
   }
   holders.forEach((holder) => holder.remove());
+  resolver.remove();
   return looks;
+}
+
+/** A computed `rgb()`/`rgba()` or hex colour as `#rrggbb`; "" when it is neither. */
+function colorToHex(color) {
+  const text = String(color || "").trim();
+  const rgb = text.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/u);
+  if (rgb) return `#${rgb.slice(1, 4).map((part) => Number(part).toString(16).padStart(2, "0")).join("")}`;
+  return normalizeTableColorHex(text).slice(0, 7);
 }
 
 function paintFill(element, look) {
@@ -153,9 +179,23 @@ function buildRow(component) {
   row.dataset.component = component.id;
   row.appendChild(element("span", "arTableColorsLabel", component.label));
   row.appendChild(element("span", "arTableColorsPreview", component.sample || SAMPLE_VALUE));
-  for (const property of ["font", "fill"]) {
+  const slots = component.properties.includes("border") ? ["border", "width"] : ["font", "fill"];
+  for (const property of slots) {
     if (!component.properties.includes(property)) {
       row.appendChild(element("span", "arTableColorsSwatchGap"));
+      continue;
+    }
+    if (property === "width") {
+      const select = element("select", "arTableColorsWidthSelect");
+      select.dataset.property = property;
+      select.setAttribute("aria-label", `${component.label} width`);
+      for (const width of TABLE_BORDER_WIDTHS) {
+        const option = element("option", "", `${width}px`);
+        option.value = String(width);
+        select.appendChild(option);
+      }
+      attachArcrhoTooltip(select, "Border width");
+      row.appendChild(select);
       continue;
     }
     const button = element("button", "arTableColorsSwatchBtn");
@@ -164,9 +204,10 @@ function buildRow(component) {
     button.setAttribute("aria-haspopup", "dialog");
     button.setAttribute("aria-expanded", "false");
     button.setAttribute("aria-label", `${component.label} ${PROPERTY_LABELS[property].toLowerCase()} color`);
+    if (property === "border") attachArcrhoTooltip(button, "Border color");
     button.appendChild(property === "font"
       ? element("span", "arTableColorsFontGlyph", "A")
-      : element("span", "arTableColorsFillChip"));
+      : element("span", property === "border" ? "arTableColorsBorderGlyph" : "arTableColorsFillChip"));
     row.appendChild(button);
   }
   const reset = element("button", "arTableColorsRowReset");
@@ -309,6 +350,7 @@ export function openTableColorsWindow() {
   const hexError = picker.querySelector(".arTableColorsHexError");
   let target = null; // { id, property, button } while the picker is open
   let hoveredPreset = null;
+  let looks = new Map(); // what each part shows now, from the last render
 
   function currentHex(id, property) {
     return getTableColors().components[id]?.[property] || "";
@@ -316,7 +358,7 @@ export function openTableColorsWindow() {
 
   function render() {
     const prefs = getTableColors();
-    const looks = measureComponentLooks(components);
+    looks = measureComponentLooks(components);
     win.querySelectorAll(".arTableColorsRow").forEach((row) => {
       const id = row.dataset.component;
       const look = looks.get(id);
@@ -332,9 +374,17 @@ export function openTableColorsWindow() {
         if (fontBtn) fontBtn.style.setProperty("--ar-table-colors-swatch", look.font);
         const fillChip = row.querySelector(".arTableColorsFillChip");
         if (fillChip) paintFill(fillChip, look);
+        const borderBtn = row.querySelector('.arTableColorsSwatchBtn[data-property="border"]');
+        if (borderBtn) {
+          borderBtn.style.setProperty("--ar-table-colors-swatch", look.border);
+          preview.style.borderColor = look.border;
+          preview.style.borderWidth = look.width;
+        }
+        const widthSelect = row.querySelector(".arTableColorsWidthSelect");
+        if (widthSelect) widthSelect.value = String(prefs.components[id]?.width || Number.parseInt(look.width, 10) || 1);
       }
       row.querySelector(".arTableColorsRowReset").disabled = !prefs.components[id];
-      row.querySelectorAll(".arTableColorsSwatchBtn").forEach((button) => {
+      row.querySelectorAll(".arTableColorsSwatchBtn, .arTableColorsWidthSelect").forEach((button) => {
         button.classList.toggle("isCustom", !!prefs.components[id]?.[button.dataset.property]);
       });
     });
@@ -354,7 +404,10 @@ export function openTableColorsWindow() {
     nameEl.textContent = shown
       ? `${shown.name}  ${shown.hex}`
       : (hex ? `Custom  ${hex}` : "Default");
-    nativeInput.value = (hex || "#000000").slice(0, 7);
+    // With no colour of its own the dialog opens on the one the tables show.
+    const look = looks.get(target.id);
+    const shownColor = target.property === "fill" ? (look?.fill || look?.surface) : look?.[target.property];
+    nativeInput.value = hex.slice(0, 7) || colorToHex(shownColor) || "#000000";
     if (document.activeElement !== hexInput) {
       hexInput.value = hex;
       hexError.hidden = true;
@@ -490,6 +543,13 @@ export function openTableColorsWindow() {
     event.preventDefault();
     const next = presets[index + step];
     if (next) focusPreset(next);
+  });
+
+  win.addEventListener("change", (event) => {
+    const select = event.target.closest(".arTableColorsWidthSelect");
+    if (!select) return;
+    const id = select.closest(".arTableColorsRow").dataset.component;
+    setTableColors(setTableColor(getTableColors(), id, "width", select.value));
   });
 
   nativeInput.addEventListener("input", () => apply(nativeInput.value));

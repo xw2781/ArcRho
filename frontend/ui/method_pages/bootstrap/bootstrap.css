@@ -472,8 +472,8 @@ table.bstTable {
   max-width: none;
   line-height: normal;
   padding: 0 8px;
-  border-right: 1px solid var(--bst-grid-border);
-  border-bottom: 1px solid var(--bst-grid-border);
+  border-right: var(--ar-spreadsheet-grid-border-width) solid var(--bst-grid-border);
+  border-bottom: var(--ar-spreadsheet-grid-border-width) solid var(--bst-grid-border);
   color: var(--ar-spreadsheet-cell-text);
   text-align: right;
   white-space: nowrap;
@@ -505,7 +505,7 @@ table.bstTable {
   font-weight: 700;
 }
 .bstTable td.bstDerivedCell { --bst-cell-fill: var(--bst-derived-cell); background: var(--bst-cell-fill); }
-.bstTable td.bstResultCell { --bst-cell-fill: var(--bst-result-cell); background: var(--bst-cell-fill); }
+.bstTable td.bstResultCell { --bst-cell-fill: var(--bst-result-cell); background: var(--bst-cell-fill); color: var(--ar-spreadsheet-result-text); }
 .bstTable tbody tr:hover td.bstDerivedCell:not([aria-selected="true"]) { background: #d2f1f1; }
 .bstTable td.bstInactiveCell { --bst-cell-fill: #f5f7fa; background: var(--bst-cell-fill); }
 .bstTable td.bstEntryCell {

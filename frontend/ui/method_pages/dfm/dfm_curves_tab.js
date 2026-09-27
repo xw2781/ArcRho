@@ -40,7 +40,7 @@ import {
   invalidatePersistedResultsDerivations,
 } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260914c";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
-import { openTableColorsWindow } from "/ui/shared/components/spreadsheet/table_colors.js?v=20260924b";
+import { openTableColorsWindow } from "/ui/shared/components/spreadsheet/table_colors.js?v=20260927b";
 
 const FIT_LABELS = Object.freeze({
   [FIT_OK]: "OK",

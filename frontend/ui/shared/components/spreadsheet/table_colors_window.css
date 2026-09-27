@@ -189,6 +189,42 @@
   border: 1px solid var(--ar-color-border-strong, #cbd5e1);
 }
 
+/* The Cell Border row: an outlined square in the grid line colour, and the
+   line width as a compact list in the Fill column. */
+.arTableColorsBorderGlyph {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 2px solid var(--ar-table-colors-swatch, currentColor);
+}
+
+.arTableColorsWidthSelect {
+  position: relative;
+  width: 30px;
+  height: 24px;
+  padding: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: var(--tabbed-page-control-radius, 4px);
+  background: var(--ar-color-input, #fff);
+  color: var(--ar-color-text, #1f2937);
+  font: inherit;
+  font-size: 11px;
+  text-align: center;
+  text-align-last: center;
+  appearance: none;
+  cursor: pointer;
+}
+
+.arTableColorsWidthSelect:hover {
+  border-color: var(--ar-color-border-focus, #93c5fd);
+  background: var(--ar-color-surface-hover, #e8eef6);
+}
+
+.arTableColorsWidthSelect.isCustom {
+  border-color: var(--ar-color-accent, #2b6df6);
+}
+
 .arTableColorsFooter {
   display: flex;
   flex: 0 0 auto;
@@ -222,6 +258,7 @@
 }
 
 .arTableColorsWindow button:focus-visible,
+.arTableColorsWindow select:focus-visible,
 .arTableColorsWindow input:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ar-color-border-focus, #93c5fd);
