@@ -1,10 +1,10 @@
 # Local Server Root and Server Switcher
 
-Status: Step 1 done 2026-09-26 — a private test server runs on the developer PC at `C:\Arco Server` beside production, with its own Gateway, credential and app profile, built from the working tree by `tools/local_server.py`. Steps 2-6 (server profiles, server identity, the switcher in the app, the active-server badge, the release) are planned and not started; offline use for every user is recorded as a direction with open decisions, not yet broken into steps.
+Status: Step 1 done 2026-09-26 — a private test server runs on the developer PC at `C:\Arco Server` beside production, with its own Gateway, credential and app profile, built from the working tree by `tools/local_server.py`. Steps 2-8 (server profiles, server identity, the Server tab opened from Home with its switcher and component monitor, starting and stopping a server on this PC, the active-server badge, the release) are planned and not started; the Server tab was added 2026-09-26 at the user's request; offline use for every user is recorded as a direction with open decisions, not yet broken into steps.
 Last updated: 2026-09-26
 Related: [client_smb_retirement.md](client_smb_retirement.md) (the first work tested this way), [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md)
 
-**How this ships.** Step 1 changed only tools, docs and two launch-time switches in the desktop host that do nothing unless a launch sets them; it reaches users with the next frontend release and needs no server deploy. Steps 2 and 4-5 are frontend-release changes. Step 3 adds a field to the Gateway's capability answer, an additive server deploy that must land before the frontend release that checks it.
+**How this ships.** Step 1 changed only tools, docs and two launch-time switches in the desktop host that do nothing unless a launch sets them; it reaches users with the next frontend release and needs no server deploy. Steps 2, 4, 5 and 8 are frontend-release changes. Steps 3 and 7 add a field to the Gateway's capability answer and a registered read kind, additive server deploys that must land before the frontend release that uses them.
 
 ## Progress
 
@@ -15,11 +15,13 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 1 | A private test server runs on the developer's PC beside production | [x] | 2026-09-26 | 90 min | not clocked | The developer can build, deploy and try server changes on their own PC; nobody else sees them. |
 | 2 | The app remembers more than one server, each with its own sign-in | [ ] | | 70 min | | |
 | 3 | The app refuses a server whose address and data folder do not belong together | [ ] | | 55 min | | |
-| 4 | Switch servers from Server Connection, shown by name and address | [ ] | | 80 min | | |
+| 4 | A Server tab opened from Home lists servers by name and address and switches between them | [ ] | | 90 min | | |
 | 5 | The window shows which server it is using whenever it is not production | [ ] | | 30 min | | |
 | 6 | Deploy the server side and ship the app | [ ] | | 30 min | | |
+| 7 | The Server tab shows which server components are running and how long since each was last heard from | [ ] | | 60 min | | |
+| 8 | A server on this PC can be started and stopped from the Server tab | [ ] | | 45 min | | |
 
-Overall: 1 of 6 steps done. Estimated 355 min; step 1 was not clocked.
+Overall: 1 of 8 steps done. Estimated 470 min; step 1 was not clocked. Order: 2, 3, 4, 7, 8, 5, then 6.
 
 ## How agents work this plan
 
@@ -76,9 +78,12 @@ Changing the root on the Server Connection page today is unsafe for anything but
 
 ## Open decisions
 
-1. **What the app shows as the server's identity.** Recommended: the profile name and its Gateway address, for example `Production — NE7SASWPN02:28767` and `Local test — 127.0.0.1:28767`, with the folder path in a details section. A custom `arco://` scheme reads well but is not a real address and cannot be pasted into a browser for a health check.
-2. **Switching restarts the app server, not the window.** Recommended, because it clears every per-process cache and the stale `arcrho_api` root in one step. The alternative, a live switch, needs every page to handle the change message, and two do not today.
+Decisions 1 and 2 were taken as recommended on 2026-09-26, when the user asked for the Server tab to be built; the steps below follow them. Decision 4 was added the same day.
+
+1. **What the app shows as the server's identity.** Taken as recommended: the profile name and its Gateway address, for example `Production — NE7SASWPN02:28767` and `Local test — 127.0.0.1:28767`, with the folder path in a details section. A custom `arco://` scheme reads well but is not a real address and cannot be pasted into a browser for a health check.
+2. **Switching restarts the app server, not the window.** Taken as recommended, because it clears every per-process cache and the stale `arcrho_api` root in one step. The alternative, a live switch, needs every page to handle the change message, and two do not today.
 3. **Offline use for every user** (not broken into steps yet). The installer already detects a local root and can start the Launcher at login; the missing pieces are shipping the Gateway and Credential in the server payload, seeding a loopback Gateway registry and enrolling the installing user, making the Bridge optional, and — the large one — moving projects between the user's PC and production. Recommended scope for a first version: **a local sandbox**. The user copies a project down and works on it freely, and nothing is pushed back. True offline editing with sync-back needs a conflict rule per file kind and is a separate plan.
+4. **May the Server tab stop and start production's components?** A kill switch on production stops that component for every user, and a Client PC cannot start a process on the Server PC. Recommended: the tab monitors every server, but offers start and stop only for a server whose folder is on this PC (step 8); production stays managed from Admin Control on the Server PC, and the tab says so. Steps 7 and 8 follow the recommendation; a later step can add production controls if the answer changes.
 
 ## Suggestions
 
@@ -91,7 +96,7 @@ Changing the root on the Server Connection page today is unsafe for anything but
 
 ## Rough size
 
-Estimated 355 minutes across 6 steps: 220 minutes of code edit and 135 of test, validation and deploy. Step 1 is done. Offline use for every user is not estimated until decision 3 is taken.
+Estimated 470 minutes across 8 steps: 295 minutes of code edit and 175 of test, validation and deploy. Step 1 is done. Offline use for every user is not estimated until decision 3 is taken.
 
 ## Plan
 
@@ -145,24 +150,24 @@ Estimate: code edit 50 min, test/validation 20 min, total 70 min.
 
 Estimate: code edit 35 min, test/validation 20 min, total 55 min.
 
-### Step 4 — The switcher on the Server Connection page
+### Step 4 — The Server tab, opened from Home
 
-**Goal.** The user picks a server by name and address, adds one by choosing its folder, and switching restarts the app server.
+**Goal.** A "Server" card on Home opens one Server tab. It lists the servers by name and address, marks the active one, adds one by choosing its folder, and switching restarts the app server. The Server Connection dialog stays for first-run setup and links to the tab.
 
-**Read first.** `frontend/ui/shell/root_path_settings.js`; the dialog in `frontend/ui/index.html`; `frontend/ui/shell/app_lifecycle.js` (restart and reload); skill `arcrho-ui-design`.
+**Read first.** [shell.md](../../frontend/docs/ui/shell.md) "Common Change Tasks" (the recipe for a new tab type); `frontend/ui/shell/home_view.js` (the fixed card groups and their click wiring); `frontend/ui/shell/tab_actions.js` (`openProjectSettingsTab`, the single-instance pattern, and `RESTORABLE_ACTIVITY_TYPES`); `frontend/ui/shell/iframe_host.js` `ensureIframe` (the `agent_guide` case is the simplest template); `frontend/ui/shell/root_path_settings.js`; `frontend/ui/shell/app_lifecycle.js` (restart); skill `arcrho-ui-design`.
 
 **Do.**
-- [ ] One row per profile: name, address, a health dot from `/api/health`, the active one marked.
-- [ ] Add server: pick the folder; the address fills in from the folder's Gateway registry; the name is editable.
-- [ ] A details section with the folder, credential file and user.
+- [ ] A `Server` card in Home's General group, `openServerTab()` in `tab_actions.js`, a `server` tab type in `iframe_host.js`, and a tab icon.
+- [ ] A new page `frontend/ui/server/server.html` (+ its script and styles) fetching the step 2 routes: one row per profile with name, address, a health dot from `/api/health` (probed by the app server, not the page), and the active one marked.
+- [ ] Add server: pick the folder; the address fills in from the folder's Gateway registry; the name is editable. A details section shows the folder, credential file and user.
 - [ ] Switching is blocked while any tab has unsaved changes; an env override shows the server as "set at launch" and read-only.
-- [ ] Bump the `?v=` stamps and the tests that pin them.
+- [ ] Update `shell.md` and bump the `?v=` stamps of every edited module.
 
-**Tests.** Node tests for the list, add and blocked switch.
+**Tests.** Node tests for the list, add and blocked switch; the new tab type opens once and is restorable.
 
-**Done when.** The developer switches between production and the local root from the app and back, and each side's saves land on its own server.
+**Done when.** The developer opens the Server tab from Home and switches between production and the local root and back, and each side's saves land on its own server.
 
-Estimate: code edit 55 min, test/validation 25 min, total 80 min.
+Estimate: code edit 60 min, test/validation 30 min, total 90 min.
 
 ### Step 5 — Active-server badge
 
@@ -182,12 +187,46 @@ Estimate: code edit 20 min, test/validation 10 min, total 30 min.
 
 ### Step 6 — Deploy and release
 
-**Goal.** Production's Gateway reports its identity, then the app that checks it ships.
+**Goal.** Production's Gateway reports its identity and serves component status (steps 3 and 7), then the app that uses them ships.
 
 **Do.**
 - [ ] Deploy to the local root and check; then `python server-components/deploy.py`.
-- [ ] Release fragment for the switcher and the badge; the frontend release follows the server deploy.
+- [ ] Release fragment for the Server tab and the badge; the frontend release follows the server deploy.
 
-**Done when.** Production's `/api/capabilities` carries `server_id` and the released app switches servers.
+**Done when.** Production's `/api/capabilities` carries `server_id` and lists `server_component_status`, and the released app switches servers.
 
 Estimate: code edit 5 min, test/validation 25 min, total 30 min.
+
+### Step 7 — Component status in the Server tab
+
+**Goal.** The Server tab shows the active server's components (Orchestrator, Engines, Gateway, Bridge and its workers, Admin Control): one row per running instance with its machine, user, when it was last heard from and whether that is stale, plus each role's stop switch. Fits after step 4 and before the step 6 deploy.
+
+**Read first.** `server-components/src/arcrho_admin/main.py` `list_instances`, `instance_sources`, `stale_after_seconds` (the rules this must match); `server-components/src/server_config.py` (the `apps.<role>.kill_all` switches); memory `adding-a-hosted-workspace-read`; `docs/plans/client_smb_retirement.md` (every new kind is `gateway_required=True`).
+
+**Do.**
+- [ ] One reader of `<root>\runtime\instances\arcrho_<role>\*.json` and the kill switches, in `python-api` so the Admin tool, the Gateway and the app server share it; Admin Control uses it too.
+- [ ] A `server_component_status` workspace read kind, `gateway_required=True`, and `GET /server/status`. For a server whose folder is on this PC the app server reads the disk directly, so the tab still reports when that server's Gateway is down; for any other server, a Gateway that does not answer shows as "Gateway not answering" and nothing is read over the share.
+- [ ] The tab refreshes the panel every few seconds while it is visible.
+
+**Tests.** Reader tests for active and stale rows and missing folders; transport tests (Gateway used for a remote server, the disk for a local one, never the share).
+
+**Done when.** The tab shows the local root's live Orchestrator, Engines and Gateway, and a stopped Engine turns stale within its role's threshold.
+
+Estimate: code edit 40 min, test/validation 20 min, total 60 min.
+
+### Step 8 — Start and stop a server on this PC
+
+**Goal.** For a server whose folder is on this PC, the Server tab starts it (launches its Orchestrator) and stops it (sets its kill switches and waits for the heartbeats to go). Production shows no controls and a line saying it is managed from Admin Control on the Server PC (decision 4).
+
+**Read first.** `tools/local_server.py` `start`, `stop`, `require_local_root`; step 7's reader.
+
+**Do.**
+- [ ] Move start, stop and the local-root check from `tools/local_server.py` into a module the app server can import, and keep the tool as a thin wrapper.
+- [ ] `POST /server/start` and `POST /server/stop`, refused unless the active server's folder is on a fixed disk of this PC.
+- [ ] Start and Stop buttons in the component panel, with a confirmation for Stop.
+
+**Tests.** The routes refuse a network or production folder; start and stop set and clear the switches in a temporary root.
+
+**Done when.** The developer stops and restarts the local root from the tab and the panel follows.
+
+Estimate: code edit 30 min, test/validation 15 min, total 45 min.
