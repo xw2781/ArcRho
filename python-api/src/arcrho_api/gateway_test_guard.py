@@ -103,6 +103,16 @@ def _refuse_unless_allowed(request: Request) -> Request:
     raise URLError(f"a test run never reaches a real Arco Gateway ({request.full_url} refused)")
 
 
+def refuse_unless_allowed_url(url: str) -> None:
+    """The same refusal for a Gateway client that cannot use :func:`gateway_opener`.
+
+    Sign-up runs its Windows handshake on one kept-open connection, which
+    ``urllib`` cannot do, so it checks its URL here before connecting.
+    """
+
+    _refuse_unless_allowed(Request(url))
+
+
 class _TestGatewayGuard(BaseHandler):
     http_request = https_request = staticmethod(_refuse_unless_allowed)
 

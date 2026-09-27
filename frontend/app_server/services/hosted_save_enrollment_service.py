@@ -9,29 +9,28 @@ from typing import Any
 from arcrho_api.hosted_save_enrollment import enroll_once
 
 from app_server import config
-from app_server.services import hosted_save_http_client, user_identity_service
+from app_server.services import hosted_save_http_client
 
 
 LOGGER = logging.getLogger(__name__)
 
 
 def auto_enroll_current_user() -> dict[str, Any]:
-    """Enroll once when the shared registry is configured and reachable.
+    """Sign up once when this app knows its server's Gateway address.
 
     The policy lives in ``arcrho_api.hosted_save_enrollment``, because the
     Excel add-in's credential helper installs a credential the same way. This
-    only says who is asking, where the two files are, and how this process
-    reaches the Gateway.
+    only says where the credential goes, which address to sign up at, and how
+    this process checks that the Gateway serves its server. The server's
+    registry is never read: the Gateway proves who is asking by Windows
+    sign-in and answers with that user's secret.
     """
 
     local_path = Path(config.get_gateway_config_path())
     result = enroll_once(
-        server_root=Path(config.get_root_path()),
+        gateway_url=config.get_gateway_url(),
         client_output=local_path,
-        user=user_identity_service.get_windows_login_name(),
-        probe=lambda client_url: hosted_save_http_client.probe_gateway(
-            {"url": client_url}
-        ),
+        probe=hosted_save_http_client.probe_gateway_identity,
     )
 
     if result["status"] == "unavailable":

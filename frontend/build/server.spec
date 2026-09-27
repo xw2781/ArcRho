@@ -61,6 +61,8 @@ a = Analysis(
         'watchdog',
         'watchdog.observers',
         'watchdog.events',
+        # Gateway sign-up's Windows handshake (arcrho_api.hosted_save_enrollment).
+        'sspi',
         'app_server',
         'app_server.main',
         'app',

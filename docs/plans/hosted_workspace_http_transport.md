@@ -375,6 +375,35 @@ Triggers that require changing this posture, in likely order:
 TLS is the first gate to lift before any of these triggers. Windows Integrated
 auth remains the answer to trigger 2, not a prerequisite for Excel.
 
+### Sign-up threat model (2026-09-27)
+
+A PC gets its credential from the Gateway's sign-up route, `POST /api/enroll`
+([client_smb_retirement.md](client_smb_retirement.md) step 20), instead of
+reading the shared registry. Every other request keeps the per-user HMAC above.
+
+- **What a client on the LAN can get:** its own secret, and only after a
+  Windows (Negotiate) handshake the Gateway completes through SSPI. The login is
+  read from the Windows token that handshake produced, never from a header or
+  the body. The first sign-up mints the secret; a later one returns the same
+  secret.
+- **What it cannot get:** another user's secret; any answer at all without a
+  finished handshake for a real user account (anonymous, Guest and other
+  built-in or group identities are refused); the secret by listening on the
+  wire or by relaying someone else's handshake, because the answer is sealed
+  with that handshake's session key and only the process that made it can open
+  it; unlimited attempts, because one address may start ten handshakes a minute
+  and a handshake must finish on one connection that sits idle no longer than
+  15 seconds.
+- **What remains:** the registry is keyed by login name without the domain, so
+  an account with the same login in a trusted domain, or a local account an
+  administrator creates on the Server PC, maps to the same secret. The client
+  names no service principal, so Windows uses NTLM; Kerberos would need an
+  `HTTP/<server>` name registered for the account the Gateway runs under. The
+  shared registry file itself stays readable to every client over the share
+  until the user narrows its folder's permissions (a later ops step): the
+  released app still reads it, so the Gateway keeps writing it. Revoking a user
+  is still deleting their entry from the registry on the server.
+
 ## Excel Add-in and Legacy Consumers
 
 **Superseded for the Excel add-in on 2026-09-12.** The decision below rested on

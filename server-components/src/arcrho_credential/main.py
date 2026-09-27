@@ -3,19 +3,19 @@
 The Excel add-in starts this helper the first time it finds no credential on
 the machine, so an Excel-only user is never set up by hand. The work itself is
 ``arcrho_api.hosted_save_enrollment.enroll_once``: this file only says which
-workspace to read, who is asking, and where the credential goes, then prints
-one line about what happened.
+Gateway to sign up at and where the credential goes, then prints one line
+about what happened.
 
-The workspace share is the authentication. The user's secret is added to the
-shared registry under that user's own Windows account, which is how the server
-knows who asked; the Gateway itself grows no enrollment route, because plain
-HTTP on the port could not tell one caller from another.
+Windows sign-in is the authentication. The Gateway's sign-up route proves who
+is asking with a Negotiate handshake and answers with that user's own secret;
+nothing is read from the server's folder. The add-in is tied to production, so
+the address is production's: ``--url``, else the address the desktop app keeps
+for its production server.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -26,7 +26,7 @@ API_SOURCE = REPOSITORY_ROOT / "python-api" / "src"
 if not getattr(sys, "frozen", False) and str(API_SOURCE) not in sys.path:
     sys.path.insert(0, str(API_SOURCE))
 
-from arcrho_api.config import config_dir  # noqa: E402
+from arcrho_api.config import DEFAULT_PROFILE_ID, config_dir, load_workspace_config  # noqa: E402
 from arcrho_api.hosted_save_enrollment import enroll_once  # noqa: E402
 from arcrho_hosted_save_http_contract import CLIENT_CONFIG_FILE_NAME  # noqa: E402
 
@@ -35,19 +35,25 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Install this Windows user's ArcRho Gateway credential."
     )
-    parser.add_argument(
-        "workspace_root",
-        help="The ArcRho Server workspace folder, reached over the share.",
-    )
+    # The add-in still passes the workspace folder; the helper no longer reads it.
+    parser.add_argument("workspace_root", nargs="?", help=argparse.SUPPRESS)
+    parser.add_argument("--url", help="The Gateway address to sign up at.")
     return parser
+
+
+def production_gateway_url() -> str:
+    """The address the desktop app keeps for its production server, or ``""``."""
+
+    profiles = load_workspace_config()["profiles"]
+    production = next((p for p in profiles if p["id"] == DEFAULT_PROFILE_ID), {})
+    return production.get("gateway_url", "")
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     result = enroll_once(
-        server_root=Path(args.workspace_root).expanduser(),
+        gateway_url=args.url or production_gateway_url(),
         client_output=config_dir() / CLIENT_CONFIG_FILE_NAME,
-        user=os.environ.get("USERNAME", ""),
     )
     status = result["status"]
     if status == "enrolled":
@@ -57,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ArcRho credential already present: {result['path']}")
         return 0
     if status == "not_configured":
-        print("ArcRho Server has no Gateway address for clients to use.")
+        print("No Gateway address is known; open Arco once to set the server, or pass --url.")
         return 1
     print(f"ArcRho credential not installed: {result['reason']}")
     return 1

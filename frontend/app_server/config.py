@@ -129,6 +129,12 @@ def get_gateway_config_path() -> str:
     return str(api_config.gateway_config_path(Path(WORKSPACE_PATHS_PATH)))
 
 
+def get_gateway_url() -> str:
+    """The Gateway address this app signs up at: the launch override, then the active profile's."""
+
+    return api_config.gateway_url(Path(WORKSPACE_PATHS_PATH))
+
+
 def load_gateway_config() -> Dict[str, Any]:
     """Load the optional dataset-save HTTP transport configuration.
 
@@ -179,13 +185,17 @@ def load_workspace_paths() -> Dict[str, Any]:
     workspace_root = (
         api_config.env_server_root() or cfg["workspace_root"] or DEFAULT_WORKSPACE_ROOT
     )
-    return {"workspace_root": workspace_root, "paths": cfg["paths"]}
+    return {
+        "workspace_root": workspace_root,
+        "paths": cfg["paths"],
+        "gateway_url": api_config.active_server_profile(cfg).get("gateway_url", ""),
+    }
 
 
 def save_workspace_paths(cfg: Dict[str, Any]) -> None:
     """Point the active server profile at ``cfg``'s root and paths."""
     api_config.save_workspace_root(
-        cfg["workspace_root"], cfg.get("paths"), Path(WORKSPACE_PATHS_PATH)
+        cfg["workspace_root"], cfg.get("paths"), Path(WORKSPACE_PATHS_PATH), gateway_url=cfg.get("gateway_url"),
     )
 
 

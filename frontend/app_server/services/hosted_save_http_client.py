@@ -109,9 +109,14 @@ def probe_gateway_health(url: str) -> None:
             raise ValueError("Gateway health check did not report ok.")
 
 
-def probe_gateway(gateway_config: Mapping[str, Any]) -> dict[str, Any]:
-    url = f"{gateway_config['url']}{CAPABILITIES_PATH}"
-    request = Request(url, method="GET", headers={"Accept": "application/json"})
+def probe_gateway_identity(url: str) -> dict[str, Any]:
+    """The Gateway's capabilities, refused unless it serves this app's server.
+
+    Sign-up probes with this: it needs the same server check as every other
+    use, but not a Gateway that already has users.
+    """
+
+    request = Request(f"{url}{CAPABILITIES_PATH}", method="GET", headers={"Accept": "application/json"})
     try:
         with _DIRECT_HTTP_OPENER.open(
             request, timeout=GATEWAY_HEALTH_TIMEOUT_SECONDS
@@ -122,9 +127,14 @@ def probe_gateway(gateway_config: Mapping[str, Any]) -> dict[str, Any]:
             503,
             "Arco Gateway is unavailable. The dataset remains unsaved.",
         ) from exc
+    require_same_server(payload)
+    return payload
+
+
+def probe_gateway(gateway_config: Mapping[str, Any]) -> dict[str, Any]:
+    payload = probe_gateway_identity(gateway_config["url"])
     if payload.get("hosted_save_http") is not True:
         raise HTTPException(503, "Arco Gateway is not ready for dataset saves.")
-    require_same_server(payload)
     return payload
 
 

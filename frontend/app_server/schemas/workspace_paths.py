@@ -13,6 +13,7 @@ class WorkspacePaths(BaseModel):
 class WorkspacePathsUpdateRequest(BaseModel):
     workspace_root: str
     paths: Optional[WorkspacePaths] = None
+    gateway_url: Optional[str] = None
 
 
 class ServerProfileSaveRequest(BaseModel):
@@ -20,6 +21,7 @@ class ServerProfileSaveRequest(BaseModel):
     root: str
     id: Optional[str] = None
     gateway_config: Optional[str] = None
+    gateway_url: Optional[str] = None
 
 
 class ServerProfileActivateRequest(BaseModel):

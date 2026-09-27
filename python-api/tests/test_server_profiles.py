@@ -34,6 +34,7 @@ class ServerProfileTests(unittest.TestCase):
             api_config.SERVER_ROOT_ENV: "",
             api_config.RUNTIME_SERVER_ROOT_ENV: "",
             api_config.GATEWAY_CONFIG_ENV: "",
+            api_config.GATEWAY_URL_ENV: "",
         })
         env.start()
         self.addCleanup(env.stop)
@@ -81,6 +82,22 @@ class ServerProfileTests(unittest.TestCase):
         self.assertEqual(on_disk["paths"], {"projects_dir": "projects", "requests_dir": "requests"})
         api_config.activate_server_profile("other")
         self.assertEqual(api_config.gateway_config_path(), self.local / "other.json")
+
+    def test_each_profile_keeps_the_address_it_signs_up_at(self) -> None:
+        self._write_legacy_file()
+        api_config.upsert_server_profile(
+            name="Local test", root=str(self.local), profile_id="local", gateway_url="http://127.0.0.1:28767/",
+        )
+        self.assertEqual(api_config.gateway_url(), "")
+
+        api_config.save_workspace_root(str(self.production), gateway_url="http://production:28767")
+        self.assertEqual(api_config.gateway_url(), "http://production:28767")
+        api_config.activate_server_profile("local")
+        self.assertEqual(api_config.gateway_url(), "http://127.0.0.1:28767")
+        with patch.dict(os.environ, {api_config.GATEWAY_URL_ENV: "http://launch:28767/"}):
+            self.assertEqual(api_config.gateway_url(), "http://launch:28767")
+        with self.assertRaises(ValueError):
+            api_config.save_workspace_root(str(self.local), gateway_url="local-test")
 
     def test_launch_overrides_win_over_the_active_profile(self) -> None:
         self._write_legacy_file()

@@ -14,12 +14,11 @@ import {
   isSetAtLaunch,
   serverActionMessage,
   serverActionOutcome,
-  serverAddress,
   serverControlView,
   serverLabel,
   shouldRefreshComponents,
   switchResultMessage,
-} from "./server_model.js?v=20260926d";
+} from "./server_model.js?v=20260927a";
 
 const $ = (id) => document.getElementById(id);
 const hostApi = () => window.ADAHost || window.parent?.ADAHost || null;
@@ -331,7 +330,6 @@ function closeAddForm() {
   form.reset();
   state.inspectedRoot = "";
   state.autoName = "";
-  $("svAddAddress").textContent = "Choose a folder to read its address.";
 }
 
 async function inspectFolder() {
@@ -339,14 +337,11 @@ async function inspectFolder() {
   const seq = ++state.inspectSeq;
   state.inspectedRoot = "";
   if (!folder) return;
-  const address = $("svAddAddress");
-  address.textContent = "Reading the folder...";
   try {
     const response = await fetch(`/server_profiles/inspect?root=${encodeURIComponent(folder)}`, { cache: "no-store" });
     const data = await readJson(response);
     if (seq !== state.inspectSeq) return;
     state.inspectedRoot = data.root;
-    address.textContent = serverAddress(data.gateway_url) || "Not found in this folder's Gateway settings.";
     const nameInput = $("svAddName");
     if (!nameInput.value.trim() || nameInput.value === state.autoName) {
       nameInput.value = data.name || "";
@@ -355,7 +350,6 @@ async function inspectFolder() {
     setMessage("");
   } catch (error) {
     if (seq !== state.inspectSeq) return;
-    address.textContent = "Not a server folder.";
     setMessage(String(error?.message || error), "error");
   }
 }
@@ -377,7 +371,8 @@ async function saveServer(event) {
   event.preventDefault();
   if ($("svAddFolder").value.trim() && !state.inspectedRoot) await inspectFolder();
   const name = $("svAddName").value.trim();
-  const problem = addServerProblem(state.listing, { name, inspectedRoot: state.inspectedRoot });
+  const address = $("svAddAddress").value.trim();
+  const problem = addServerProblem(state.listing, { name, inspectedRoot: state.inspectedRoot, address });
   if (problem) {
     setMessage(problem, "error");
     return;
@@ -388,7 +383,7 @@ async function saveServer(event) {
     const response = await fetch("/server_profiles", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, root: state.inspectedRoot }),
+      body: JSON.stringify({ name, root: state.inspectedRoot, gateway_url: address }),
     });
     state.listing = await readJson(response);
     closeAddForm();

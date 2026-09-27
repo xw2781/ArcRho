@@ -149,6 +149,8 @@ def init_root(
         if gateway["host"] != LOCAL_GATEWAY_HOST:
             notes.append(f"WARNING: the Gateway registry binds {gateway['host']}, not {LOCAL_GATEWAY_HOST}")
 
+    # This PC is the local root's server machine, so the registry is local
+    # disk; a Client PC signs up through the Gateway instead.
     provision_gateway_user(
         server_root=root,
         user=user,
@@ -227,6 +229,7 @@ def launch_app(root: Path, credential_path: Path) -> None:
     env = child_env(
         ARCRHO_SERVER_ROOT=str(root),
         ARCRHO_GATEWAY_CONFIG=str(credential_path),
+        ARCRHO_GATEWAY_URL=LOCAL_GATEWAY_URL,
         ARCRHO_USER_DATA_DIR=str(_appdata() / LOCAL_USER_DATA_NAME),
         ARCRHO_PORT=str(LOCAL_APP_PORT),
     )

@@ -167,11 +167,15 @@ test("the shell reads the server once, shows the badge, and opens the Server tab
   assert.match(uiShell, /void initServerBadge\(\);/u);
 });
 
-test("adding a server needs a checked folder and a name no saved server uses", () => {
-  assert.match(model.addServerProblem(LISTING, { name: "Test", inspectedRoot: "" }), /folder/u);
-  assert.match(model.addServerProblem(LISTING, { name: " ", inspectedRoot: "C:\\X" }), /name/u);
-  assert.match(model.addServerProblem(LISTING, { name: "local TEST", inspectedRoot: "C:\\X" }), /already/u);
-  assert.equal(model.addServerProblem(LISTING, { name: "Staging", inspectedRoot: "C:\\X" }), "");
+test("adding a server needs a checked folder, a name no saved server uses, and its address", () => {
+  const address = "http://staging:28767";
+  assert.match(model.addServerProblem(LISTING, { name: "Test", inspectedRoot: "", address }), /folder/u);
+  assert.match(model.addServerProblem(LISTING, { name: " ", inspectedRoot: "C:\\X", address }), /name/u);
+  assert.match(model.addServerProblem(LISTING, { name: "local TEST", inspectedRoot: "C:\\X", address }), /already/u);
+  // The address is typed; the folder's own Gateway registry is server-only and never read.
+  assert.match(model.addServerProblem(LISTING, { name: "Staging", inspectedRoot: "C:\\X", address: "" }), /address/u);
+  assert.match(model.addServerProblem(LISTING, { name: "Staging", inspectedRoot: "C:\\X", address: "staging:28767" }), /address/u);
+  assert.equal(model.addServerProblem(LISTING, { name: "Staging", inspectedRoot: "C:\\X", address }), "");
 });
 
 test("the page explains a blocked, failed or accepted switch", () => {
@@ -302,6 +306,9 @@ test("Home, the tab host, the icons and the Server Connection dialog all reach t
   assert.match(cardIcons, /server: "server"/u);
   assert.match(index, /id="rootPathServerTabBtn"/u);
   assert.match(dialog, /rootPathServerTabBtn[\s\S]*shell\.openServerTab\?\.\(\)/u);
+  // First run asks for the server's address, and the save carries it.
+  assert.match(index, /id="rootPathGatewayInput"/u);
+  assert.match(dialog, /gateway_url: \(\$\("rootPathGatewayInput"\)/u);
   // The page asks the app server for health; it never calls a Gateway itself.
   assert.match(page, /\/server_profiles\/health/u);
   assert.doesNotMatch(page, /\/api\/health/u);

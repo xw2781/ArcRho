@@ -34,6 +34,18 @@ HOSTED_SAVE_PROGRESS_PATH = "/api/hosted-save-progress"
 MAX_PROGRESS_REQUEST_BYTES = 4 * 1024
 CAPABILITIES_PATH = "/api/capabilities"
 HEALTH_PATH = "/api/health"
+# Sign-up: a caller proves who it is with a Windows (Negotiate) handshake and
+# receives only its own secret, sealed with that handshake's session key. The
+# capability flag tells a client whether this Gateway offers it.
+ENROLLMENT_PATH = "/api/enroll"
+ENROLLMENT_CAPABILITY = "windows_enrollment"
+NEGOTIATE_SCHEME = "Negotiate"
+# At most this many handshakes may start from one address per window; the
+# handshake itself must finish on one connection that sits idle no longer
+# than the idle limit.
+ENROLLMENT_ATTEMPTS_PER_WINDOW = 10
+ENROLLMENT_WINDOW_SECONDS = 60
+ENROLLMENT_IDLE_SECONDS = 15
 DEFAULT_GATEWAY_HOST = "0.0.0.0"
 DEFAULT_GATEWAY_PORT = 28767
 DEFAULT_RECEIPT_RETENTION_HOURS = 24
@@ -220,6 +232,19 @@ def normalize_gateway_client_url(value: Any, *, allow_empty: bool = False) -> st
             "Gateway client URL must use HTTP or HTTPS."
         )
     return url
+
+
+def client_credential(url: str, user: str, secret: str) -> dict[str, Any]:
+    """The machine-local credential file one user keeps for one Gateway."""
+
+    return {
+        "config_version": 1,
+        "enabled": True,
+        "url": url,
+        "user": user,
+        "secret": secret,
+        "allow_insecure_http": url.lower().startswith("http://"),
+    }
 
 
 def normalize_client_config(value: Any) -> dict[str, Any]:

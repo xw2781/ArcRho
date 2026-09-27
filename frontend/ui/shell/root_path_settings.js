@@ -45,9 +45,17 @@ async function scanInitialServerPath(input) {
   }
 }
 
+// What the dialog says after a save when this PC could not sign up to the server.
+function enrollmentProblem(enrollment) {
+  if (enrollment?.status === "not_configured") return "Enter the server address so this PC can sign in to the server.";
+  if (enrollment?.status === "unavailable") return `Could not sign in to the server: ${enrollment.reason || "no answer"}`;
+  return "";
+}
+
 export async function openRootPathSettingsModal() {
   const overlay = $("rootPathSettingsOverlay");
   const input = $("rootPathInput");
+  const gatewayInput = $("rootPathGatewayInput");
   if (!overlay || !input) return;
   setRootPathSetupMessage("");
 
@@ -57,6 +65,7 @@ export async function openRootPathSettingsModal() {
     if (res.ok) {
       const data = await res.json();
       input.value = data.config?.workspace_root || DEFAULT_ROOT_PATH;
+      if (gatewayInput) gatewayInput.value = data.config?.gateway_url || "";
       configExists = data.config_exists !== false;
     } else {
       input.value = DEFAULT_ROOT_PATH;
@@ -118,12 +127,17 @@ export function initRootPathSettingsModal() {
       const res = await fetch("/workspace_paths", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace_root: newPath })
+        body: JSON.stringify({ workspace_root: newPath, gateway_url: ($("rootPathGatewayInput")?.value || "").trim() })
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
-        closeRootPathSettingsModal();
         notifyServerConnectionUpdated(data.config || { workspace_root: newPath });
+        const problem = enrollmentProblem(data.enrollment);
+        if (problem) {
+          setRootPathSetupMessage(problem, true);
+          return;
+        }
+        closeRootPathSettingsModal();
         shell.updateStatusBar?.("Server connection updated.");
       } else {
         const detail = await res.text().catch(() => "");

@@ -23,6 +23,7 @@ from pathlib import Path
 from arcrho_api.config import (
     DEFAULT_WORKSPACE_ROOT,
     GATEWAY_CONFIG_ENV,
+    GATEWAY_URL_ENV,
     SERVER_CONFIG_RELATIVE_PATH,
     SERVER_ROOT_ENV_VARS,
 )
@@ -43,6 +44,7 @@ ORCHESTRATOR_APP_NAME = "ArcRho Orchestrator"
 ROOT_ENV_VARS = (
     *SERVER_ROOT_ENV_VARS,
     GATEWAY_CONFIG_ENV,
+    GATEWAY_URL_ENV,
     "ARCRHO_ROOT",
     "ADAS_ROOT",
     "ARCRHO_DEPLOY_ROOT",

@@ -16,7 +16,6 @@ from fastapi import HTTPException
 
 from arcrho_api import config as api_config
 from arcrho_api.exceptions import InvalidArcRhoServerError
-from arcrho_api.hosted_save_enrollment import load_server_gateway_config
 from arcrho_hosted_save_http_contract import HostedSaveHttpContractError
 from arcrho_server_component_status import is_on_local_fixed_disk
 import arcrho_server_control as server_control
@@ -29,8 +28,6 @@ from app_server.services import (
     workspace_read_client,
 )
 
-# A registry bound to every interface names no address a client can dial.
-WILDCARD_HOSTS = {"0.0.0.0", "::", ""}
 COMPONENT_STATUS_READ_KIND = "server_component_status"
 GATEWAY_NOT_ANSWERING = "Gateway not answering."
 GATEWAY_NEEDS_UPDATE = "The Gateway is answering but cannot report components until it is updated."
@@ -40,6 +37,7 @@ def _launch_overrides() -> Dict[str, str]:
     return {
         "root": api_config.env_server_root(),
         "gateway_config": api_config.env_gateway_config_path(),
+        "gateway_url": api_config.env_gateway_url(),
     }
 
 
@@ -51,35 +49,15 @@ def _read_credential(path: Path) -> Dict[str, str]:
         return {"url": "", "user": ""}
 
 
-def registry_gateway_url(root: str) -> str:
-    """The Gateway address a server folder's registry gives its clients, or ``""``.
-
-    ``client_url`` is what enrollment writes into a credential; a registry that
-    names a real host without one is reached at that host and port.
-    The file is read from the folder, over the share for a remote server,
-    because it is how a client learns an address before it can ask a Gateway
-    anything; enrollment makes the same read.
-    """
-
-    try:
-        gateway = load_server_gateway_config(root)
-    except (OSError, ValueError):
-        return ""
-    if gateway["client_url"]:
-        return gateway["client_url"]
-    if gateway["host"] in WILDCARD_HOSTS:
-        return ""
-    return f"http://{gateway['host']}:{gateway['port']}"
-
-
-def _server_entry(root: str, credential: Path) -> Dict[str, Any]:
+def _server_entry(root: str, credential: Path, gateway_url: str) -> Dict[str, Any]:
     sign_in = _read_credential(credential)
     return {
         "root": root,
         "gateway_config": str(credential),
-        # Before the first switch there is no credential yet; the folder's
-        # registry names the address the switch will enroll against.
-        "gateway_url": sign_in["url"] or registry_gateway_url(root),
+        # Before the first sign-up there is no credential yet; the profile's
+        # address is where the switch will sign up. The server's own registry
+        # is never read from here.
+        "gateway_url": sign_in["url"] or gateway_url,
         "user": sign_in["user"],
         "credential_exists": credential.is_file(),
     }
@@ -101,7 +79,9 @@ def list_server_profiles() -> Dict[str, Any]:
         profiles.append({
             "id": profile["id"],
             "name": profile["name"],
-            **_server_entry(profile["root"] or config.DEFAULT_WORKSPACE_ROOT, credential),
+            **_server_entry(
+                profile["root"] or config.DEFAULT_WORKSPACE_ROOT, credential, profile.get("gateway_url", "")
+            ),
             "active": profile["id"] == cfg["active_profile"],
         })
     return {
@@ -109,7 +89,9 @@ def list_server_profiles() -> Dict[str, Any]:
         "active_profile": cfg["active_profile"],
         "default_profile": api_config.DEFAULT_PROFILE_ID,
         "profiles": profiles,
-        "current": _server_entry(config.get_root_path(), Path(config.get_gateway_config_path())),
+        "current": _server_entry(
+            config.get_root_path(), Path(config.get_gateway_config_path()), config.get_gateway_url()
+        ),
         "set_at_launch": _launch_overrides(),
         "config_exists": config.workspace_paths_file_exists(),
     }
@@ -136,7 +118,11 @@ def server_health(profile_id: str = "") -> Dict[str, Any]:
 
 
 def inspect_server_folder(root: str) -> Dict[str, Any]:
-    """What adding ``root`` as a server would record: its folder, a name, and its address."""
+    """What adding ``root`` as a server would record: its folder and a name.
+
+    The address is typed by the person adding the server; the folder's
+    Gateway registry is server-only and never read here.
+    """
 
     try:
         folder = api_config.validate_server_root(root.strip())
@@ -146,7 +132,6 @@ def inspect_server_folder(root: str) -> Dict[str, Any]:
         "ok": True,
         "root": str(folder),
         "name": folder.name or str(folder),
-        "gateway_url": registry_gateway_url(str(folder)),
     }
 
 
@@ -175,9 +160,12 @@ def _change_profiles(change) -> Dict[str, Any]:
     return {**list_server_profiles(), "restart_required": restart_required, "enrollment": enrollment}
 
 
-def save_server_profile(*, name: str, root: str, profile_id: str = "", gateway_config: str = "") -> Dict[str, Any]:
+def save_server_profile(
+    *, name: str, root: str, profile_id: str = "", gateway_config: str = "", gateway_url: str = "",
+) -> Dict[str, Any]:
     return _change_profiles(lambda path: api_config.upsert_server_profile(
-        name=name, root=root, profile_id=profile_id, gateway_config=gateway_config, path=path,
+        name=name, root=root, profile_id=profile_id, gateway_config=gateway_config,
+        gateway_url=gateway_url, path=path,
     ))
 
 

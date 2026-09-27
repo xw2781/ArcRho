@@ -23,7 +23,7 @@ def _with_path_overrides(cfg: Dict[str, Any], req: WorkspacePathsUpdateRequest) 
     paths = dict(cfg.get("paths") or {})
     if req.paths:
         paths.update(req.paths.dict(exclude_none=True))
-    return {"workspace_root": workspace_root, "paths": paths}
+    return {"workspace_root": workspace_root, "paths": paths, "gateway_url": req.gateway_url}
 
 
 def _persist_workspace_paths(cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -53,7 +53,7 @@ def get_workspace_paths() -> Dict[str, Any]:
 def update_workspace_paths(req: WorkspacePathsUpdateRequest) -> Dict[str, Any]:
     cfg = _with_path_overrides(config.load_workspace_paths(), req)
     response = _persist_workspace_paths(cfg)
-    hosted_save_enrollment_service.auto_enroll_current_user()
+    response["enrollment"] = hosted_save_enrollment_service.auto_enroll_current_user()
     return response
 
 
@@ -94,6 +94,7 @@ def save_server_profile(req: ServerProfileSaveRequest) -> Dict[str, Any]:
         root=req.root,
         profile_id=req.id or "",
         gateway_config=req.gateway_config or "",
+        gateway_url=req.gateway_url or "",
     )
 
 

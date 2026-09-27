@@ -20,11 +20,12 @@ for path in (FRONTEND_ROOT, REPOSITORY_ROOT / "python-api" / "src"):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from arcrho_hosted_save_http_contract import default_gateway_config  # noqa: E402
+from arcrho_api import hosted_save_enrollment  # noqa: E402
 from app_server import config  # noqa: E402
 from app_server.schemas.workspace_paths import (  # noqa: E402
     ServerProfileActivateRequest,
     ServerProfileSaveRequest,
+    WorkspacePathsUpdateRequest,
 )
 from app_server.services import hosted_save_enrollment_service, server_profile_service  # noqa: E402
 
@@ -49,26 +50,38 @@ class ServerProfileRouteTests(unittest.TestCase):
         for root in (self.production, self.local):
             (root / "projects").mkdir(parents=True)
             (root / "config").mkdir()
-        registry = default_gateway_config()
-        registry["client_url"] = "http://127.0.0.1:28767"
-        (self.local / "config" / "arcrho_gateway.json").write_text(json.dumps(registry), encoding="utf-8")
         self.config_path.write_text(json.dumps({"workspace_root": str(self.production)}), encoding="utf-8")
         (self.settings / "arcrho_gateway.json").write_text(
             json.dumps({"url": "http://production:28767"}), encoding="utf-8"
         )
         for patcher in (
             patch.object(config, "WORKSPACE_PATHS_PATH", str(self.config_path)),
-            patch.dict(os.environ, {"ARCRHO_SERVER_ROOT": "", "ARCRHO_RUNTIME_SERVER_ROOT": "", "ARCRHO_GATEWAY_CONFIG": ""}),
-            patch.object(hosted_save_enrollment_service.user_identity_service, "get_windows_login_name", return_value="Alice"),
-            patch.object(hosted_save_enrollment_service.hosted_save_http_client, "probe_gateway", return_value={}),
+            patch.dict(os.environ, {
+                "ARCRHO_SERVER_ROOT": "", "ARCRHO_RUNTIME_SERVER_ROOT": "", "ARCRHO_GATEWAY_CONFIG": "",
+                "ARCRHO_GATEWAY_URL": "",
+            }),
+            patch.object(
+                hosted_save_enrollment_service.hosted_save_http_client,
+                "probe_gateway_identity",
+                side_effect=lambda url: self.probed.append(url) or {"windows_enrollment": True},
+            ),
+            # The Gateway proves who is asking by Windows sign-in; here it answers for Alice.
+            patch.object(
+                hosted_save_enrollment,
+                "request_windows_enrollment",
+                return_value={"user": "alice", "secret": "local-secret"},
+            ),
         ):
             patcher.start()
             self.addCleanup(patcher.stop)
         self.addCleanup(self.temp.cleanup)
+        self.probed: list[str] = []
 
     def _add_local(self):
         return router.save_server_profile(
-            ServerProfileSaveRequest(name="Local test", root=str(self.local), id="local")
+            ServerProfileSaveRequest(
+                name="Local test", root=str(self.local), id="local", gateway_url="http://127.0.0.1:28767/"
+            )
         )
 
     def test_listing_a_file_without_profiles_writes_nothing(self) -> None:
@@ -83,7 +96,7 @@ class ServerProfileRouteTests(unittest.TestCase):
         self.assertEqual(profile["root"], str(self.production))
         self.assertEqual(profile["gateway_url"], "http://production:28767")
         self.assertTrue(profile["credential_exists"])
-        self.assertEqual(listing["set_at_launch"], {"root": "", "gateway_config": ""})
+        self.assertEqual(listing["set_at_launch"], {"root": "", "gateway_config": "", "gateway_url": ""})
         self.assertEqual(self.config_path.read_bytes(), before)
 
     def test_adding_a_server_keeps_the_active_one(self) -> None:
@@ -96,17 +109,19 @@ class ServerProfileRouteTests(unittest.TestCase):
         self.assertFalse(local["credential_exists"])
         self.assertEqual(config.get_root_path(), str(self.production))
 
-    def test_activating_a_server_enrolls_against_its_own_gateway_and_asks_for_restart(self) -> None:
+    def test_activating_a_server_signs_up_at_its_own_address_and_asks_for_restart(self) -> None:
         self._add_local()
 
         result = router.activate_server_profile(ServerProfileActivateRequest(id="local"))
 
         self.assertTrue(result["restart_required"])
         self.assertEqual(result["enrollment"]["status"], "enrolled")
+        self.assertEqual(self.probed, ["http://127.0.0.1:28767"])
         credential = json.loads((self.settings / "arcrho_gateway.local.json").read_text(encoding="utf-8"))
         self.assertEqual(credential["url"], "http://127.0.0.1:28767")
-        registry = json.loads((self.local / "config" / "arcrho_gateway.json").read_text(encoding="utf-8"))
-        self.assertEqual(registry["users"]["alice"], credential["secret"])
+        self.assertEqual((credential["user"], credential["secret"]), ("alice", "local-secret"))
+        # The server's registry is server-only: the client neither reads nor writes it.
+        self.assertFalse((self.local / "config" / "arcrho_gateway.json").exists())
         self.assertEqual(config.get_root_path(), str(self.local))
         self.assertEqual(config.get_gateway_config_path(), str(self.settings / "arcrho_gateway.local.json"))
         self.assertEqual(json.loads(self.config_path.read_text(encoding="utf-8"))["workspace_root"], str(self.local))
@@ -129,7 +144,7 @@ class ServerProfileRouteTests(unittest.TestCase):
         self.assertEqual(caught.exception.status_code, 409)
         self.assertEqual(self.config_path.read_bytes(), before)
 
-    def test_a_server_without_a_credential_shows_its_registry_address(self) -> None:
+    def test_a_server_without_a_credential_shows_its_profile_address(self) -> None:
         self._add_local()
 
         listing = router.get_server_profiles()
@@ -184,21 +199,35 @@ class ServerProfileRouteTests(unittest.TestCase):
 
         self.assertEqual(opened, [("http://127.0.0.1:28767/api/health", client.GATEWAY_HEALTH_TIMEOUT_SECONDS)])
 
-    def test_inspecting_a_folder_reads_its_registry_address(self) -> None:
+    def test_inspecting_a_folder_names_it_without_reading_its_registry(self) -> None:
         found = router.inspect_server_folder(root=str(self.local))
 
-        self.assertEqual(found["root"], str(self.local.resolve()))
-        self.assertEqual(found["name"], "local")
-        self.assertEqual(found["gateway_url"], "http://127.0.0.1:28767")
-
-        registry = default_gateway_config()
-        registry["host"] = "SERVERPC"
-        (self.production / "config" / "arcrho_gateway.json").write_text(json.dumps(registry), encoding="utf-8")
-        self.assertEqual(router.inspect_server_folder(root=str(self.production))["gateway_url"], "http://SERVERPC:28767")
+        self.assertEqual(found, {"ok": True, "root": str(self.local.resolve()), "name": "local"})
 
         with self.assertRaises(HTTPException) as caught:
             router.inspect_server_folder(root=str(self.settings))
         self.assertEqual(caught.exception.status_code, 400)
+
+    def test_the_server_connection_save_keeps_the_address_and_reports_the_sign_up(self) -> None:
+        (self.settings / "arcrho_gateway.json").unlink()
+
+        saved = router.update_workspace_paths(
+            WorkspacePathsUpdateRequest(workspace_root=str(self.production), gateway_url="http://production:28767")
+        )
+
+        self.assertEqual(saved["config"]["gateway_url"], "http://production:28767")
+        self.assertEqual(saved["enrollment"]["status"], "enrolled")
+        self.assertEqual(self.probed, ["http://production:28767"])
+        self.assertEqual(router.get_workspace_paths()["config"]["gateway_url"], "http://production:28767")
+
+    def test_a_first_run_without_an_address_asks_for_one(self) -> None:
+        (self.settings / "arcrho_gateway.json").unlink()
+
+        saved = router.update_workspace_paths(WorkspacePathsUpdateRequest(workspace_root=str(self.production)))
+
+        self.assertEqual(saved["enrollment"], {"status": "not_configured"})
+        self.assertEqual(self.probed, [])
+        self.assertFalse((self.settings / "arcrho_gateway.json").exists())
 
     def test_unknown_server_is_refused(self) -> None:
         with self.assertRaises(HTTPException) as caught:

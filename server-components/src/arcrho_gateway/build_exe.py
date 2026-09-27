@@ -255,6 +255,8 @@ def build_exe() -> None:
             "arcrho_gateway.workspace_mutations",
             "--hidden-import",
             "arcrho_gateway.receipts",
+            "--hidden-import",
+            "arcrho_gateway.enrollment",
             *service_hidden_imports,
             *[
                 argument

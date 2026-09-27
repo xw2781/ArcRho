@@ -41,6 +41,7 @@ REQUIRED_MODULES = {
     "pythoncom": "pywin32",
     "pywintypes": "pywin32",
     "win32com": "pywin32",
+    "sspi": "pywin32",
     "arcrho_api": None,
     "sqlfluff": SQLFLUFF_REQUIREMENT,
 }

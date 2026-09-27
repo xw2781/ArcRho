@@ -1,8 +1,8 @@
 """The frozen helper the Excel add-in runs when a PC has no credential.
 
-It must install exactly the credential the desktop app installs, take the
-server's own address rather than one built from the machine it runs on, and
-never touch a credential that is already there.
+It must install exactly the credential the desktop app installs, sign up at
+production's own address rather than read the server's folder, and never touch
+a credential that is already there.
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ from arcrho_api import hosted_save_enrollment  # noqa: E402
 from arcrho_credential import main as credential_helper  # noqa: E402
 from arcrho_hosted_save_http_contract import (  # noqa: E402
     CLIENT_CONFIG_FILE_NAME,
-    default_gateway_config,
     normalize_client_config,
 )
 
@@ -40,68 +39,63 @@ class GatewayCredentialHelperTests(unittest.TestCase):
     def setUp(self) -> None:
         TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
         self.temporary = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
+        self.addCleanup(self.temporary.cleanup)
         base = Path(self.temporary.name)
+        # The add-in passes the share folder; it does not exist here, so any read would fail.
         self.workspace = base / "ArcRho Server"
-        (self.workspace / "config").mkdir(parents=True)
         self.appdata = base / "AppData"
         self.local_path = self.appdata / "ArcRho" / CLIENT_CONFIG_FILE_NAME
-        self.shared_path = self.workspace / "config" / CLIENT_CONFIG_FILE_NAME
 
-    def tearDown(self) -> None:
-        self.temporary.cleanup()
+    def _write_profiles(self, production_url: str = SERVER_URL) -> None:
+        profiles = [
+            {"id": "default", "name": "Production", "root": str(self.workspace), "gateway_url": production_url},
+            {"id": "local", "name": "Local", "root": "C:\\Arco Server", "gateway_url": "http://127.0.0.1:28767"},
+        ]
+        path = self.appdata / "ArcRho" / "workspace_paths.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"profiles": profiles, "active_profile": "local"}), encoding="utf-8")
 
-    def _write_shared_registry(self, *, client_url: str = SERVER_URL) -> None:
-        payload = default_gateway_config()
-        payload["client_url"] = client_url
-        self.shared_path.write_text(json.dumps(payload), encoding="utf-8")
-
-    def _run(self) -> tuple[int, str, list[str]]:
+    def _run(self, *argv: str, probe=None) -> tuple[int, str, list[str]]:
         probed: list[str] = []
         output = StringIO()
         with (
-            patch.dict(
-                credential_helper.os.environ,
-                {"APPDATA": str(self.appdata), "USERNAME": "Alice"},
-            ),
+            patch.dict("os.environ", {"APPDATA": str(self.appdata), "ARCRHO_GATEWAY_URL": ""}),
             patch.object(
                 hosted_save_enrollment,
                 "probe_gateway_url",
-                side_effect=lambda url: probed.append(url),
+                side_effect=probe or (lambda url: probed.append(url) or {"windows_enrollment": True}),
+            ),
+            patch.object(
+                hosted_save_enrollment,
+                "request_windows_enrollment",
+                return_value={"user": "alice", "secret": "alice-secret"},
             ),
             redirect_stdout(output),
         ):
-            code = credential_helper.main([str(self.workspace)])
+            code = credential_helper.main([str(self.workspace), *argv])
         return code, output.getvalue().strip(), probed
 
-    def test_first_run_installs_a_credential_the_gateway_accepts(self) -> None:
-        self._write_shared_registry()
+    def test_first_run_signs_up_at_productions_address(self) -> None:
+        self._write_profiles()
 
-        code, printed, _ = self._run()
+        code, printed, probed = self._run()
 
         self.assertEqual(code, 0)
         self.assertIn("installed", printed)
-        installed = normalize_client_config(
-            json.loads(self.local_path.read_text(encoding="utf-8"))
-        )
-        self.assertTrue(installed["enabled"])
-        self.assertEqual(installed["user"], "Alice")
-        shared = json.loads(self.shared_path.read_text(encoding="utf-8"))
-        self.assertEqual(shared["users"]["alice"], installed["secret"])
-
-    def test_the_shared_registry_owns_the_address(self) -> None:
-        self._write_shared_registry()
-
-        _, _, probed = self._run()
-
-        installed = json.loads(self.local_path.read_text(encoding="utf-8"))
-        self.assertEqual(installed["url"], SERVER_URL)
         self.assertEqual(probed, [SERVER_URL])
-        shared = json.loads(self.shared_path.read_text(encoding="utf-8"))
-        self.assertEqual(shared["client_url"], SERVER_URL)
+        installed = normalize_client_config(json.loads(self.local_path.read_text(encoding="utf-8")))
+        self.assertEqual((installed["url"], installed["user"], installed["secret"]), (SERVER_URL, "alice", "alice-secret"))
+        self.assertFalse(self.workspace.exists())
+
+    def test_an_address_on_the_command_line_wins(self) -> None:
+        code, _, probed = self._run("--url", "http://other:28767")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(probed, ["http://other:28767"])
 
     def test_an_existing_opt_out_is_left_alone(self) -> None:
-        self._write_shared_registry()
-        self.local_path.parent.mkdir(parents=True)
+        self._write_profiles()
+        self.local_path.parent.mkdir(parents=True, exist_ok=True)
         self.local_path.write_text('{"enabled": false}\n', encoding="utf-8")
 
         code, printed, probed = self._run()
@@ -109,43 +103,27 @@ class GatewayCredentialHelperTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("already present", printed)
         self.assertEqual(probed, [])
-        self.assertEqual(
-            self.local_path.read_text(encoding="utf-8"), '{"enabled": false}\n'
-        )
-        shared = json.loads(self.shared_path.read_text(encoding="utf-8"))
-        self.assertEqual(shared["users"], {})
+        self.assertEqual(self.local_path.read_text(encoding="utf-8"), '{"enabled": false}\n')
 
-    def test_a_registry_without_an_address_writes_nothing(self) -> None:
-        self._write_shared_registry(client_url="")
-
+    def test_no_known_address_writes_nothing(self) -> None:
         code, printed, probed = self._run()
 
         self.assertEqual(code, 1)
-        self.assertIn("no Gateway address", printed)
+        self.assertIn("No Gateway address", printed)
         self.assertEqual(probed, [])
         self.assertFalse(self.local_path.exists())
 
     def test_an_unreachable_server_writes_nothing(self) -> None:
-        self._write_shared_registry()
-        with (
-            patch.dict(
-                credential_helper.os.environ,
-                {"APPDATA": str(self.appdata), "USERNAME": "Alice"},
-            ),
-            patch.object(
-                hosted_save_enrollment,
-                "probe_gateway_url",
-                side_effect=OSError("the server could not be reached"),
-            ),
-            redirect_stdout(StringIO()) as output,
-        ):
-            code = credential_helper.main([str(self.workspace)])
+        self._write_profiles()
+
+        def offline(_url):
+            raise OSError("the server could not be reached")
+
+        code, printed, _ = self._run(probe=offline)
 
         self.assertEqual(code, 1)
-        self.assertIn("could not be reached", output.getvalue())
+        self.assertIn("could not be reached", printed)
         self.assertFalse(self.local_path.exists())
-        shared = json.loads(self.shared_path.read_text(encoding="utf-8"))
-        self.assertEqual(shared["users"], {})
 
 
 if __name__ == "__main__":

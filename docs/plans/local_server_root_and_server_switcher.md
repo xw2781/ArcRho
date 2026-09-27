@@ -52,7 +52,7 @@ What keeps it apart from production:
 | Builds | `deploy` sets both `ARCRHO_DEPLOY_ROOT` and `ARCRHO_ROOT` to the local root and drops every inherited root override. Without `ARCRHO_ROOT` the Engine and Orchestrator builds look for their kill switches under the repository instead. |
 | Network | The local Gateway registry binds `127.0.0.1:28767`, written before the Gateway first starts. Left to itself the Gateway writes a registry bound to every interface. |
 | Sign-in | The local credential is `%APPDATA%\ArcRho\arcrho_gateway.local.json`. The production credential `arcrho_gateway.json` is untouched, and so are the Excel add-in and scripts, which always use it. |
-| The app | `launch-app` sets `ARCRHO_SERVER_ROOT`, `ARCRHO_GATEWAY_CONFIG`, a separate Electron profile (`ARCRHO_USER_DATA_DIR`, so it never reuses a running app's backend) and backend port 28785. ArcBot follows `ARCRHO_SERVER_ROOT` too. |
+| The app | `launch-app` sets `ARCRHO_SERVER_ROOT`, `ARCRHO_GATEWAY_CONFIG`, `ARCRHO_GATEWAY_URL` (where the app signs up when that credential is missing, since 2026-09-27), a separate Electron profile (`ARCRHO_USER_DATA_DIR`, so it never reuses a running app's backend) and backend port 28785. ArcBot follows `ARCRHO_SERVER_ROOT` too. |
 | ResQ | Not available: ResQ lives only on the Server PC. The local root never starts a Bridge, so ResQ import, export and sync are production-only. |
 | Components | Engine and Gateway are built from the working tree. The Orchestrator is copied from production by `init`; it starts the Engines and the Gateway and cleans stale heartbeats. `stop` uses the root's kill switches, never a process kill, so nothing on another root is touched. |
 

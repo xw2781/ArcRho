@@ -31,6 +31,8 @@ RUNTIME_SERVER_ROOT_ENV = "ARCRHO_RUNTIME_SERVER_ROOT"
 SERVER_ROOT_ENV_VARS = (SERVER_ROOT_ENV, RUNTIME_SERVER_ROOT_ENV)
 # A launch that names its own Gateway credential outranks the active profile's.
 GATEWAY_CONFIG_ENV = "ARCRHO_GATEWAY_CONFIG"
+# ... and one that names its Gateway address outranks the active profile's.
+GATEWAY_URL_ENV = "ARCRHO_GATEWAY_URL"
 # A test run never finds this PC's credential (see ``gateway_test_guard``).
 isolate_test_run(GATEWAY_CONFIG_ENV)
 # ``workspace_paths.json`` keeps a list of server profiles, one of them active.
@@ -39,6 +41,9 @@ isolate_test_run(GATEWAY_CONFIG_ENV)
 DEFAULT_PROFILE_ID = "default"
 DEFAULT_PROFILE_NAME = "Production"
 PROFILE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+# What a profile may carry beside its id, name and folder: its own credential
+# file, and the Gateway address the app signs up at when it has no credential.
+PROFILE_OPTIONAL_KEYS = ("gateway_config", "gateway_url")
 # A server's identity: a GUID ``server_config.ensure_server_config`` writes once
 # into the root's component configuration, and the Gateway reports from
 # ``/api/capabilities`` under the same key.
@@ -141,8 +146,9 @@ def normalize_workspace_config(raw: dict) -> dict:
         if not profile_id or not root or any(p["id"] == profile_id for p in profiles):
             continue
         profile = {"id": profile_id, "name": _text(item.get("name"), profile_id), "root": root}
-        if _text(item.get("gateway_config")):
-            profile["gateway_config"] = _text(item.get("gateway_config"))
+        for key in PROFILE_OPTIONAL_KEYS:
+            if _text(item.get(key)):
+                profile[key] = _text(item.get(key))
         profiles.append(profile)
     if not profiles:
         profiles = [{
@@ -184,11 +190,16 @@ def save_workspace_config(payload: dict, path: Path | None = None) -> dict:
     return cfg
 
 
-def save_workspace_root(root: str | Path, paths: dict | None = None, path: Path | None = None) -> dict:
-    """Point the active server profile at ``root`` (the Server Connection save)."""
+def save_workspace_root(
+    root: str | Path, paths: dict | None = None, path: Path | None = None, *, gateway_url: str | None = None,
+) -> dict:
+    """Point the active server profile at ``root`` and, when given, its Gateway address (the Server Connection save)."""
 
     cfg = load_workspace_config(path)
-    active_server_profile(cfg)["root"] = str(root).strip()
+    profile = active_server_profile(cfg)
+    profile["root"] = str(root).strip()
+    if gateway_url is not None:
+        _set_gateway_url(profile, gateway_url)
     cfg["paths"].update(paths or {})
     return save_workspace_config(cfg, path)
 
@@ -215,6 +226,28 @@ def profile_gateway_config_path(profile: dict, folder: Path) -> Path:
     return folder / f"{name.stem}.{profile['id']}{name.suffix}"
 
 
+def _set_gateway_url(profile: dict, url: str) -> None:
+    from arcrho_hosted_save_http_contract import normalize_gateway_client_url
+
+    url = normalize_gateway_client_url(url, allow_empty=True)
+    if url:
+        profile["gateway_url"] = url
+    else:
+        profile.pop("gateway_url", None)
+
+
+def gateway_url(path: Path | None = None) -> str:
+    """The Gateway address this app signs up at: the launch override, then the active profile's."""
+
+    return env_gateway_url() or active_server_profile(load_workspace_config(path)).get("gateway_url", "")
+
+
+def env_gateway_url() -> str:
+    """Return the Gateway address set by environment override, if any."""
+
+    return str(os.environ.get(GATEWAY_URL_ENV) or "").strip().rstrip("/")
+
+
 def env_gateway_config_path() -> str:
     """Return the Gateway credential set by environment override, if any."""
 
@@ -238,7 +271,8 @@ def profile_id_for(name: str) -> str:
 
 
 def upsert_server_profile(
-    *, name: str, root: str, profile_id: str = "", gateway_config: str = "", path: Path | None = None,
+    *, name: str, root: str, profile_id: str = "", gateway_config: str = "", gateway_url: str = "",
+    path: Path | None = None,
 ) -> dict:
     """Add a server profile, or replace the one with the same id, and save."""
 
@@ -249,6 +283,7 @@ def upsert_server_profile(
     profile = {"id": profile_id, "name": name.strip() or profile_id, "root": root.strip()}
     if gateway_config.strip():
         profile["gateway_config"] = gateway_config.strip()
+    _set_gateway_url(profile, gateway_url)
     cfg = load_workspace_config(path)
     cfg["profiles"] = [p for p in cfg["profiles"] if p["id"] != profile_id] + [profile]
     return save_workspace_config(cfg, path)

@@ -2,7 +2,7 @@
 // cannot change without a restart, so one read as the shell starts is enough; clicking the badge
 // opens the Server tab.
 import { shell } from "./shell_context.js?v=20260510a";
-import { activeServerBadge } from "../server/server_model.js?v=20260926d";
+import { activeServerBadge } from "../server/server_model.js?v=20260927a";
 
 export function renderServerBadge(badge) {
   const button = document.getElementById("titlebarServerBadge");

@@ -66,11 +66,16 @@ sequenceDiagram
   the save. Once a local HTTP credential exists, an uncertain HTTP submission
   never falls back to SMB.
 - **Automatic enrollment.** `%APPDATA%\ArcRho\arcrho_gateway.json` is the
-  per-user flag and credential. A missing file triggers enrollment on startup
-  and after Server Connection changes, when the shared configuration has a
-  `client_url` and the endpoint answers a probe. An existing file is
-  authoritative, `enabled: false` included; invalid configuration fails
-  explicitly rather than falling back silently.
+  per-user flag and credential. A missing file triggers sign-up on startup and
+  after Server Connection changes, at the address the active server profile
+  keeps (or `ARCRHO_GATEWAY_URL`), once that Gateway answers its capability
+  probe with `windows_enrollment` and the same server id as the active folder.
+  Since 2026-09-27 the client never reads the shared registry: the Gateway's
+  `POST /api/enroll` proves the caller by a Windows handshake and returns only
+  that caller's secret (threat model in
+  [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md#sign-up-threat-model-2026-09-27)).
+  An existing file is authoritative, `enabled: false` included; invalid
+  configuration fails explicitly rather than falling back silently.
 - **First-time server setup.**
   `py -3.10 server-components/src/arcrho_gateway/configure_pilot.py --user <login> --url <gateway-url>`
   records the canonical client URL, updates the server registry, installs that

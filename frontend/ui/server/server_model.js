@@ -86,11 +86,15 @@ export function healthQuery(row) {
   return row.key === CURRENT_SERVER_KEY ? "" : `?id=${encodeURIComponent(row.profileId)}`;
 }
 
-// A new server needs a folder that was checked, a name, and a name no saved server already uses.
-export function addServerProblem(listing, { name, inspectedRoot }) {
+// A new server needs a folder that was checked, a name no saved server already uses, and the
+// Gateway address it signs up at, which only the person adding it can say.
+export function addServerProblem(listing, { name, inspectedRoot, address }) {
   const trimmed = String(name || "").trim();
   if (!String(inspectedRoot || "").trim()) return "Choose the server's folder first.";
   if (!trimmed) return "Give the server a name.";
+  if (!/^https?:\/\/\S+$/iu.test(String(address || "").trim())) {
+    return "Enter the server's address, for example http://server:28767.";
+  }
   const taken = (listing?.profiles || []).some(
     (profile) => String(profile.name || "").trim().toLowerCase() === trimmed.toLowerCase(),
   );

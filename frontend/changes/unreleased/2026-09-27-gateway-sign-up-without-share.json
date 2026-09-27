@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "server connection",
+  "audience": "user",
+  "summary": "A new PC now signs in to the server with your Windows account and receives only your own credential, instead of reading the shared file that holds everyone's sign-in.",
+  "details": [
+    "Server Connection and Add Server ask for the server's address, for example http://server:28767; a PC that is already signed in keeps working as before.",
+    "If signing in fails, Server Connection stays open and says why."
+  ]
+}

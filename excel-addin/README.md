@@ -142,11 +142,11 @@ commands follow the server policy for every dataset.
 ## The credential
 
 The file holds this Windows user's name, the address of the Arco Server's
-Gateway, and a secret. The matching entry lives in the shared registry at
-`<workspace>\config\arcrho_gateway.json`. Only a person who can write to that
-file under their own Windows account can add an entry to it, and that is how the
-server knows who is asking: the share is the authentication, and the Gateway
-itself hands nothing out to a caller that can only reach its port.
+Gateway, and a secret. The helper gets it from the Gateway's sign-up route: the
+Gateway proves who is asking with a Windows sign-in and answers with that
+user's own secret only. The address is the one the desktop app keeps for its
+production server, so a PC signs up once the app has been pointed at the server
+(or with `--url <address>`). Nothing is read from the server's folder.
 
 **It installs itself when server access is first needed.** When an entered
 formula has no saved result, or a refresh starts, and no credential file exists,

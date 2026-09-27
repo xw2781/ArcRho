@@ -58,6 +58,9 @@ from arcrho_hosted_save_http_contract import (  # noqa: E402
     AUTH_TIMESTAMP_HEADER,
     AUTH_USER_HEADER,
     CAPABILITIES_PATH,
+    ENROLLMENT_CAPABILITY,
+    ENROLLMENT_IDLE_SECONDS,
+    ENROLLMENT_PATH,
     HEALTH_PATH,
     HOSTED_SAVE_PATH,
     HOSTED_SAVE_PROGRESS_PATH,
@@ -90,6 +93,7 @@ from arcrho_workspace_mutation_contract import (  # noqa: E402
 )
 from arcrho_log_retention_contract import apply_log_retention  # noqa: E402
 from arcrho_gateway.engine_calculations import EngineCalculationExecutor  # noqa: E402
+from arcrho_gateway.enrollment import WindowsEnrollment  # noqa: E402
 from arcrho_gateway.receipts import (  # noqa: E402
     ReceiptReadError,
     now_iso as _now_iso,
@@ -105,6 +109,8 @@ from arcrho_gateway.workspace_reads import (  # noqa: E402
     WorkspaceReadRefusal,
 )
 HEARTBEAT_SECONDS = 5.0
+# Sign-up carries no body; a larger one is refused before it is read.
+MAX_ENROLLMENT_REQUEST_BYTES = 4 * 1024
 STATUS_POLL_SECONDS = 0.05
 GATEWAY_KILL_ALL_KEY = "apps.gateway.kill_all"
 
@@ -298,6 +304,7 @@ class Gateway:
             log=_log,
             ensure_runtime=self.reads.ensure_runtime,
         )
+        self.enrollment = WindowsEnrollment(self.root, log=_log)
 
     def capabilities(self) -> dict[str, Any]:
         config = _load_gateway_config(self.root)
@@ -307,6 +314,7 @@ class Gateway:
             "contract_version": HTTP_CONTRACT_VERSION,
             "allowed_save_kinds": list(HTTP_SAVE_KINDS),
             "insecure_http_pilot": True,
+            ENROLLMENT_CAPABILITY: True,
             SERVER_ID_KEY: self.server_id,
             **self.reads.capability_fields(),
             **self.calculations.capability_fields(),
@@ -511,6 +519,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
         if path == HOSTED_SAVE_PROGRESS_PATH:
             self._handle_save_progress()
             return
+        if path == ENROLLMENT_PATH:
+            self._handle_enrollment()
+            return
         if path != HOSTED_SAVE_PATH:
             self._send_json(404, {"detail": "Not found."})
             return
@@ -561,6 +572,35 @@ class GatewayHandler(BaseHTTPRequestHandler):
         except Exception:
             _log(self.server.gateway.root, traceback.format_exc())
             self._send_json(500, {"detail": "The Gateway failed unexpectedly."})
+
+    def _handle_enrollment(self) -> None:
+        """Serve one request of a Windows sign-up handshake.
+
+        The handshake's state lives on this handler, which serves exactly one
+        connection; a continuing handshake keeps the connection open for at
+        most the idle limit.
+        """
+
+        try:
+            content_length = int(self.headers.get("Content-Length") or "0")
+        except ValueError:
+            content_length = -1
+        if not 0 <= content_length <= MAX_ENROLLMENT_REQUEST_BYTES:
+            self._send_json(413, {"detail": "Sign-up request is too large."}, {"Connection": "close"})
+            return
+        self.rfile.read(content_length)
+        state = self.__dict__.setdefault("_enrollment_state", {})
+        try:
+            status_code, payload, headers = self.server.gateway.enrollment.respond(
+                state, self.client_address[0], self.headers.get("Authorization")
+            )
+        except Exception:
+            _log(self.server.gateway.root, traceback.format_exc())
+            self._send_json(500, {"detail": "The Gateway failed unexpectedly."}, {"Connection": "close"})
+            return
+        if state:
+            self.connection.settimeout(ENROLLMENT_IDLE_SECONDS)
+        self._send_json(status_code, payload, headers)
 
     def _handle_hosted_execution(
         self, executor: Any, max_request_bytes: int, label: str

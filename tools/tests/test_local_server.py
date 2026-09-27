@@ -118,6 +118,15 @@ class LocalServerTests(unittest.TestCase):
         self.assertEqual(start.call_args.args[0], self.root.resolve())
         self.assertEqual(stop.call_args.args, (self.root.resolve(), local_server.STOP_WAIT_SECONDS))
 
+    def test_launch_app_names_the_local_credential_and_address(self) -> None:
+        credential = self.production / "credential.json"
+        credential.write_text("{}", encoding="utf-8")
+        with patch.object(local_server, "gateway_health", return_value={"ok": True}),                 patch.object(local_server.subprocess, "run") as run:
+            local_server.launch_app(self.root, credential)
+        env = run.call_args.kwargs["env"]
+        self.assertEqual(env["ARCRHO_GATEWAY_CONFIG"], str(credential))
+        self.assertEqual(env["ARCRHO_GATEWAY_URL"], local_server.LOCAL_GATEWAY_URL)
+
     def test_deploy_with_no_components_builds_engine_and_gateway(self) -> None:
         with patch.object(local_server, "deploy") as deploy:
             local_server.main(["--root", str(self.root), "--production-root", str(self.production), "deploy"])

@@ -96,6 +96,8 @@ def build_exe() -> None:
             "arcrho_api.io",
             "--hidden-import",
             "arcrho_hosted_save_http_contract",
+            "--hidden-import",
+            "sspi",
             f"--icon={ICON}",
             "--clean",
             "--name",

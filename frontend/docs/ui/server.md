@@ -7,7 +7,7 @@ Server tab: lists the servers this PC knows by name and Gateway address, marks t
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.server.entry_points -->
-- `ui/server/server.html`: external scripts `./server.js?v=20260926d`, `/ui/shared/services/color_theme.js?v=20260923c`; inline imports _none_.
+- `ui/server/server.html`: external scripts `./server.js?v=20260927a`, `/ui/shared/services/color_theme.js?v=20260923c`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/server/${kind}`
@@ -42,7 +42,7 @@ Detected `arcrho:*` message types in key JS files:
 <!-- MANUAL:BEGIN -->
 - Opened from the Home Server card, the Server Connection dialog, or the titlebar's server badge as one restorable `server` shell tab.
 - `GET /server_profiles` also reports `default_profile`, production's profile id. The shell's titlebar badge shows whenever the active profile differs from it or a launch override is set, and uses the same name and address rules as the tab's rows.
-- Reads `GET /server_profiles`, `GET /server_profiles/health` (the app server probes each Gateway) and `GET /server_profiles/inspect`, and adds with `POST /server_profiles`.
+- Reads `GET /server_profiles`, `GET /server_profiles/health` (the app server probes each Gateway) and `GET /server_profiles/inspect`, and adds with `POST /server_profiles`. Adding needs the server's address, typed in the form: the folder check only names the folder, because a server's Gateway registry is server-only and never read from a client. The address is where the app signs up when it switches to that server.
 - Reads `GET /server/status` for the Components panel. The app server reads a server folder on a fixed disk of this PC directly and asks any other server's Gateway (the `server_component_status` read); a silent Gateway comes back as `answering: false` with a plain reason, never as a read over the share.
 - Starts and stops with `POST /server/start` and `POST /server/stop`. The status carries `control` (`available`, the refusal `detail`, and the `roles` start and stop cover), and the buttons show only when `available` is true. Stop asks for confirmation first, because the window loses its own server until it is started again. The page then shows `Starting... N s` or `Stopping... N s`, asks every 2 seconds, and ends when every covered role has a live heartbeat with its stop switch off (start) or none has a live heartbeat (stop), or after 90 seconds with an error line.
 - Switches by posting `arcrho:server-switch` to the shell, which refuses while any tab is dirty, activates the profile, runs the ordinary restart, and answers with `arcrho:server-switch-result`.
