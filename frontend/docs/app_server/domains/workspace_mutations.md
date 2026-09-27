@@ -21,6 +21,7 @@ No new browser-facing route. This existing route selects the transport per reque
 | `POST /dfm/rpc-bridge/update-remote` | `dfm_rpc_bridge_update_remote` | `dfm_rpc_bridge_service.hosted_update_remote` |
 | (no route; the ResQ sync and export macros call `run_workspace_mutation` directly through `arcrho_api.resq_sync_queue.submit_sync_request`) | `resq_sync_request_publish` | `resq_sync_queue_service.publish_resq_sync_request` |
 | (no route; the two ResQ import macros call `run_workspace_mutation` directly through `arcrho_api.resq_import_backup.back_up_reserving_class`) | `resq_import_backup` | `resq_import_backup_service.back_up_reserving_class_for_import` |
+| `POST /audit_log`, and every client-process caller of `audit_service.safe_append_project_audit_log` (see [`audit_log`](audit_log.md)) | `project_audit_log_append` | `audit_service.append_project_audit_log` |
 
 The review-status set is the Project Instance `Mark For Review` / `Set
 Reviewed` action, shared by the dataset table and Dependency Graph context

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "The project audit log is now read and written on the server, so entries recorded from two PCs at once no longer overwrite each other."
+}

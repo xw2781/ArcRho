@@ -1,13 +1,18 @@
+"""Project audit log routes.
+
+Both routes run on the server host through the Gateway (see
+``audit_service``); a Client PC refuses rather than touching the file over
+the share.
+"""
+
 from __future__ import annotations
 
-import os
 from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 
-from app_server import config
 from app_server.schemas.audit_log import AuditLogWriteRequest
-from app_server.services import audit_service
+from app_server.services import audit_service, workspace_read_client
 
 router = APIRouter()
 
@@ -19,7 +24,12 @@ def get_audit_log(project_name: str, limit: int = 500) -> Dict[str, Any]:
         raise HTTPException(400, "Missing project_name parameter")
 
     try:
-        out = audit_service.read_audit_log(project_name_clean, limit=limit)
+        out = workspace_read_client.run_workspace_read(
+            audit_service.AUDIT_LOG_READ_KIND,
+            {"project_name": project_name_clean, "limit": limit},
+            local=lambda: audit_service.read_audit_log(project_name_clean, limit=limit),
+            gateway_required=True,
+        )
         return {"ok": True, **out}
     except ValueError as e:
         raise HTTPException(404, str(e))
@@ -36,12 +46,14 @@ def write_audit_log(req: AuditLogWriteRequest) -> Dict[str, Any]:
     if len(action) > 2000:
         raise HTTPException(400, "action is too long")
     try:
-        out = audit_service.append_project_audit_log(
+        out = audit_service.submit_project_audit_log_append(
             project_name=project_name,
             action=action,
             user_name=req.user_name,
         )
         return {"ok": True, **out}
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(404, str(e))
     except PermissionError:

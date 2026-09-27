@@ -317,6 +317,14 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "get_server_component_status",
         (),
     ),
+    # The Project Settings audit log table, read from the file the server
+    # host's appends write rather than over the share.
+    "project_audit_log": WorkspaceReadKind(
+        "audit_service",
+        "read_audit_log",
+        ("project_name",),
+        ("limit",),
+    ),
 }
 
 HTTP_WORKSPACE_READ_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_READ_KINDS))

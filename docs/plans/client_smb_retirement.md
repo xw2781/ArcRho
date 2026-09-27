@@ -1,6 +1,6 @@
 # Client SMB Retirement: Every Client PC Read and Write Through the Gateway
 
-Status: Audited 2026-09-26 and broken into 20 session-sized steps; the dead SMB code the audit found (workbook routes, the unused dataset list and diagonal routes, the unused Project Instance folder watcher) was removed the same day; the three decisions were settled the same day as recommended, and the Snowflake config path moved off the share; step 1 of 20 done 2026-09-26 (ResQ bridge apply is a hosted save); step 2 done 2026-09-27 (Bootstrap refresh, dataset notes and empty-dataset create are hosted saves; the unused BF and Cape Cod refresh routes and the hidden grid-patch save were removed); the Engine and Gateway deploy of both is step 6; production deploys wait for the user.
+Status: Audited 2026-09-26 and broken into 20 session-sized steps; the dead SMB code the audit found (workbook routes, the unused dataset list and diagonal routes, the unused Project Instance folder watcher) was removed the same day; the three decisions were settled the same day as recommended, and the Snowflake config path moved off the share; step 1 of 20 done 2026-09-26 (ResQ bridge apply is a hosted save); step 2 done 2026-09-27 (Bootstrap refresh, dataset notes and empty-dataset create are hosted saves; the unused BF and Cape Cod refresh routes and the hidden grid-patch save were removed); step 3 done 2026-09-27 (the project audit log is read and appended through the Gateway from a Client PC, with an entry id that makes a repeated append land once); the Engine and Gateway deploy of steps 1-3 is step 6; production deploys wait for the user.
 Last updated: 2026-09-27
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finishes; its Phase 3 notifications and Phase 4 small writes are folded in here), [hosted_save_http_transport.md](hosted_save_http_transport.md) (its "Retiring the SMB transport" item is steps 18 and 19 here)
 
@@ -16,7 +16,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | Applying a ResQ bridge change saves on the server like any other save | [x] | 2026-09-26 | 50 min | 8 min | "Update local from ResQ" in a DFM now saves on the server, under the same protection as the page's own Save. |
 | 2 | Bootstrap refresh, dataset notes and new empty datasets save on the server | [x] | 2026-09-27 | 60 min | 21 min | Refreshing a Bootstrap method, saving dataset notes and creating an empty dataset now save on the server, under the same protection as a page's own Save. |
-| 3 | Audit log entries from two PCs can no longer overwrite each other | [ ] | | 45 min | | |
+| 3 | Audit log entries from two PCs can no longer overwrite each other | [x] | 2026-09-27 | 45 min | 41 min | The project audit log is read and written on the server, so entries saved from two PCs at once no longer overwrite each other. |
 | 4 | ArcBot edits go through the normal save instead of writing files directly | [ ] | | 70 min | | |
 | 5 | Editing a method file by hand no longer writes around the save | [ ] | | 35 min | | |
 | 6 | Deploy the server side of steps 1-3 | [ ] | | 20 min | | |
@@ -35,7 +35,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 19 | Old shared-drive save path and leftover dead code removed | [ ] | | 55 min | | |
 | 20 | Signing up to the server no longer needs the shared drive | [ ] | | 90 min | | |
 
-Overall: 2 of 20 steps done. Estimated 1,125 min, actual so far 29 min.
+Overall: 3 of 20 steps done. Estimated 1,125 min, actual so far 70 min.
 
 ## How agents work this plan
 
@@ -141,17 +141,17 @@ Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code e
 
 **Goal.** Project audit log reads and appends go through the Gateway, under one server-side lock.
 
-**Read first.** [audit_service.py](../../frontend/app_server/services/audit_service.py); [audit_log_router.py](../../frontend/app_server/api/audit_log_router.py); [arcrho_workspace_mutation_contract.py](../../python-api/src/arcrho_workspace_mutation_contract.py); memory `adding-a-hosted-workspace-read`.
+**Read first.** [audit_service.py](../../frontend/app_server/services/audit_service.py); [audit_log_router.py](../../frontend/app_server/api/audit_log_router.py); [arcrho_workspace_mutation_contract.py](../../python-api/src/arcrho_workspace_mutation_contract.py); [workspace_mutation_client.py](../../frontend/app_server/services/workspace_mutation_client.py); [sidecar_audit_contract.py](../../python-api/src/arcrho_api/sidecar_audit_contract.py) (its normalizer drops unknown keys, so the entry id must be added there); memory `adding-a-hosted-workspace-read`.
 
 **Do.**
-- [ ] Register an audit-log read kind and an append mutation kind. An append must be idempotent to use the mutation transport: carry a client-generated entry id and skip an id already present.
-- [ ] Route the two audit-log endpoints and `safe_append_project_audit_log` callers on a Client PC through them.
+- [x] Register an audit-log read kind and an append mutation kind. An append must be idempotent to use the mutation transport: carry a client-generated entry id and skip an id already present. Done as `project_audit_log` and `project_audit_log_append`; the id is stored on the record as `entry_id` through the canonical audit contract, and entries without one read as before.
+- [x] Route the two audit-log endpoints and `safe_append_project_audit_log` callers on a Client PC through them. Done by process rather than call site: `safe_append_project_audit_log` sends the append through the Gateway in a client process and writes locally in a server process, so the Engine's rules, dataset-type change and source refresh jobs pay no Gateway hop. Client callers routed: the audit table's read and `POST`, reserving-class types save, presentation-only dataset-types save, source profile save, SQL Server import, source CSV path rewrite, project folder create and rename, General Settings save, generated CSV cache clear, field mapping save, and the direct rules save. Two test modules that saved rules or dataset types without patching the append now patch it, so a test run can never append to the Gateway this PC is enrolled with.
 
 **Tests.** Duplicate append with the same id writes once; client routes use the Gateway and refuse when it is unavailable.
 
 **Done when.** No client code path rewrites `audit_log.json` over the share.
 
-Estimate: code edit 30 min, test/validation 15 min, total 45 min.
+Estimate: code edit 30 min, test/validation 15 min, total 45 min. Actual: code edit 20 min, test/validation 21 min, total 41 min (validation ran long because moving every client append onto the Gateway meant checking that no test run could append to this PC's enrolled Gateway; two suites could, and now patch it).
 
 ### Step 4 — ArcBot edits go through the page's save
 

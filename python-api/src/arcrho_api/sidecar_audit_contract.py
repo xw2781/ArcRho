@@ -67,7 +67,9 @@ def normalize_audit_entry(raw: Any) -> dict[str, str] | None:
 
     An entry needs a date and an action; everything else defaults. Legacy
     Title Case keys are read so a log written before the vocabulary settled
-    is not discarded.
+    is not discarded. ``entry_id`` is kept only when the writer supplied one:
+    the project log's hosted append carries it so a repeated request lands
+    once, and every other entry has none.
     """
 
     if not isinstance(raw, Mapping):
@@ -81,12 +83,16 @@ def normalize_audit_entry(raw: Any) -> dict[str, str] | None:
         change_info = ""
     elif not change_info and action == AUDIT_ACTION_UPDATE:
         change_info = AUDIT_CHANGE_INFO_VALUES
-    return {
+    entry = {
         "event_date": event_date,
         "action": action,
         "change_info": change_info,
         "user": _clean(raw.get("user") or raw.get("User")),
     }
+    entry_id = _clean(raw.get("entry_id"))
+    if entry_id:
+        entry["entry_id"] = entry_id
+    return entry
 
 
 def normalize_audit_log(
@@ -122,6 +128,7 @@ def append_audit_entry(
     user: Any = "",
     change_info: Any = None,
     max_entries: int = DATASET_AUDIT_LOG_MAX_ENTRIES,
+    entry_id: Any = None,
 ) -> list[dict[str, str]]:
     """Return *entries* with one more record, under the one audit policy."""
 
@@ -131,6 +138,7 @@ def append_audit_entry(
         "action": action_name,
         "change_info": default_change_info(action_name) if change_info is None else _clean(change_info),
         "user": _clean(user),
+        "entry_id": _clean(entry_id),
     }
     existing = list(entries) if isinstance(entries, Iterable) and not isinstance(entries, (str, bytes, Mapping)) else []
     return normalize_audit_log([*existing, record], max_entries=max_entries)

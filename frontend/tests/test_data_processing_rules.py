@@ -129,8 +129,13 @@ class DataProcessingRulesServiceTests(unittest.TestCase):
             str(self.projects_dir),
         )
         self.project_root_patch.start()
+        # A Client PC appends the audit entry through the Gateway; keep the
+        # test off whichever Gateway this machine is enrolled with.
+        self.audit_patch = patch.object(data_processing_rules_service, "safe_append_project_audit_log")
+        self.audit_patch.start()
 
     def tearDown(self) -> None:
+        self.audit_patch.stop()
         self.project_root_patch.stop()
         self.temp_dir.cleanup()
 

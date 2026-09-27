@@ -7,6 +7,12 @@ a known ``action``, ``change_info``, ``user`` -- owned by
 ``arcrho_api.sidecar_audit_contract``, so one reader serves both files. The
 free text a caller supplies is the record's ``change_info``; the action is
 ``Update`` unless the caller names another known action.
+
+A Client PC never rewrites the file over the share: its reads and appends run
+on the server host through the Gateway, so appends from every PC pass the
+Gateway's one lock instead of one lock per PC. The mutation transport needs an idempotent append, so the
+client names each entry with an ``entry_id`` and an id already in the log is
+not written again. Server processes (the Engine's jobs) append locally.
 """
 
 from __future__ import annotations
@@ -14,6 +20,7 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import uuid
 from typing import Any, Dict, List, Optional
 
 from arcrho_api.io import persisted_json_text
@@ -26,10 +33,12 @@ from arcrho_api.sidecar_audit_contract import (
 )
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
-from app_server.services import user_identity_service
+from app_server.services import user_identity_service, workspace_mutation_client, workspace_read_client
 
 
 PROJECT_AUDIT_LOG_JSON_FORMAT = "arcrho-project-audit-log-v4"
+AUDIT_LOG_READ_KIND = "project_audit_log"
+AUDIT_LOG_APPEND_KIND = "project_audit_log_append"
 
 
 def _resolve_audit_user_name(explicit_user_name: Optional[str] = None) -> str:
@@ -78,12 +87,14 @@ def append_project_audit_log(
     project_name: str,
     action: str,
     user_name: Optional[str] = None,
+    entry_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Record one project-level action.
 
     *action* is what the caller did in its own words ("Updated dataset types").
     It is stored as the record's ``change_info``; the record's ``action`` is a
     known audit action -- the text itself when it is one, ``Update`` otherwise.
+    An *entry_id* already in the log is answered from the log, unwritten.
     """
 
     project_name_clean = str(project_name or "").strip()
@@ -99,15 +110,22 @@ def append_project_audit_log(
     is_known = known_action != action_clean or known_action in {"Insert", "Update", "Auto Refresh"}
     record_action = known_action if is_known else AUDIT_ACTION_UPDATE
     change_info = "" if is_known else action_clean
+    entry_id_clean = str(entry_id or "").strip()
 
     with config._AUDIT_LOG_LOCK:
+        existing = _read_audit_log_entries(filepath)
+        if entry_id_clean:
+            for entry in existing:
+                if entry.get("entry_id") == entry_id_clean:
+                    return {"path": filepath, "entry": entry, "count": len(existing)}
         entries = append_audit_entry(
-            _read_audit_log_entries(filepath),
+            existing,
             event_date=utc_now_text(),
             action=record_action,
             user=_resolve_audit_user_name(user_name),
             change_info=change_info,
             max_entries=PROJECT_AUDIT_LOG_MAX_ENTRIES,
+            entry_id=entry_id_clean,
         )
         payload = project_audit_log_payload(project_name_clean, entries)
         tmp_path = filepath + ".tmp"
@@ -118,9 +136,38 @@ def append_project_audit_log(
     return {"path": filepath, "entry": entries[-1], "count": len(entries)}
 
 
+def submit_project_audit_log_append(
+    project_name: str,
+    action: str,
+    user_name: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Append from whichever process is asking.
+
+    A server process writes the file on its own disk. A Client PC sends the
+    append to the Gateway under a fresh entry id and refuses when the Gateway
+    cannot take it, rather than rewriting the file over the share.
+    """
+
+    if workspace_read_client._is_server_process():
+        return append_project_audit_log(project_name=project_name, action=action, user_name=user_name)
+    kwargs: Dict[str, Any] = {
+        "project_name": str(project_name or "").strip(),
+        "action": str(action or "").strip(),
+        "entry_id": uuid.uuid4().hex,
+    }
+    if str(user_name or "").strip():
+        kwargs["user_name"] = str(user_name).strip()
+    return workspace_mutation_client.run_workspace_mutation(
+        AUDIT_LOG_APPEND_KIND,
+        kwargs,
+        local=lambda: append_project_audit_log(**kwargs),
+        gateway_required=True,
+    )
+
+
 def safe_append_project_audit_log(project_name: str, action: str, user_name: Optional[str] = None) -> None:
     try:
-        append_project_audit_log(project_name=project_name, action=action, user_name=user_name)
+        submit_project_audit_log_append(project_name=project_name, action=action, user_name=user_name)
     except Exception:
         pass
 

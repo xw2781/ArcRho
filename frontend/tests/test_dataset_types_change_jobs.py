@@ -319,6 +319,9 @@ class DatasetTypesChangeJobTests(unittest.TestCase):
                 "get_windows_login_name",
                 return_value="Test User",
             ),
+            # A Client PC appends the audit entry through the Gateway; keep the
+            # test off whichever Gateway this machine is enrolled with.
+            patch.object(dataset_types_router, "safe_append_project_audit_log"),
         ]
         for item in self.patches:
             item.start()

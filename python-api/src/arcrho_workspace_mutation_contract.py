@@ -250,6 +250,18 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ("project_name", "reserving_class", "backup_id"),
         ("import_policy",),
     ),
+    # Appending one entry to the project's audit log. Over the share each PC
+    # read, changed and rewrote the whole file under a lock that covered only
+    # its own process, so two PCs lost each other's entries; hosted, every
+    # append passes the Gateway's one lock. Idempotent because the client owns
+    # the entry id: an id already in the log is answered from the log rather
+    # than appended again.
+    "project_audit_log_append": WorkspaceMutationKind(
+        "audit_service",
+        "append_project_audit_log",
+        ("project_name", "action", "entry_id"),
+        ("user_name",),
+    ),
 }
 
 HTTP_WORKSPACE_MUTATION_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_MUTATION_KINDS))
