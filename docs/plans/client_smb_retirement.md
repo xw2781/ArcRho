@@ -34,8 +34,9 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 18 | The app stops falling back to the shared drive when the server is unreachable | [ ] | | 75 min | | |
 | 19 | Old shared-drive save path and leftover dead code removed | [ ] | | 55 min | | |
 | 20 | Signing up to the server no longer needs the shared drive | [ ] | | 90 min | | |
+| 21 | Running the test suites can never reach a real server | [ ] | | 50 min | | |
 
-Overall: 3 of 20 steps done. Estimated 1,125 min, actual so far 70 min.
+Overall: 3 of 21 steps done. Estimated 1,175 min, actual so far 70 min. Step 21 was added 2026-09-27 and runs next, before any production deploy.
 
 ## How agents work this plan
 
@@ -93,11 +94,11 @@ None.
 
 ## Rough size
 
-Estimated 1,125 minutes of agent time across 20 steps: 720 minutes of code edit and 405 minutes of test, validation and deploy. Three deploy steps carry most of the validation time that is not test runs.
+Estimated 1,175 minutes of agent time across 21 steps: 755 minutes of code edit and 420 minutes of test, validation and deploy. Three deploy steps carry most of the validation time that is not test runs.
 
 ## Plan
 
-Steps 1-3 are independent of each other; 4 and 5 are independent of 1-3. Steps 7-11 are independent of each other. Steps 13-16 are independent of each other. Every deploy step follows the group before it. Step 18 needs every earlier step. Step 19 follows 18. Step 20 is independent of everything but the last deploy.
+Steps 1-3 are independent of each other; 4 and 5 are independent of 1-3. Steps 7-11 are independent of each other. Steps 13-16 are independent of each other. Every deploy step follows the group before it. Step 18 needs every earlier step. Step 19 follows 18. Step 20 is independent of everything but the last deploy. Step 21 is independent of every other step but must land before the first production deploy (step 6); it runs next.
 
 **Test locally first.** Every step is checked against the private server on the developer PC before production sees it: `py -3.10 tools/local_server.py deploy` builds the Engine and Gateway from the working tree into `C:\Arco Server`, and `launch-app` opens the dev app against it (see [local_server_root_and_server_switcher.md](local_server_root_and_server_switcher.md)). Each deploy step runs that first and deploys to production only after the check passes. The local root does not reach the share at all, so a feature that still quietly reads over SMB shows up there as reading `C:\Arco Server` — use the client read-latency log's `transport` field, not the result, to tell the two apart.
 
@@ -432,3 +433,20 @@ Estimate: code edit 35 min, test/validation 20 min, total 55 min.
 **Done when.** A Client PC with no share access enrolls and saves.
 
 Estimate: code edit 60 min, test/validation 30 min, total 90 min.
+
+### Step 21 — Tests never reach a live Gateway
+
+**Goal.** No test run on a developer PC can read from or write to a real server through the Gateway this PC is signed in to. Added 2026-09-27: step 3 found the rules and dataset-type change job tests sending audit appends to production's Gateway (refused only because production did not offer the operation yet). After the step 6 deploy, the same run would have written audit entries, and could have created test project folders, on production.
+
+**Read first.** Memory `job-tests-read-live-gateway`; how the client finds its credential (`arcrho_api.config.gateway_config_path`, `frontend/app_server/config.get_gateway_config_path`, `load_gateway_config`); how the frontend, python-api, server-components and tools suites are run (`py -3.10 -m unittest` from `frontend/` and from `frontend/tests`, pytest from `.pytest-tools`; memory `python-test-runner`); the two stubs step 3 added in `frontend/tests/test_dataset_types_change_jobs.py` and `frontend/tests/test_data_processing_rules.py`.
+
+**Do.**
+- [ ] One guard every test entry point passes through, whichever way the suite is launched: for example a module every test imports first, or `sitecustomize`-style setup on the test paths. It points `ARCRHO_GATEWAY_CONFIG` at a missing file, and it makes the HTTP Gateway client refuse any URL that is not a loopback test server started by the test itself. A test that means to reach a Gateway opts in explicitly.
+- [ ] Scan every suite for real outbound Gateway calls with the guard in "record" mode, and fix or stub each one found.
+- [ ] Keep step 3's two stubs, or replace them with the guard if it covers them.
+
+**Tests.** A test proving the guard refuses a non-loopback Gateway URL, and that a suite launched from each of the usual working directories picks the guard up.
+
+**Done when.** A full run of the frontend, python-api, server-components and tools suites records zero outbound Gateway requests, and the job tests' results no longer depend on which server this PC uses.
+
+Estimate: code edit 35 min, test/validation 15 min, total 50 min.
