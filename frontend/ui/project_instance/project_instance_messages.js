@@ -1410,8 +1410,12 @@ window.addEventListener("message", (event) => {
     }, 3000);
     return;
   }
-  if (msg.type === "arcrho:assistant-dfm-edit-approval") {
-    forwardRequestToActiveDfm(msg, "arcrho:assistant-dfm-edit-approval-result", {
+  if (
+    msg.type === "arcrho:assistant-dfm-edit-approval"
+    || msg.type === "arcrho:assistant-apply-json-edit"
+    || msg.type === "arcrho:assistant-revert-json-edit"
+  ) {
+    forwardRequestToActiveDfm(msg, `${msg.type}-result`, {
       ok: false,
       error: "No active DFM window is available in the Project Instance page.",
     }, 120000);

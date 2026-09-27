@@ -1,4 +1,4 @@
-import { createSqlEditorPage } from "../shared/sql_mode.js?v=20260818a";
+import { createSqlEditorPage } from "../shared/sql_mode.js?v=20260927a";
 
 /**
  * SQL Server SQL editor: the generic editor framework in SQL mode, pointed at

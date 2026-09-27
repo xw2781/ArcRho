@@ -74,7 +74,11 @@ import {
   buildDfmMethodPayload,
 } from "/ui/method_pages/dfm/dfm_persistence.js?v=20260923c";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260914b";
-import { reviewArcBotDfmEditApproval } from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260914b";
+import {
+  applyArcBotDfmEdit,
+  revertArcBotDfmEdit,
+  reviewArcBotDfmEditApproval,
+} from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260927a";
 import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260903a";
 import {
   clearRatioHistoryTempSession,
@@ -264,6 +268,25 @@ async function buildAssistantContext() {
       developmentLength: document.getElementById("devLenSelect")?.value?.trim() || "",
     },
   };
+}
+
+function comparableMethodPath(value) {
+  return String(value || "").trim().replace(/[\\/]+/g, "\\").toLowerCase();
+}
+
+// ArcBot hands its edit back to the DFM it read; a nested Project Instance
+// window can change while ArcBot works, so the method path must still match.
+async function runArcBotDfmEditMessage(data) {
+  const targetPath = comparableMethodPath(data?.targetPath);
+  if (targetPath) {
+    const ownPath = comparableMethodPath(await resolveCurrentDfmMethodSavePath().catch(() => ""));
+    if (ownPath !== targetPath) {
+      return { ok: false, error: "ArcBot's edit was for a different DFM than the one now active. Nothing was changed." };
+    }
+  }
+  return data?.type === "arcrho:assistant-revert-json-edit"
+    ? revertArcBotDfmEdit()
+    : applyArcBotDfmEdit(data?.proposedJson);
 }
 
 function postDfmStatus(text, tone = "") {
@@ -750,8 +773,22 @@ export function initDfmRatios() {
         });
       return;
     }
-    if (e?.data?.type === "arcrho:assistant-json-updated") {
-      scheduleRatioSelectionLoad("assistant-edit");
+    if (
+      e?.data?.type === "arcrho:assistant-apply-json-edit"
+      || e?.data?.type === "arcrho:assistant-revert-json-edit"
+    ) {
+      const messageType = e.data.type;
+      const requestId = e.data.requestId || "";
+      const reply = (payload) => {
+        try {
+          window.parent.postMessage({ type: `${messageType}-result`, requestId, ...payload }, "*");
+        } catch {
+          // ignore stale shell messaging
+        }
+      };
+      runArcBotDfmEditMessage(e.data)
+        .then(reply)
+        .catch((err) => reply({ ok: false, error: String(err?.message || err || "ArcBot's edit could not be applied.") }));
       return;
     }
     if (e?.data?.type === "arcrho:assistant-dfm-edit-approval") {

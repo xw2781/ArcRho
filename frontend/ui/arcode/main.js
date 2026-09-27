@@ -3,7 +3,7 @@ import {
   initAiAssistant,
   isAiAssistantLauncherVisible,
   toggleAiAssistantLauncherVisible,
-} from "/ui/ai-assistant/arcode.js?v=20260721a";
+} from "/ui/ai-assistant/arcode.js?v=20260927a";
 import { createFileIconResolver } from "/ui/shared/file-icons/fileIconResolver.js?v=20260722a";
 import { closeAllCascadeSubmenus, initCascadeMenus } from "/ui/shared/components/cascade_menu/cascade_menu.js?v=20260817a";
 import { createDatabaseConnectionsDialog } from "/ui/arcode/database-connections/dialog.js?v=20260818a";

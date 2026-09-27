@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "arcbot",
+  "audience": "user",
+  "summary": "ArcBot edits now land in the open page and save through its normal Save instead of ArcBot writing the file itself.",
+  "details": [
+    "A DFM edit is one undoable step that is saved like a Save you press; if the save fails, the edit stays as unsaved changes.",
+    "Notebook and JSON file edits in Arcode appear as unsaved changes for you to save.",
+    "\"Revert the latest ArcBot edit\" now undoes that change in the page that took it, and ArcBot no longer writes backup files next to the method."
+  ]
+}

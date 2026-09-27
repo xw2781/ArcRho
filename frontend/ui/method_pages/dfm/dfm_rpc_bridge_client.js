@@ -9,8 +9,14 @@ import {
 } from "/ui/method_pages/dfm/dfm_state.js";
 import {
   applyDfmOwnedPatchPayload,
+  buildDfmMethodPayload,
   saveRatioSelectionPattern,
 } from "/ui/method_pages/dfm/dfm_persistence.js?v=20260923c";
+import {
+  peekRatioHistoryStepSource,
+  recordMethodHistoryStep,
+  runRatioUndo,
+} from "/ui/method_pages/dfm/dfm_ratio_history.js";
 import {
   confirmDfmRpcBridgeAction,
   createDfmRpcBridgeDialog,
@@ -303,6 +309,52 @@ function buildAgentApprovalComparison(originalJson, proposedJson) {
   };
 }
 
+// ArcBot edits land the way a user's own edit does: one undoable step in the
+// open DFM, then the page's normal Save. A revert is that step's undo, saved
+// the same way, so ArcBot never writes the method file itself.
+const ARCBOT_EDIT_HISTORY_SOURCE = "arcbot-edit";
+
+async function saveArcBotDfmChange(label) {
+  const saved = await saveRatioSelectionPattern(false, { showReviewWarning: false });
+  if (saved?.ok) return { ok: true };
+  markDfmDirty();
+  const saveError = String(saved?.error || "").trim();
+  return {
+    ok: false,
+    applied: true,
+    error: `${label} is in the DFM but was not saved${saveError ? `: ${saveError}` : "."} Save the DFM before closing.`,
+  };
+}
+
+export async function applyArcBotDfmEdit(proposedJson, { onSaving = null } = {}) {
+  if (!proposedJson || typeof proposedJson !== "object" || Array.isArray(proposedJson)) {
+    return { ok: false, error: "ArcBot did not provide a valid DFM method." };
+  }
+  const before = buildDfmMethodPayload();
+  const applied = await applyDfmOwnedPatchPayload(proposedJson, { reason: ARCBOT_EDIT_HISTORY_SOURCE });
+  if (!applied?.ok) return { ok: false, error: "Could not apply ArcBot's edit to this DFM. Nothing was changed." };
+  recordMethodHistoryStep(before, ARCBOT_EDIT_HISTORY_SOURCE);
+  markDfmDirty();
+  onSaving?.();
+  const saved = await saveArcBotDfmChange("ArcBot's edit");
+  if (saved.ok) postStatus("ArcBot's edit is applied and saved.");
+  return saved;
+}
+
+export async function revertArcBotDfmEdit() {
+  if (peekRatioHistoryStepSource("undo") !== ARCBOT_EDIT_HISTORY_SOURCE) {
+    return {
+      ok: false,
+      error: "The latest change in this DFM is not ArcBot's edit, so nothing was reverted. Use Undo to step back through it.",
+    };
+  }
+  if (!(await runRatioUndo())) return { ok: false, error: "Could not undo ArcBot's edit in this DFM." };
+  const saved = await saveArcBotDfmChange("The revert");
+  if (!saved.ok) return saved;
+  postStatus("ArcBot's edit is reverted and saved.");
+  return { ok: true, message: "Reverted the latest ArcBot edit and saved the DFM." };
+}
+
 export function reviewArcBotDfmEditApproval(options = {}) {
   return new Promise((resolve) => {
     let settled = false;
@@ -340,34 +392,16 @@ export function reviewArcBotDfmEditApproval(options = {}) {
         statusDialog.setBusy(true);
         dialog.close("primary-action");
         try {
-          const applied = await applyDfmOwnedPatchPayload(proposedJson, { reason: "arcbot-approval" });
-          if (!applied?.ok) {
-            statusDialog.setMessage("Could not apply the approved DFM edit to this tab.", "error");
-            finish({ ok: false, error: "Could not apply the approved DFM edit to this tab." });
-            return;
-          }
-          statusDialog.setWaiting("Saving approved DFM method...");
-          const saved = await saveRatioSelectionPattern(false, { showReviewWarning: false });
-          if (!saved?.ok) {
-            markDfmDirty();
-            const saveError = String(saved?.error || "").trim();
-            statusDialog.setMessage(
-              saveError
-                ? `Applied in the app, but final JSON save failed: ${saveError} Save the DFM before closing.`
-                : "Applied in the app, but final JSON save failed. Save the DFM before closing.",
-              "warn",
-            );
-            finish({
-              ok: false,
-              error: saveError
-                ? `Approved DFM edit applied in the app, but final JSON save failed: ${saveError}`
-                : "Approved DFM edit applied in the app, but final JSON save failed.",
-            });
+          const applied = await applyArcBotDfmEdit(proposedJson, {
+            onSaving: () => statusDialog.setWaiting("Saving approved DFM method..."),
+          });
+          if (!applied.ok) {
+            statusDialog.setMessage(applied.error, applied.applied ? "warn" : "error");
+            finish(applied);
             return;
           }
           const message = options?.reply || "Applied the approved DFM edit.";
           statusDialog.setMessage("Approved DFM edit applied.", "ok");
-          postStatus("ArcBot DFM edit approved and saved.");
           finish({ ok: true, accepted: true, message });
         } catch (err) {
           const message = String(err?.message || err || "Approved DFM edit failed.");

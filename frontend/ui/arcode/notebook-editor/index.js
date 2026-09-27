@@ -385,11 +385,13 @@ window.addEventListener("message", (event) => {
     } catch {}
     return;
   }
-  if (type === "arcode:assistant-json-updated") {
-    const updatedPath = String(event.data.path || "").trim();
-    if (!updatedPath || updatedPath === currentNotebookPath) {
-      void checkNotebookDiskForChanges({ force: true });
-    }
+  if (type === "arcode:assistant-apply-json-edit" || type === "arcode:assistant-revert-json-edit") {
+    const result = type === "arcode:assistant-apply-json-edit"
+      ? applyArcBotNotebookEdit(event.data)
+      : revertArcBotNotebookEdit(event.data);
+    try {
+      window.parent?.postMessage({ type: `${type}-result`, requestId: event.data.requestId || "", ...result }, "*");
+    } catch {}
   }
 });
 

@@ -432,11 +432,10 @@ function formatAssistantActivityForCard(text, event = {}) {
   const contextKind = getAssistantContextKind();
   const targetKind = getAssistantTargetKind();
   if (!raw) return "";
-  if (lower.includes("checking latest arcbot edit history")) return "Looking up the latest ArcBot edit so it can be reverted safely.";
+  if (lower.includes("asking the page to undo")) return "Asking the page to undo the latest ArcBot edit.";
   if (lower.includes("resolving arcbot project")) return "Preparing the local ArcBot workspace and checking the configured server root.";
   if (lower.includes("arcbot can read the configured folders")) return "ArcBot can read the configured folders for this request.";
   if (lower.includes("arcbot can read the configured server root")) return "ArcBot can read the configured server folder for this request.";
-  if (lower.includes("checking active json")) return `Checking read/write access for the active ${targetKind}.`;
   if (lower.includes("creating editable local json")) return `Creating a temporary editable copy of the active ${targetKind}.`;
   if (lower.includes("context estimate")) return formatAssistantUsageStatus(event.usage || currentUsage);
   if (lower.includes("starting warm codex session")) return `ArcBot is sending the request in ${modeLabel} for "${contextTitle}".`;
@@ -451,7 +450,7 @@ function formatAssistantActivityForCard(text, event = {}) {
   if (lower.includes("codex updated the task plan") || lower.includes("arcbot updated the task plan")) return "ArcBot updated its task plan before continuing.";
   if (lower.includes("codex response received") || lower.includes("arcbot response received")) return "ArcBot finished drafting and is checking whether a validated update needs to be applied.";
   if (lower.includes("cleaned explanatory text")) return "ArcBot extracted the edited JSON from Codex's response and normalized the temp copy.";
-  if (lower.includes("validating and applying")) return "ArcBot is validating the temp copy, backing up the original, and applying the update.";
+  if (lower.includes("handing the edit to the page")) return `ArcBot is handing the edited ${targetKind} to the page, which applies it and saves it through its own save.`;
   if (lower.includes("request canceled")) return "The request was canceled before completion.";
   if (lower.includes("cancel requested")) return "Stopping the current ArcBot request.";
   if (lower.includes("failed") || lower.includes("could not") || lower.includes("error:")) return raw;
@@ -2975,57 +2974,58 @@ function requestActivePageContext() {
   });
 }
 
-function notifyActivePageJsonUpdated(result) {
-  const activeTab = shell.state?.tabs?.find?.((tab) => tab.id === shell.state.activeId) || null;
-  const iframe = activeTab?.iframe || null;
-  if (!iframe?.contentWindow) return;
-  try {
-    iframe.contentWindow.postMessage({
-      type: assistantMessageType("json-updated"),
-      path: result?.targetPath || "",
-    }, "*");
-  } catch {
-    // ignore stale iframe messaging
-  }
-}
+// ArcBot never writes a page's file. The tab that sent the context applies an
+// edit as unsaved changes and saves it through its own save, and "revert the
+// latest ArcBot edit" is that page's undo. The tab is addressed by id, so
+// switching tabs while ArcBot works cannot send the edit to another page.
+let lastArcBotEdit = null;
 
-function requestActiveDfmEditApproval(result) {
-  const activeTab = shell.state?.tabs?.find?.((tab) => tab.id === shell.state.activeId) || null;
-  const iframe = activeTab?.iframe || null;
-  if (!iframe?.contentWindow) {
-    return Promise.resolve({ ok: false, error: "No active DFM tab is available for approval." });
+function requestPageArcBotEdit(tabId, name, payload = {}, timeoutMs = 120000) {
+  const tab = shell.state?.tabs?.find?.((item) => item.id === tabId) || null;
+  const iframe = tab?.iframe || null;
+  if (!tabId || !iframe?.contentWindow) {
+    return Promise.resolve({ ok: false, error: "The page ArcBot worked on is no longer open. Nothing was changed." });
   }
   return new Promise((resolve) => {
-    const requestId = `arcbot_dfm_approval_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const requestId = `arcbot_${name}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     let done = false;
-    const finish = (payload) => {
+    const finish = (result) => {
       if (done) return;
       done = true;
       window.removeEventListener("message", onMessage);
-      resolve(payload || { ok: false, error: "DFM approval did not return a result." });
+      resolve(result || { ok: false, error: "The page did not answer ArcBot." });
     };
     const onMessage = (event) => {
       if (event.source !== iframe.contentWindow) return;
       const msg = event.data || {};
-      if (msg.type !== assistantMessageType("dfm-edit-approval-result") || msg.requestId !== requestId) return;
+      if (msg.type !== assistantMessageType(`${name}-result`) || msg.requestId !== requestId) return;
       finish(msg);
     };
     window.addEventListener("message", onMessage);
     try {
-      iframe.contentWindow.postMessage({
-        type: assistantMessageType("dfm-edit-approval"),
-        requestId,
-        targetPath: result?.targetPath || "",
-        originalJson: result?.originalJson || null,
-        proposedJson: result?.proposedJson || null,
-        reply: result?.text || "",
-      }, "*");
+      iframe.contentWindow.postMessage({ type: assistantMessageType(name), requestId, ...payload }, "*");
     } catch (err) {
-      finish({ ok: false, error: String(err?.message || err || "Could not open DFM approval review.") });
+      finish({ ok: false, error: String(err?.message || err || "Could not reach the page.") });
       return;
     }
-    window.setTimeout(() => finish({ ok: false, error: "Timed out waiting for DFM edit approval." }), 120000);
+    window.setTimeout(() => finish({ ok: false, error: "The page did not answer ArcBot in time. Check the page before saving." }), timeoutMs);
   });
+}
+
+function isRevertLatestArcBotEditRequest(text) {
+  const lower = String(text || "").toLowerCase();
+  return /\b(revert|undo|restore)\b/.test(lower) && /\b(latest|last|previous|arcbot)\b/.test(lower);
+}
+
+async function revertLatestArcBotEdit() {
+  if (!lastArcBotEdit) return { ok: false, error: "There is no ArcBot edit to revert in this window." };
+  appendActivity("Asking the page to undo the latest ArcBot edit.", "activity");
+  const reverted = await requestPageArcBotEdit(lastArcBotEdit.tabId, "revert-json-edit", {
+    targetPath: lastArcBotEdit.targetPath,
+  });
+  if (!reverted?.ok) return { ok: false, error: reverted?.error || "The page could not revert the latest ArcBot edit." };
+  lastArcBotEdit = null;
+  return { ok: true, text: reverted.message || "Reverted the latest ArcBot edit." };
 }
 
 async function refreshAssistantStatus() {
@@ -3651,16 +3651,18 @@ async function sendAssistantMessage() {
     }
     setStatus(`ArcBot is responding in ${getModeLabel()}...`);
     assistantHostRequestSubmitted = true;
-    const result = await host.codexAssistantSend({
-      requestId: currentRequestId,
-      sessionId: currentSessionId,
-      mode: assistantMode,
-      model: assistantModel,
-      reasoningEffort: assistantReasoningEffort,
-      messages: assistantMessages,
-      activeContext,
-      attachments: requestAttachments,
-    });
+    const result = assistantMode === "edit" && isRevertLatestArcBotEditRequest(userText)
+      ? await revertLatestArcBotEdit()
+      : await host.codexAssistantSend({
+          requestId: currentRequestId,
+          sessionId: currentSessionId,
+          mode: assistantMode,
+          model: assistantModel,
+          reasoningEffort: assistantReasoningEffort,
+          messages: assistantMessages,
+          activeContext,
+          attachments: requestAttachments,
+        });
     currentUsage = result?.usage || currentUsage;
     updateContextPanel();
     if (assistantCancelRequested && result?.ok) {
@@ -3711,42 +3713,56 @@ async function sendAssistantMessage() {
       return;
     }
     let reply = String(result?.text || "").trim() || "No response.";
-    let editApplied = !!result?.editApplied;
-    let approvalFailed = false;
-    if (result?.editPendingApproval) {
-      if (assistantConfig.enableDfmApproval) {
+    let editApplied = false;
+    let editFailed = false;
+    if (result?.editProposed) {
+      const edit = { tabId: activeContext?.tabId || "", targetPath: result.targetPath || "" };
+      const editPayload = {
+        targetPath: edit.targetPath,
+        originalJson: result.originalJson || null,
+        proposedJson: result.proposedJson || null,
+        proposedText: result.proposedText || "",
+      };
+      if (result.editPendingApproval && assistantConfig.enableDfmApproval) {
         appendActivity("Opening DFM version compare for approval.", "activity");
         setStatus("Review the proposed DFM edit before accepting it...");
-        const approval = await requestActiveDfmEditApproval(result);
+        const approval = await requestPageArcBotEdit(edit.tabId, "dfm-edit-approval", { ...editPayload, reply: reply });
         if (approval?.ok && approval.accepted) {
           editApplied = true;
           reply = approval.message || reply || "Applied the approved DFM edit.";
           appendActivity("Approved and applied DFM edit.", "activity");
         } else if (approval?.ok && approval.accepted === false) {
-          editApplied = false;
           reply = approval.message || "DFM edit was rejected. No changes were applied.";
           appendActivity("Rejected DFM edit. No changes were applied.", "activity");
         } else {
-          editApplied = false;
-          approvalFailed = true;
+          editFailed = true;
           reply = approval?.error || "DFM edit approval failed. No changes were applied.";
           appendActivity("DFM edit approval failed.", "error");
         }
+        if (editApplied || approval?.applied) lastArcBotEdit = edit;
       } else {
-        editApplied = true;
-        appendActivity("Edit completed.", "activity");
+        appendActivity("Waiting for the page to apply the edit.", "activity");
+        const applied = await requestPageArcBotEdit(edit.tabId, "apply-json-edit", editPayload);
+        if (applied?.ok) {
+          editApplied = true;
+          if (applied.message) reply = `${reply}\n\n${applied.message}`;
+        } else {
+          editFailed = true;
+          reply = applied?.error || "The page could not apply ArcBot's edit. Nothing was changed.";
+          appendActivity("The page did not apply the edit.", "error");
+        }
+        if (editApplied || applied?.applied) lastArcBotEdit = edit;
       }
     }
     await resolveAssistantPendingMessage(pending, reply, { animate: !currentAssistantStreamText });
     assistantMessages.push({ role: "assistant", content: reply, timestamp: nowIso() });
-    if (editApplied && result?.editApplied) notifyActivePageJsonUpdated(result);
     appendActivity(editApplied ? "Edit completed." : "Response completed.", "activity");
     completeAssistantProgress(editApplied ? "Edit applied" : "Response completed");
     setStatus(
-      approvalFailed
-        ? "DFM edit approval failed."
+      editFailed
+        ? "ArcBot edit was not completed."
         : editApplied ? "ArcBot edit completed." : `${isClaudeModel() ? getAssistantModelLabel() : "Codex"} ready. ${getModeLabel()}.`,
-      approvalFailed ? "error" : "",
+      editFailed ? "error" : "",
     );
   } catch (err) {
     const message = assistantCancelRequested ? "Request canceled." : String(err?.message || err || "ArcBot request failed.");

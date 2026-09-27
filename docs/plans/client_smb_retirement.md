@@ -1,6 +1,6 @@
 # Client SMB Retirement: Every Client PC Read and Write Through the Gateway
 
-Status: Audited 2026-09-26 and broken into 20 session-sized steps; the dead SMB code the audit found (workbook routes, the unused dataset list and diagonal routes, the unused Project Instance folder watcher) was removed the same day; the three decisions were settled the same day as recommended, and the Snowflake config path moved off the share; step 1 of 20 done 2026-09-26 (ResQ bridge apply is a hosted save); step 2 done 2026-09-27 (Bootstrap refresh, dataset notes and empty-dataset create are hosted saves; the unused BF and Cape Cod refresh routes and the hidden grid-patch save were removed); step 3 done 2026-09-27 (the project audit log is read and appended through the Gateway from a Client PC, with an entry id that makes a repeated append land once); step 21 done 2026-09-27 (no test run can reach a real Gateway); the Engine and Gateway deploy of steps 1-3 is step 6; production deploys wait for the user.
+Status: Audited 2026-09-26 and broken into 20 session-sized steps; the dead SMB code the audit found (workbook routes, the unused dataset list and diagonal routes, the unused Project Instance folder watcher) was removed the same day; the three decisions were settled the same day as recommended, and the Snowflake config path moved off the share; step 1 of 20 done 2026-09-26 (ResQ bridge apply is a hosted save); step 2 done 2026-09-27 (Bootstrap refresh, dataset notes and empty-dataset create are hosted saves; the unused BF and Cape Cod refresh routes and the hidden grid-patch save were removed); step 3 done 2026-09-27 (the project audit log is read and appended through the Gateway from a Client PC, with an entry id that makes a repeated append land once); step 4 done 2026-09-27 (ArcBot hands its edit to the open page, which applies it as one undo step and saves through its own save; revert is that page's undo; ArcBot's class-folder CSV staging still reads the share and moved to step 16); step 21 done 2026-09-27 (no test run can reach a real Gateway); the Engine and Gateway deploy of steps 1-3 is step 6; production deploys wait for the user.
 Last updated: 2026-09-27
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finishes; its Phase 3 notifications and Phase 4 small writes are folded in here), [hosted_save_http_transport.md](hosted_save_http_transport.md) (its "Retiring the SMB transport" item is steps 18 and 19 here)
 
@@ -17,7 +17,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 1 | Applying a ResQ bridge change saves on the server like any other save | [x] | 2026-09-26 | 50 min | 8 min | "Update local from ResQ" in a DFM now saves on the server, under the same protection as the page's own Save. |
 | 2 | Bootstrap refresh, dataset notes and new empty datasets save on the server | [x] | 2026-09-27 | 60 min | 21 min | Refreshing a Bootstrap method, saving dataset notes and creating an empty dataset now save on the server, under the same protection as a page's own Save. |
 | 3 | Audit log entries from two PCs can no longer overwrite each other | [x] | 2026-09-27 | 45 min | 41 min | The project audit log is read and written on the server, so entries saved from two PCs at once no longer overwrite each other. |
-| 4 | ArcBot edits go through the normal save instead of writing files directly | [ ] | | 70 min | | |
+| 4 | ArcBot edits go through the normal save instead of writing files directly | [x] | 2026-09-27 | 70 min | 28 min | ArcBot's edits now land in the open page and save through its normal Save; "revert the latest ArcBot edit" undoes it in that page, and no backup files are written next to the method. |
 | 5 | Editing a method file by hand no longer writes around the save | [ ] | | 35 min | | |
 | 6 | Deploy the server side of steps 1-3 | [ ] | | 20 min | | |
 | 7 | Project configuration pages load from the server | [ ] | | 70 min | | |
@@ -36,7 +36,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 20 | Signing up to the server no longer needs the shared drive | [ ] | | 90 min | | |
 | 21 | Running the test suites can never reach a real server | [x] | 2026-09-27 | 50 min | 34 min | Running the test suites on a developer PC can no longer read from or write to a real server. |
 
-Overall: 4 of 21 steps done. Estimated 1,175 min, actual so far 104 min. Step 21 was added 2026-09-27 and ran before any production deploy.
+Overall: 5 of 21 steps done. Estimated 1,175 min, actual so far 132 min. Step 21 was added 2026-09-27 and ran before any production deploy.
 
 ## How agents work this plan
 
@@ -158,17 +158,17 @@ Estimate: code edit 30 min, test/validation 15 min, total 45 min. Actual: code e
 
 **Goal.** ArcBot never writes a project file; its edits land through the same save the user would press. Follows decision 2.
 
-**Read first.** [arcbot_host.js](../../frontend/electron/arcbot_host.js) `applyArcBotJsonEdit`, `revertLatestArcBotEdit`, `validateArcBotJsonTarget`, and the staging functions that copy the method JSON and CSVs; the renderer side that receives ArcBot results ([ui/ai-assistant/index.js](../../frontend/ui/ai-assistant/index.js)).
+**Read first.** [arcbot_host.js](../../frontend/electron/arcbot_host.js) `applyArcBotJsonEdit`, `revertLatestArcBotEdit`, `validateArcBotJsonTarget`, and the staging functions that copy the method JSON and CSVs; the renderer side that receives ArcBot results ([ui/ai-assistant/index.js](../../frontend/ui/ai-assistant/index.js)); the pages ArcBot edits and how they apply a payload: [dfm_rpc_bridge_client.js](../../frontend/ui/method_pages/dfm/dfm_rpc_bridge_client.js) `reviewArcBotDfmEditApproval`, [dfm_ratio_history.js](../../frontend/ui/method_pages/dfm/dfm_ratio_history.js) method steps, [dfm_tabs_orchestrator.js](../../frontend/ui/method_pages/dfm/dfm_tabs_orchestrator.js) message handler, [project_instance_messages.js](../../frontend/ui/project_instance/project_instance_messages.js) forwarding, [notebook-io.js](../../frontend/ui/arcode/notebook-editor/notebook-io.js) and [editor_framework.js](../../frontend/ui/arcode/shared/editor_framework.js) for Arcode notebooks and JSON files.
 
 **Do.**
-- [ ] Implement decision 2.
-- [ ] Stage the method JSON and CSVs from hosted reads rather than share copies, or record here which ones still lack a read kind and leave them for step 16.
+- [x] Implement decision 2. Done: the host returns the edit (`editProposed`, with the edited JSON and its persisted text) and the widget posts it to the tab that sent the context. A DFM applies it through the owned-patch apply as one whole-method undo step and saves through its normal hosted save (a failed save leaves it unsaved); an Arcode notebook or JSON editor applies it as one undoable unsaved change the user saves. "Revert the latest ArcBot edit" never reaches the host: the same tab undoes that step, refused once it is no longer the latest change, and a DFM saves again. Ask for Approval keeps its compare review and lands through the same apply. The host's backups, `history` folder, temp rename and latest-edit manifest are gone.
+- [x] Stage the method JSON and CSVs from hosted reads rather than share copies, or record here which ones still lack a read kind and leave them for step 16. Done: the host no longer reads the target at all; it stages the page's own JSON (a method's in-memory payload, a notebook's cells, or a JSON editor's text). Still on the share, moved to step 16: the reserving-class CSVs (a folder listing plus every `.csv` beside the method) and the two linked CSVs (`data_tab` input triangle, `results_tab` ultimate vector) that `createArcBotEditSession` copies into the exchange folder; no read kind lists a class folder or returns a raw CSV.
 
 **Tests.** Node tests: an edit targeting a project file never calls the host file writers; revert restores through the page.
 
 **Done when.** No ArcBot code path writes under the workspace root.
 
-Estimate: code edit 50 min, test/validation 20 min, total 70 min.
+Estimate: code edit 50 min, test/validation 20 min, total 70 min. Actual: code edit 18 min, test/validation 10 min, total 28 min (the DFM approval path and the method undo step already existed, so the page side was a reuse; checked against the local root by posting the widget's messages to a DFM page served by the dev app).
 
 ### Step 5 — "Open DFM JSON" becomes read-only
 
@@ -358,6 +358,7 @@ Estimate: code edit 50 min, test/validation 20 min, total 70 min.
 **Do.**
 - [ ] Read kinds for the macro library listing and file text; the install and sync write only to local Documents.
 - [ ] ArcBot reads its prompt and instructions through the app server's hosted read; it stops seeding files onto the share.
+- [ ] ArcBot's edit staging copies the reserving-class CSVs and the method's linked CSVs from the share into its local exchange folder (`createArcBotEditSession` in [arcbot_host.js](../../frontend/electron/arcbot_host.js), left by step 4). Give it a hosted read for those files, or drop the copy and let ArcBot read them through the Python API.
 - [ ] The import macros publish through the Gateway client, the way the ResQ sync request already does; publish the macros.
 
 **Tests.** Transport tests; macro test that the publish uses the Gateway.

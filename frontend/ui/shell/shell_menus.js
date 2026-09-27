@@ -1,5 +1,5 @@
 import { shell } from "./shell_context.js?v=20260510a";
-import { isAiAssistantLauncherVisible, toggleAiAssistantLauncherVisible } from "../ai-assistant/arcrho.js?v=20260620q";
+import { isAiAssistantLauncherVisible, toggleAiAssistantLauncherVisible } from "../ai-assistant/arcrho.js?v=20260927a";
 import { closeMacroContextMenus, isMacroContextMenuOpen, openMacroWindow } from "../macro/macro_window.js?v=20260908b";
 import { isFlightDeckVisible, toggleFlightDeck } from "../flight_deck/flight_deck.js?v=20260906a";
 import { initReleaseNotesDialog, openReleaseHistory } from "./release_notes_dialog.js?v=20260820a";

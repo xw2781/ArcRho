@@ -1637,10 +1637,6 @@ function isAuthFailure(result) {
   return /not\s+logged\s+in|not\s+authenticated|authentication|required|sign\s*in|login/.test(raw);
 }
 
-function getArcBotLatestEditPath() {
-  return path.join(app.getPath("userData"), "arcbot_latest_edit.json");
-}
-
 function getArcBotSessionRoot() {
   return path.join(ensureLocalArcRhoAssistantRoot(), "ArcBot", "sessions");
 }
@@ -1926,49 +1922,29 @@ async function getArcBotEditRoots() {
   };
 }
 
-async function validateArcBotJsonTarget(targetPath, options = {}) {
-  const cleanPath = String(targetPath || "").trim();
-  if (!cleanPath) return { ok: false, error: "ArcBot has no active JSON-backed file to edit." };
-  const extension = path.extname(cleanPath).toLowerCase();
-  const isNotebook = extension === ".ipynb" || extension === ".arcnb";
-  if (![".json", ".ipynb", ".arcnb"].includes(extension)) {
-    return { ok: false, error: "ArcBot can only edit JSON, IPYNB, and ARC notebook files in this MVP." };
+function isArcBotEditableTarget(targetPath) {
+  const extension = path.extname(String(targetPath || "").trim()).toLowerCase();
+  return [".json", ".ipynb", ".arcnb"].includes(extension);
+}
+
+// ArcBot never reads or writes the target file. It edits the JSON the open
+// page sent (a method page's in-memory payload, a notebook's cells, or a JSON
+// file's editor text) and hands the result back to that page, which applies it
+// as unsaved changes and saves it through its own save.
+function getArcBotActivePageJson(activeContext, targetPath) {
+  const ctx = activeContext && typeof activeContext === "object" ? activeContext : {};
+  if (ctx.activeJson != null && typeof ctx.activeJson === "object" && !Array.isArray(ctx.activeJson)) {
+    return { json: ctx.activeJson, source: "active_context" };
   }
-  const roots = await getArcBotEditRoots();
-  const allowed = [roots.configuredRoot, roots.resolvedRoot].filter(Boolean);
-  if (allowed.length === 0) {
-    return {
-      ok: false,
-      error: "ArcBot needs a configured Server Connection Root Path before it can edit files.",
-    };
-  }
-  if (!allowed.some((root) => isPathWithinRoot(cleanPath, root))) {
-    if (isNotebook && options.allowActiveNotebook === true) {
-      return {
-        ok: true,
-        targetPath: cleanPath,
-        roots: {
-          configuredRoot: "active-page-context",
-          resolvedRoot: "",
-        },
-      };
+  if (path.extname(String(targetPath || "")).toLowerCase() === ".json" && typeof ctx.fullText === "string") {
+    try {
+      const parsed = JSON.parse(ctx.fullText);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return { json: parsed, source: "editor_text" };
+    } catch {
+      return { json: { error: "The JSON in the active editor could not be parsed." }, source: "editor_text" };
     }
-    return {
-      ok: false,
-      error: "ArcBot refused to edit a file outside the configured Server Connection root.",
-    };
   }
-  return { ok: true, targetPath: cleanPath, roots };
-}
-
-function getArcBotHistoryDir(targetPath) {
-  return path.join(path.dirname(targetPath), "history");
-}
-
-function writeArcBotLatestEdit(manifest) {
-  const latestPath = getArcBotLatestEditPath();
-  fs.mkdirSync(path.dirname(latestPath), { recursive: true });
-  fs.writeFileSync(latestPath, formatJsonForArcBot(manifest), "utf8");
+  return { json: null, source: "" };
 }
 
 function cloneJsonValue(value) {
@@ -2115,6 +2091,9 @@ function createArcBotEditSession({ targetPath, activeJson, roots = null }) {
   const exchangeJson = cloneJsonValue(activeJson);
   const manifestFiles = [];
   const csvRewrites = [];
+  // The method JSON comes from the open page. The class CSVs and the linked
+  // CSVs are still copied from the share: no hosted read lists a class folder
+  // or returns a raw CSV yet (client_smb_retirement.md step 16).
   if (matchedRoot) {
     stageArcBotReservingClassCsvs({ targetPath, localTargetPath: jsonPath, manifestFiles });
     for (const keyPath of getKnownDfmCsvPathFields()) {
@@ -2163,126 +2142,6 @@ function createArcBotEditSession({ targetPath, activeJson, roots = null }) {
     csvRewrites,
   }), "utf8");
   return session;
-}
-
-async function applyArcBotJsonEdit({ targetPath, replacementJson, requestText, reply, originalJson }) {
-  const hasOriginalFallback = originalJson != null && typeof originalJson === "object" && !Array.isArray(originalJson);
-  const validation = await validateArcBotJsonTarget(targetPath, { allowActiveNotebook: hasOriginalFallback });
-  if (!validation.ok) return validation;
-  if (replacementJson == null || typeof replacementJson !== "object" || Array.isArray(replacementJson)) {
-    return { ok: false, error: "ArcBot did not provide a valid JSON object replacement." };
-  }
-  let targetExists = false;
-  try {
-    const stat = fs.statSync(validation.targetPath);
-    targetExists = stat.isFile();
-  } catch {
-    targetExists = false;
-  }
-  if (!targetExists && !hasOriginalFallback) {
-    return { ok: false, error: `Target JSON-backed file was not found: ${validation.targetPath}` };
-  }
-  let beforeText = "";
-  let backupSource = "file";
-  try {
-    beforeText = fs.readFileSync(validation.targetPath, "utf8");
-    JSON.parse(beforeText);
-  } catch (err) {
-    if (!hasOriginalFallback) {
-      const message = String(err?.message || err || "Target file could not be read.");
-      return { ok: false, error: `Target file could not be backed up, so ArcBot did not modify it. ${message}` };
-    }
-    beforeText = formatJsonForArcBot(originalJson);
-    backupSource = "active-page-context";
-  }
-
-  const nextText = formatJsonForArcBot(replacementJson);
-  const historyDir = getArcBotHistoryDir(validation.targetPath);
-  fs.mkdirSync(historyDir, { recursive: true });
-
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const baseName = path.basename(validation.targetPath, path.extname(validation.targetPath));
-  const backupPath = path.join(historyDir, `${baseName}.${stamp}.bak.json`);
-  const manifestPath = path.join(historyDir, `${baseName}.${stamp}.arcbot.json`);
-  const tmpPath = `${validation.targetPath}.arcbot.tmp`;
-
-  if (backupSource === "file") {
-    fs.copyFileSync(validation.targetPath, backupPath);
-  } else {
-    fs.writeFileSync(backupPath, beforeText, "utf8");
-  }
-  fs.writeFileSync(tmpPath, nextText, "utf8");
-  fs.renameSync(tmpPath, validation.targetPath);
-
-  const manifest = {
-    type: "arcbot-json-edit",
-    timestamp: new Date().toISOString(),
-    targetPath: validation.targetPath,
-    backupPath,
-    manifestPath,
-    requestText: String(requestText || ""),
-    reply: String(reply || ""),
-    beforeSha256: sha256Text(beforeText),
-    afterSha256: sha256Text(nextText),
-    backupSource,
-    allowedRoot: validation.roots.configuredRoot,
-    resolvedAllowedRoot: validation.roots.resolvedRoot,
-  };
-  fs.writeFileSync(manifestPath, formatJsonForArcBot(manifest), "utf8");
-  writeArcBotLatestEdit(manifest);
-  return {
-    ok: true,
-    targetPath: validation.targetPath,
-    backupPath,
-    manifestPath,
-    reply: manifest.reply || "Updated the active JSON-backed file.",
-  };
-}
-
-async function revertLatestArcBotEdit() {
-  const latestPath = getArcBotLatestEditPath();
-  if (!fs.existsSync(latestPath)) {
-    return { ok: false, error: "No ArcBot edit history is available to revert." };
-  }
-  let manifest = null;
-  try {
-    manifest = JSON.parse(fs.readFileSync(latestPath, "utf8"));
-  } catch {
-    return { ok: false, error: "ArcBot latest edit manifest is invalid." };
-  }
-  const validation = await validateArcBotJsonTarget(manifest?.targetPath, { allowActiveNotebook: true });
-  if (!validation.ok) return validation;
-  const backupPath = String(manifest?.backupPath || "").trim();
-  if (!backupPath || !fs.existsSync(backupPath)) {
-    return { ok: false, error: "ArcBot backup file is missing, so the latest edit cannot be reverted." };
-  }
-  if (fs.existsSync(validation.targetPath)) {
-    const currentText = fs.readFileSync(validation.targetPath, "utf8");
-    if (manifest.afterSha256 && sha256Text(currentText) !== manifest.afterSha256) {
-      return {
-        ok: false,
-        error: "ArcBot refused to revert because the target file changed after the latest ArcBot edit.",
-      };
-    }
-  }
-  fs.copyFileSync(backupPath, validation.targetPath);
-  try {
-    fs.unlinkSync(latestPath);
-  } catch {
-    // ignore stale latest-manifest cleanup errors
-  }
-  return {
-    ok: true,
-    targetPath: validation.targetPath,
-    backupPath,
-    reply: `Reverted the latest ArcBot edit for ${validation.targetPath}.`,
-  };
-}
-
-function isRevertLatestRequest(messages) {
-  const last = Array.isArray(messages) ? messages[messages.length - 1] : null;
-  const text = String(last?.content || "").toLowerCase();
-  return /\b(revert|undo|restore)\b/.test(text) && /\b(latest|last|previous|arcbot)\b/.test(text);
 }
 
 function getCodexInstallScriptPath() {
@@ -2930,9 +2789,8 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
     requestLog.finish(finalStatus, {
       ok,
       error: response?.error || "",
-      editApplied: !!response?.editApplied,
+      editProposed: !!response?.editProposed,
       targetPath: response?.targetPath || "",
-      backupPath: response?.backupPath || "",
       usageTokens: response?.usage?.estimatedTokens || 0,
     });
     if (requestId) arcBotRequestLoggers.delete(requestId);
@@ -2944,15 +2802,6 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
       needsAuth: false,
       error: "Unsupported ArcBot mode.",
     }, "failed");
-  }
-  if (mode === "edit" && isRevertLatestRequest(payload?.messages)) {
-    requestLog.start("revert_latest_edit");
-    sendArcBotActivity(event, requestId, "activity", "Checking latest ArcBot edit history...");
-    const reverted = await revertLatestArcBotEdit();
-    requestLog.end("revert_latest_edit", { ok: !!reverted.ok, error: reverted.error || "" });
-    return finishArcBotRequest(reverted.ok
-      ? { ok: true, text: reverted.reply || "Reverted the latest ArcBot edit." }
-      : { ok: false, needsAuth: false, error: reverted.error || "ArcBot revert failed." });
   }
   if (!isClaudeArcBotModel(model)) {
     const modelCatalog = await getCodexModelCatalog();
@@ -3035,68 +2884,30 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
     attachmentNames: attachments.map((item) => item.name),
     attachmentChars: attachments.reduce((sum, item) => sum + item.text.length, 0),
   });
-  let activeJson = null;
-  const activeJsonFallback = activeContext?.activeJson != null &&
-    typeof activeContext.activeJson === "object" &&
-    !Array.isArray(activeContext.activeJson)
-    ? activeContext.activeJson
-    : null;
-  if (targetPath) {
-    sendArcBotActivity(event, requestId, "activity", "Checking active JSON-backed file access...");
-    requestLog.start("check_active_json_access", { targetPath });
-    const validation = await validateArcBotJsonTarget(targetPath, { allowActiveNotebook: !!activeJsonFallback });
-    requestLog.end("check_active_json_access", {
-      ok: !!validation.ok,
-      targetPath: validation.targetPath || targetPath,
-      error: validation.error || "",
-    });
-    if (validation.ok) {
-      if (activeJsonFallback) {
-        requestLog.mark("active_json_source", { source: "active_context" });
-        activeJson = activeJsonFallback;
-      } else {
-        try {
-          requestLog.start("read_active_json_file", { targetPath: validation.targetPath });
-          activeJson = JSON.parse(fs.readFileSync(validation.targetPath, "utf8"));
-          requestLog.end("read_active_json_file", { ok: true });
-        } catch (err) {
-          requestLog.end("read_active_json_file", { ok: false, error: String(err?.message || err || "") });
-          activeJson = {
-            error: "Active JSON-backed file exists but could not be parsed or read.",
-            detail: String(err?.message || err || ""),
-          };
-        }
-      }
-    } else if (!validation.ok) {
-      activeJson = activeJsonFallback || { error: validation.error };
-    }
-  } else if (activeJsonFallback) {
-    activeJson = activeJsonFallback;
-  }
+  const activePageJson = getArcBotActivePageJson(activeContext, targetPath);
+  const activeJson = activePageJson.json;
+  requestLog.mark("active_json_source", { source: activePageJson.source || "none", targetPath });
   let editSession = null;
   const activeJsonIsError = activeJson && typeof activeJson.error === "string";
   const editLikeMode = mode === "edit" || mode === "approve";
   const deferDfmApproval = mode === "approve" && isArcBotDfmContext(activeContext);
-  if (editLikeMode && targetPath && activeJson && !activeJsonIsError && !isClaudeArcBotModel(model)) {
-    requestLog.start("validate_edit_target", { targetPath });
-    const validation = await validateArcBotJsonTarget(targetPath, { allowActiveNotebook: !!activeJsonFallback });
-    requestLog.end("validate_edit_target", {
-      ok: !!validation.ok,
-      targetPath: validation.targetPath || targetPath,
-      error: validation.error || "",
+  if (
+    editLikeMode
+    && isArcBotEditableTarget(targetPath)
+    && activeJson
+    && !activeJsonIsError
+    && !isClaudeArcBotModel(model)
+  ) {
+    sendArcBotActivity(event, requestId, "activity", "Creating editable local JSON-backed copy...");
+    requestLog.start("create_edit_session", { targetPath });
+    editSession = createArcBotEditSession({ targetPath, activeJson, roots: await getArcBotEditRoots() });
+    requestLog.end("create_edit_session", {
+      sessionDir: editSession.sessionDir,
+      jsonPath: editSession.jsonPath,
+      exchangeRoot: editSession.exchangeRoot || "",
+      stagedFileCount: editSession.manifestFiles?.length || 0,
+      csvRewriteCount: editSession.csvRewrites?.length || 0,
     });
-    if (validation.ok) {
-      sendArcBotActivity(event, requestId, "activity", "Creating editable local JSON-backed copy...");
-      requestLog.start("create_edit_session", { targetPath: validation.targetPath });
-      editSession = createArcBotEditSession({ targetPath: validation.targetPath, activeJson, roots: validation.roots });
-      requestLog.end("create_edit_session", {
-        sessionDir: editSession.sessionDir,
-        jsonPath: editSession.jsonPath,
-        exchangeRoot: editSession.exchangeRoot || "",
-        stagedFileCount: editSession.manifestFiles?.length || 0,
-        csvRewriteCount: editSession.csvRewrites?.length || 0,
-      });
-    }
   }
   const codexCwd = editSession?.codexCwd || editSession?.sessionDir || roots.cliRoot;
   const codexSandbox = editSession ? "workspace-write" : "read-only";
@@ -3317,50 +3128,30 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
       if (sha256Text(editedText) !== editSession.beforeSha256) {
         const replacementJson = restoreExchangeJsonForApply(editSession, editedJson);
         const structured = extractJsonObject(rawText);
-        if (deferDfmApproval) {
-          sendArcBotActivity(event, requestId, "activity", "Prepared DFM edit for approval.");
-          requestLog.mark("dfm_edit_pending_approval", {
-            targetPath: editSession.targetPath,
-            replyFromStructuredOutput: !!structured?.reply,
-          });
-          return finishArcBotRequest({
-            ok: true,
-            text: structured?.reply || rawText || "Review the proposed DFM edit.",
-            editPendingApproval: true,
-            targetPath: editSession.targetPath,
-            originalJson: activeJson,
-            proposedJson: replacementJson,
-            usage,
-          });
-        }
-        sendArcBotActivity(event, requestId, "activity", "Validating and applying edited JSON-backed copy...");
-        requestLog.start("apply_json_edit", {
+        // The open page applies the edit and saves it through its own save,
+        // so nothing here writes the target file.
+        sendArcBotActivity(
+          event,
+          requestId,
+          "activity",
+          deferDfmApproval ? "Prepared DFM edit for approval." : "Handing the edit to the page...",
+        );
+        requestLog.mark("edit_handed_to_page", {
           targetPath: editSession.targetPath,
+          pendingApproval: deferDfmApproval,
           replyFromStructuredOutput: !!structured?.reply,
         });
-        const applied = await applyArcBotJsonEdit({
+        return finishArcBotRequest({
+          ok: true,
+          text: structured?.reply || rawText || (deferDfmApproval ? "Review the proposed DFM edit." : "Prepared the edit."),
+          editProposed: true,
+          editPendingApproval: deferDfmApproval,
           targetPath: editSession.targetPath,
-          replacementJson,
-          requestText: String((payload?.messages || []).slice(-1)[0]?.content || ""),
-          reply: structured?.reply || rawText,
           originalJson: activeJson,
+          proposedJson: replacementJson,
+          proposedText: formatJsonForArcBot(replacementJson),
+          usage,
         });
-        requestLog.end("apply_json_edit", {
-          ok: !!applied.ok,
-          targetPath: applied.targetPath || editSession.targetPath,
-          backupPath: applied.backupPath || "",
-          error: applied.error || "",
-        });
-        return finishArcBotRequest(applied.ok
-          ? {
-              ok: true,
-              text: applied.reply || "Updated the active JSON-backed file.",
-              editApplied: true,
-              targetPath: applied.targetPath,
-              backupPath: applied.backupPath,
-              usage,
-            }
-          : { ok: false, needsAuth: false, error: applied.error || "ArcBot JSON-backed edit failed.", usage });
       }
     }
     const structured = extractJsonObject(rawText);

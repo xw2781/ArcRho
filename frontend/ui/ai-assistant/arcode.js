@@ -4,7 +4,7 @@ import {
   initAiAssistant as initSharedAiAssistant,
   isAiAssistantLauncherVisible,
   toggleAiAssistantLauncherVisible,
-} from "./index.js?v=20260622a";
+} from "./index.js?v=20260927a";
 
 configureAiAssistant({
   appName: "Arcode",

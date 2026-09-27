@@ -1,5 +1,5 @@
 import { inferSqlDialect } from "../../ai-assistant/skills.js?v=20260726a";
-import { createEditorPage } from "../shared/editor_framework.js?v=20260818a";
+import { createEditorPage } from "../shared/editor_framework.js?v=20260927a";
 
 /**
  * The plain code/text editor: the generic editor framework in its scripting

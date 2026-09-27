@@ -227,6 +227,13 @@ export function peekRatioHistoryStepKind(direction = "undo") {
   return isMethodStep(top) ? METHOD_STEP_KIND : "ratio";
 }
 
+/** The source a method step was recorded with, such as "arcbot-edit"; "" for a ratio step or none. */
+export function peekRatioHistoryStepSource(direction = "undo") {
+  const stack = direction === "redo" ? redoStack : undoStack;
+  const top = stack[stack.length - 1];
+  return isMethodStep(top) ? String(top.source || "") : "";
+}
+
 // A method step swaps the whole method, so the step pushed the other way
 // holds the whole current method too.
 async function runMethodHistoryStep(fromStack, toStack, reason) {

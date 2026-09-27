@@ -317,6 +317,47 @@ function buildScriptingAssistantContext() {
   };
 }
 
+// ArcBot hands its edit to the notebook instead of writing the file: the edit
+// lands as one undoable, unsaved change and the user saves it. A revert is
+// that change's undo, refused once the notebook has changed again.
+let arcBotNotebookEditText = "";
+
+function isArcBotNotebookTarget(targetPath) {
+  const target = String(targetPath || "").trim();
+  return !!currentNotebookPath && (!target || target === currentNotebookPath);
+}
+
+function applyArcBotNotebookEdit({ targetPath = "", proposedJson = null } = {}) {
+  if (!isArcBotNotebookTarget(targetPath)) {
+    return { ok: false, error: "The notebook ArcBot edited is no longer open in this tab. Nothing was changed." };
+  }
+  if (!proposedJson || typeof proposedJson !== "object" || Array.isArray(proposedJson)) {
+    return { ok: false, error: "ArcBot did not return a notebook." };
+  }
+  const baselineText = savedNotebookText;
+  applyLoadedNotebookCells(normalizeNotebookData(proposedJson, currentNotebookPath), currentNotebookPath, {
+    revision: lastNotebookDiskRevision,
+  });
+  savedNotebookText = baselineText;
+  updateNotebookDirtyState();
+  arcBotNotebookEditText = getNotebookStateText();
+  setStatus("ArcBot edit applied. Save to keep it.");
+  return { ok: true, message: "The edit is in the notebook as unsaved changes. Save the notebook to keep it." };
+}
+
+function revertArcBotNotebookEdit({ targetPath = "" } = {}) {
+  if (!isArcBotNotebookTarget(targetPath) || !arcBotNotebookEditText) {
+    return { ok: false, error: "There is no ArcBot edit to revert in this notebook." };
+  }
+  if (getNotebookStateText() !== arcBotNotebookEditText) {
+    return { ok: false, error: "The notebook changed after ArcBot's edit, so nothing was reverted. Use Undo to step back through it." };
+  }
+  undoNotebookChange();
+  arcBotNotebookEditText = "";
+  updateNotebookDirtyState();
+  return { ok: true, message: "Reverted the latest ArcBot edit. The notebook is back to how it was before." };
+}
+
 async function checkNotebookDiskForChanges({ force = false } = {}) {
   if (!currentNotebookPath) return;
   const revision = await readNotebookDiskRevision();

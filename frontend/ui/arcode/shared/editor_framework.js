@@ -575,6 +575,50 @@ export function createEditorPage(mode) {
     replyAssistant(requestId, { ok: true, dirty });
   }
 
+  // ArcBot hands a JSON edit to the open editor instead of writing the file:
+  // it lands as one undoable, unsaved change, and a revert is that change's
+  // undo, refused once the text has changed again.
+  let arcBotEditText = "";
+
+  function isArcBotEditTarget(targetPath) {
+    const target = String(targetPath || "").trim();
+    return !!currentPath && (!target || target === currentPath);
+  }
+
+  function handleAssistantJsonEdit(msg) {
+    const revert = msg.type === "arcode:assistant-revert-json-edit";
+    const reply = (payload) => shared.postParentMessage({ type: `${msg.type}-result`, requestId: msg.requestId || "", ...payload });
+    if (!editor || !isArcBotEditTarget(msg.targetPath)) {
+      reply({ ok: false, error: "The file ArcBot edited is no longer open in this tab. Nothing was changed." });
+      return;
+    }
+    if (revert) {
+      if (!arcBotEditText || editor.getValue() !== arcBotEditText) {
+        reply({ ok: false, error: "The file changed after ArcBot's edit, so nothing was reverted. Use Undo to step back through it." });
+        return;
+      }
+      editor.trigger("arcbot", "undo", null);
+      arcBotEditText = "";
+      updateDirtyFromEditor();
+      setStatus("Reverted ArcBot edit.");
+      reply({ ok: true, message: "Reverted the latest ArcBot edit." });
+      return;
+    }
+    const text = typeof msg.proposedText === "string" && msg.proposedText ? msg.proposedText : "";
+    if (!text) {
+      reply({ ok: false, error: "ArcBot did not return the edited file." });
+      return;
+    }
+    const model = editor.getModel();
+    editor.pushUndoStop();
+    editor.executeEdits("arcbot-json-edit", [{ range: model.getFullModelRange(), text, forceMoveMarkers: true }]);
+    editor.pushUndoStop();
+    arcBotEditText = editor.getValue();
+    updateDirtyFromEditor();
+    setStatus("ArcBot edit applied. Save to keep it.");
+    reply({ ok: true, message: "The edit is in the editor as unsaved changes. Save the file to keep it." });
+  }
+
   function initEvents() {
     $("runBtn")?.addEventListener("click", () => void runNow());
     $("stopBtn")?.addEventListener("click", () => void mode.stop?.(api));
@@ -624,6 +668,10 @@ export function createEditorPage(mode) {
       }
       if (msg.type === "arcode:assistant-replace-text") {
         handleAssistantReplaceText(msg);
+        return;
+      }
+      if (msg.type === "arcode:assistant-apply-json-edit" || msg.type === "arcode:assistant-revert-json-edit") {
+        handleAssistantJsonEdit(msg);
         return;
       }
       for (const handler of messageHandlers) handler(msg);
