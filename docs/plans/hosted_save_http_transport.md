@@ -1,8 +1,8 @@
 # Hosted Save HTTP Transport
 
-Status: Implemented for every hosted-save kind; TLS, traffic limits, and
-retiring the SMB path remain
-Last updated: 2026-09-07
+Status: Implemented for every hosted-save kind, and the only save transport a
+Client PC has since 2026-09-27; TLS and traffic limits remain
+Last updated: 2026-09-27
 
 ## Summary
 
@@ -18,8 +18,9 @@ returns the canonical save response. No canonical save logic, reserving-class
 lease, or dependent-propagation behaviour changed — only the transport between
 the client app server and the Engine.
 
-The SMB protocol is still in the client and is still the rollback path. It is
-retired only once the Gateway runs over TLS.
+The client's SMB request-file path was removed on 2026-09-27 (step 19 of
+[client_smb_retirement.md](client_smb_retirement.md)), without waiting for TLS
+(its decision 1): a Client PC saves only through the Gateway.
 
 ```mermaid
 sequenceDiagram
@@ -61,10 +62,10 @@ sequenceDiagram
   returns the stored outcome; different content under the same ID returns `409`.
   Terminal receipts are pruned on a retention window.
 - **Capability negotiation.** A client asks `/api/capabilities` which kinds a
-  Gateway serves and keeps anything an older deployment does not advertise on
-  SMB, so a pending Gateway upgrade degrades the transport instead of failing
-  the save. Once a local HTTP credential exists, an uncertain HTTP submission
-  never falls back to SMB.
+  Gateway serves. A kind an older deployment does not advertise is refused
+  with "The server needs updating before it can do this." (503), and a PC with
+  no credential is told it is not signed in (401); neither writes anything. An
+  uncertain HTTP submission is retried under the same request ID.
 - **Automatic enrollment.** `%APPDATA%\ArcRho\arcrho_gateway.json` is the
   per-user flag and credential. A missing file triggers sign-up on startup and
   after Server Connection changes, at the address the active server profile
@@ -83,8 +84,8 @@ sequenceDiagram
   records the canonical client URL, updates the server registry, installs that
   user's credential without printing the secret, and removes the pilot-era HKCU
   Run entry. Other users are enrolled automatically.
-- **Comparable measurements.** Client latency records carry `transport` as
-  `smb` or `http_gateway` in `client_save_latency.jsonl`.
+- **Measurements.** Client latency records in `client_save_latency.jsonl`
+  carry `transport` (`http_gateway`) and, for a refused save, the `reason`.
 
 ## Routes
 
@@ -146,9 +147,10 @@ time plus ordinary HTTP latency.
   (2026-09-27) made every workspace read, mutation and Engine calculation
   Gateway-only on a Client PC: not signed in, a silent Gateway, a Gateway
   without the operation and a refused signature are each a plain error, never
-  a share read. The hosted-save request-file branch for a kind the Gateway
-  does not advertise (and for a PC with no credential) is removed by its
-  step 19.
+  a share read. Its step 19 (2026-09-27) removed the hosted-save
+  request-file branch the same way: a kind the Gateway does not advertise is
+  503 "The server needs updating", and a PC with no credential is 401 "not
+  signed in".
 
 ## Invariants To Preserve
 

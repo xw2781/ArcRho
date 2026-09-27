@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import getpass
 import json
 import os
 import re
@@ -14,6 +13,7 @@ from fastapi import HTTPException
 from arcrho_api.io import persisted_json_text
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
+from app_server.services import user_identity_service
 
 
 JSON_FORMAT = "arcrho-dataset-number-formats-v4"
@@ -187,7 +187,7 @@ def save_preferences(
                 "revision": current_revision + 1,
                 "default_number_format": default_number_format,
                 "updated_at": utc_now_text(),
-                "updated_by": getpass.getuser() or "unknown",
+                "updated_by": user_identity_service.get_windows_login_name() or "unknown",
                 "overrides": overrides,
             }, strict=True)
         except (TypeError, ValueError) as error:

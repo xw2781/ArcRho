@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
-import threading
-import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -21,74 +19,77 @@ for path in (FRONTEND_ROOT, PYTHON_API_SRC):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from arcrho_engine_save_contract import (
-    SAVE_JOB_KINDS,
-    read_save_job_status,
-    save_job_request_path,
-    validate_save_job_request,
-    write_save_job_result,
-    write_save_job_status,
-)
+from arcrho_engine_save_contract import SAVE_JOB_KINDS
 from arcrho_hosted_save_http_contract import HTTP_SAVE_KINDS
 from app_server.services import (
     client_save_latency_log_service,
     dependent_propagation_service,
     engine_hosted_save_service,
+    workspace_read_client,
+)
+from app_server.services.hosted_save_http_client import (
+    NOT_SIGNED_IN_MESSAGE,
+    SERVER_UNREACHABLE_MESSAGE,
+    SERVER_UPDATE_MESSAGE,
 )
 
 
+GATEWAY_CONFIG = {
+    "enabled": True,
+    "url": "http://gateway.test:28767",
+    "user": "xwei",
+    "secret": "pilot-secret",
+    "allow_insecure_http": True,
+}
+
+
 class EngineHostedSaveClientTests(unittest.TestCase):
-    """The client half: submit, poll, and map the Engine's outcome."""
+    """The client half: send the save to the Gateway and map its outcome.
+
+    A Client PC has no request-file route to the Engine: every save goes
+    through the Gateway, and a Gateway that cannot take it is the error.
+    """
 
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
-        server_patch = patch.object(
-            dependent_propagation_service.propagation_gateway_client,
-            "is_server_process", return_value=True,
-        )
-        server_patch.start()
-        self.addCleanup(server_patch.stop)
+        self.addCleanup(self.temp_dir.cleanup)
         self.root = Path(self.temp_dir.name)
-        (self.root / "projects").mkdir()
-        self.instances_dir = self.root / "runtime" / "instances" / "arcrho_engine"
-        self.instances_dir.mkdir(parents=True)
-        (self.instances_dir / "engine.json").write_text(
-            json.dumps({"Server": "engine", "Last seen": "2026-08-13 12:00:00"}),
-            encoding="utf-8",
-        )
-        self.path_patch = patch.object(
-            dependent_propagation_service.config,
-            "load_workspace_paths",
-            return_value={
-                "workspace_root": str(self.root),
-                "paths": {"projects_dir": "projects", "requests_dir": "requests"},
-            },
-        )
-        self.path_patch.start()
-        dependent_propagation_service._clear_protocol_path_validation_cache()
         self.latency_log_path = self.root / "local_appdata" / "client_save_latency.jsonl"
-        self.log_path_patch = patch.object(
-            client_save_latency_log_service.config,
-            "get_client_save_latency_log_path",
-            return_value=str(self.latency_log_path),
-        )
-        self.log_path_patch.start()
-        self.gateway_config_patch = patch.object(
-            engine_hosted_save_service.config,
-            "load_gateway_config",
-            return_value={"enabled": False},
-        )
-        self.gateway_config_patch.start()
-
-    def tearDown(self) -> None:
-        for thread in threading.enumerate():
-            if thread.name.startswith("hosted-save-cleanup-"):
-                thread.join(timeout=5)
-        self.log_path_patch.stop()
-        self.gateway_config_patch.stop()
-        self.path_patch.stop()
-        dependent_propagation_service._clear_protocol_path_validation_cache()
-        self.temp_dir.cleanup()
+        workspace_read_client.reset_capability_cache()
+        self.addCleanup(workspace_read_client.reset_capability_cache)
+        self.gateway_config = dict(GATEWAY_CONFIG)
+        self.capabilities = self._capabilities()
+        for target, name, kwargs in (
+            (workspace_read_client, "_is_server_process", {"return_value": False}),
+            (
+                client_save_latency_log_service.config,
+                "get_client_save_latency_log_path",
+                {"return_value": str(self.latency_log_path)},
+            ),
+            (
+                engine_hosted_save_service.config,
+                "load_gateway_config",
+                {"side_effect": lambda: self.gateway_config},
+            ),
+            (
+                engine_hosted_save_service.hosted_save_http_client,
+                "probe_gateway",
+                {"side_effect": lambda _config: self.capabilities},
+            ),
+            (
+                engine_hosted_save_service.user_identity_service,
+                "get_windows_login_name",
+                {"return_value": "xwei"},
+            ),
+            (
+                dependent_propagation_service,
+                "require_reserving_class_writable",
+                {"side_effect": AssertionError("a client save must not preflight the share")},
+            ),
+        ):
+            patcher = patch.object(target, name, **kwargs)
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def _latency_records(self) -> list[dict]:
         if not self.latency_log_path.exists():
@@ -111,240 +112,45 @@ class EngineHostedSaveClientTests(unittest.TestCase):
             "insecure_http_pilot": True,
         }
 
-    def _engine_stub(self, respond) -> threading.Thread:
-        """Wait for the request file, then publish what `respond` returns."""
+    def _submit(self, **kwargs):
+        return patch.object(
+            engine_hosted_save_service.hosted_save_http_client,
+            "submit_hosted_save",
+            **kwargs,
+        )
 
-        requests_dir = self.root / "requests"
-
-        def run() -> None:
-            deadline = time.monotonic() + 10
-            while time.monotonic() < deadline:
-                try:
-                    candidates = [
-                        item
-                        for item in requests_dir.iterdir()
-                        if item.name.startswith("arcrho_hosted_save_")
-                    ]
-                except FileNotFoundError:
-                    candidates = []
-                if candidates:
-                    request = validate_save_job_request(
-                        json.loads(candidates[0].read_text(encoding="utf-8"))
-                    )
-                    candidates[0].unlink()
-                    respond(request)
-                    return
-                time.sleep(0.05)
-
-        thread = threading.Thread(target=run, daemon=True)
-        thread.start()
-        return thread
-
-    def test_a_successful_hosted_save_returns_the_engine_result(self) -> None:
-        statuses_before_engine_response: list[dict | None] = []
-
-        def respond(request):
-            statuses_before_engine_response.append(
-                read_save_job_status(self.root, request["RequestId"])
-            )
-            response = {
-                "ok": True,
-                "echo_args": request["Args"],
-                "propagation": {
-                    "ok": True,
-                    "status": "completed",
-                    "refreshed_datasets": ["C 61", "C 91"],
-                },
-            }
-            write_save_job_result(
-                self.root,
-                request["RequestId"],
-                response,
-            )
-            write_save_job_status(
-                self.root,
-                request["RequestId"],
-                "success",
-                response=response,
-            )
-
-        thread = self._engine_stub(respond)
-        with patch.object(
-            engine_hosted_save_service,
-            "read_save_job_result",
-            side_effect=AssertionError("an inline response must avoid the legacy read"),
+    def _assert_refused(self, status: int, message: str, reason: str) -> None:
+        with self._submit(
+            side_effect=AssertionError("a refused save must never be posted")
         ):
-            result = engine_hosted_save_service.run_hosted_save(
-                "dfm_method",
-                "Demo Project",
-                "HPPREF\\HO+DF\\NJ",
-                args=[
+            with self.assertRaises(HTTPException) as raised:
+                engine_hosted_save_service.run_hosted_save(
+                    "cape_cod_method",
                     "Demo Project",
                     "HPPREF\\HO+DF\\NJ",
-                    {
-                        "json_format": "dfm",
-                        "details_tab": {
-                            "name": "C 22 - CWOP DFM w/ Selected LDFs"
-                        },
-                    },
-                ],
-                kwargs={"notes": None},
-            )
-        thread.join(timeout=5)
-        self.assertEqual(
-            statuses_before_engine_response,
-            [None],
-            "the request file itself must be the queued state",
-        )
-        self.assertEqual(result["propagation"]["refreshed_datasets"], ["C 61", "C 91"])
-        self.assertEqual(result["echo_args"][2]["json_format"], "dfm")
-        # Terminal artifacts are consumed so the queue folders stay clean —
-        # in the background, off the response's critical path, so wait for it.
-        save_jobs = self.root / "requests" / "save_jobs"
-        deadline = time.monotonic() + 5
-        def leftovers():
-            return [
-                item.name
-                for folder in ("statuses", "results")
-                for item in (save_jobs / folder).iterdir()
-            ]
-        while leftovers() and time.monotonic() < deadline:
-            time.sleep(0.05)
-        self.assertEqual(leftovers(), [])
-        records = self._latency_records()
-        while (
-            not any(record["event"] == "hosted_save_cleanup" for record in records)
-            and time.monotonic() < deadline
-        ):
-            time.sleep(0.05)
-            records = self._latency_records()
-        round_trip = next(
-            record
-            for record in records
-            if record["event"] == "hosted_save_round_trip"
-        )
-        cleanup = next(
-            record for record in records if record["event"] == "hosted_save_cleanup"
-        )
-        self.assertEqual(round_trip["request_id"], cleanup["request_id"])
-        self.assertEqual(round_trip["outcome"], "success")
-        self.assertEqual(round_trip["http_status"], 200)
-        self.assertEqual(round_trip["result_source"], "terminal_status")
-        self.assertEqual(round_trip["project_name"], "Demo Project")
-        self.assertEqual(round_trip["reserving_class"], "HPPREF\\HO+DF\\NJ")
-        self.assertEqual(
-            round_trip["object_name"],
-            "C 22 - CWOP DFM w/ Selected LDFs",
-        )
-        self.assertGreaterEqual(round_trip["total_ms"], 0)
-        self.assertEqual(
-            round_trip["status_poll_count"],
-            len(round_trip["status_reads_ms"]),
-        )
-        self.assertIn("success", round_trip["status_observations"])
-        for phase in (
-            "preflight_workspace_config_load_ms",
-            "preflight_workspace_root_access_ms",
-            "preflight_workspace_protocol_validation_ms",
-            "preflight_engine_heartbeat_ms",
-            "preflight_class_hold_ms",
-            "preflight_total_ms",
-            "identity_lookup_ms",
-            "request_encode_ms",
-            "request_publish_ms",
-            "request_serialize_ms",
-            "request_directory_ms",
-            "request_temp_write_ms",
-            "request_atomic_publish_ms",
-            "initial_poll_delay_ms",
-            "remote_round_trip_ms",
-            "cleanup_schedule_ms",
-            "status_read_total_ms",
-            "poll_sleep_total_ms",
-        ):
-            self.assertGreaterEqual(round_trip["phase_ms"][phase], 0, phase)
-        self.assertGreater(round_trip["request_bytes"], 0)
-        self.assertNotIn("queued_status_publish_ms", round_trip["phase_ms"])
-        self.assertNotIn("submission_workspace_total_ms", round_trip["phase_ms"])
-        self.assertNotIn("legacy_result_read_ms", round_trip["phase_ms"])
-        self.assertGreaterEqual(cleanup["cleanup_ms"], 0)
+                    args=["Demo Project", "HPPREF\\HO+DF\\NJ", {}],
+                )
+        self.assertEqual(raised.exception.status_code, status)
+        self.assertEqual(raised.exception.detail, message)
+        round_trip = self._latency_records()[-1]
+        self.assertEqual(round_trip["event"], "hosted_save_round_trip")
+        self.assertEqual(round_trip["outcome"], "error")
+        self.assertEqual(round_trip["http_status"], status)
+        self.assertEqual(round_trip["reason"], reason)
+        self.assertEqual(round_trip["failure_stage"], "gateway_capability")
+        self.assertEqual(list(self.root.iterdir()), [self.latency_log_path.parent])
 
-    def test_the_request_carries_the_user_who_is_saving(self) -> None:
-        # The Engine instance that claims this runs as its own service
-        # account, so the requesting user has to travel with the request or
-        # the sidecar ends up naming a random instance.
-        received: list = []
-
-        def respond(request):
-            received.append(request)
-            write_save_job_result(self.root, request["RequestId"], {"ok": True})
-            write_save_job_status(self.root, request["RequestId"], "success")
-
-        thread = self._engine_stub(respond)
-        with patch.object(
-            engine_hosted_save_service.user_identity_service,
-            "get_current_identity",
-            return_value={"login_name": "xwei", "display_name": "Wei, Xiao"},
-        ):
-            engine_hosted_save_service.run_hosted_save(
-                "dataset_sidecar",
-                "Demo Project",
-                "HPPREF\\HO+DF\\NJ",
-                args=["Demo Project", "HPPREF\\HO+DF\\NJ", {}],
-            )
-        thread.join(timeout=5)
-        self.assertEqual(received[0]["UserName"], "xwei")
-        self.assertEqual(received[0]["UserDisplayName"], "Wei, Xiao")
-        round_trip = next(
-            record
-            for record in reversed(self._latency_records())
-            if record["event"] == "hosted_save_round_trip"
-        )
-        self.assertEqual(round_trip["result_source"], "legacy_result_file")
-        self.assertIn("legacy_result_read_ms", round_trip["phase_ms"])
-
-    def test_dataset_save_can_use_the_http_gateway_without_smb_preflight(self) -> None:
-        gateway_config = {
-            "enabled": True,
-            "url": "http://gateway.test:28767",
-            "user": "xwei",
-            "secret": "pilot-secret",
-            "allow_insecure_http": True,
-        }
-        with (
-            patch.object(
-                engine_hosted_save_service.config,
-                "load_gateway_config",
-                return_value=gateway_config,
+    def test_dataset_save_uses_the_http_gateway(self) -> None:
+        with self._submit(
+            return_value=(
+                {"ok": True, "source_kind": "input"},
+                {
+                    "gateway_round_trip_ms": 25.0,
+                    "gateway_attempts": 1,
+                    "request_bytes": 512,
+                },
             ),
-            patch.object(
-                engine_hosted_save_service.user_identity_service,
-                "get_current_identity",
-                return_value={"login_name": "xwei", "display_name": "Wei, Xiao"},
-            ),
-            patch.object(
-                engine_hosted_save_service.hosted_save_http_client,
-                "probe_gateway",
-                return_value=self._capabilities(),
-            ),
-            patch.object(
-                engine_hosted_save_service.hosted_save_http_client,
-                "submit_hosted_save",
-                return_value=(
-                    {"ok": True, "source_kind": "input"},
-                    {
-                        "gateway_round_trip_ms": 25.0,
-                        "gateway_attempts": 1,
-                        "request_bytes": 512,
-                    },
-                ),
-            ) as submit,
-            patch.object(
-                dependent_propagation_service,
-                "require_reserving_class_writable",
-                side_effect=AssertionError("HTTP transport must not touch SMB preflight"),
-            ),
-        ):
+        ) as submit:
             result = engine_hosted_save_service.run_hosted_save(
                 "dataset_sidecar",
                 "Demo Project",
@@ -357,20 +163,23 @@ class EngineHostedSaveClientTests(unittest.TestCase):
         request = submit.call_args.args[1]
         self.assertEqual(request["SaveKind"], "dataset_sidecar")
         self.assertEqual(request["UserName"], "xwei")
+        self.assertEqual(request["UserDisplayName"], "")
         self.assertEqual(request["Kwargs"]["values"], [[1.0]])
         round_trip = self._latency_records()[-1]
         self.assertEqual(round_trip["transport"], "http_gateway")
         self.assertEqual(round_trip["result_source"], "http_gateway")
-        self.assertEqual(round_trip["status_poll_count"], 0)
+        self.assertEqual(round_trip["outcome"], "success")
+        self.assertEqual(round_trip["request_bytes"], 512)
+        for phase in (
+            "gateway_capability_ms",
+            "identity_lookup_ms",
+            "request_encode_ms",
+            "gateway_round_trip_ms",
+            "remote_round_trip_ms",
+        ):
+            self.assertGreaterEqual(round_trip["phase_ms"][phase], 0, phase)
 
     def test_dfm_plan_and_save_use_the_exact_http_gateway_request(self) -> None:
-        gateway_config = {
-            "enabled": True,
-            "url": "http://gateway.test:28767",
-            "user": "xwei",
-            "secret": "pilot-secret",
-            "allow_insecure_http": True,
-        }
         method = {
             "json_format": "arcrho-dfm-v4",
             "details_tab": {
@@ -399,33 +208,7 @@ class EngineHostedSaveClientTests(unittest.TestCase):
                 "request_bytes": 1024,
             }
 
-        with (
-            patch.object(
-                engine_hosted_save_service.config,
-                "load_gateway_config",
-                return_value=gateway_config,
-            ),
-            patch.object(
-                engine_hosted_save_service.user_identity_service,
-                "get_current_identity",
-                return_value={"login_name": "xwei", "display_name": "Wei, Xiao"},
-            ),
-            patch.object(
-                engine_hosted_save_service.hosted_save_http_client,
-                "probe_gateway",
-                return_value=self._capabilities(),
-            ),
-            patch.object(
-                engine_hosted_save_service.hosted_save_http_client,
-                "submit_hosted_save",
-                side_effect=submit,
-            ),
-            patch.object(
-                dependent_propagation_service,
-                "require_reserving_class_writable",
-                side_effect=AssertionError("HTTP transport must not touch SMB preflight"),
-            ),
-        ):
+        with self._submit(side_effect=submit):
             plan = engine_hosted_save_service.run_hosted_save_plan(
                 "dfm_method",
                 "Demo Project",
@@ -440,6 +223,7 @@ class EngineHostedSaveClientTests(unittest.TestCase):
                 args=["Demo Project", "HPPREF\\HO+DF\\NJ", method],
                 kwargs=kwargs,
                 plan_fingerprint=plan["plan_fingerprint"],
+                client_request_id="a" * 32,
             )
 
         self.assertEqual(saved["method"], method)
@@ -451,27 +235,23 @@ class EngineHostedSaveClientTests(unittest.TestCase):
             self.assertEqual(request["UserName"], "xwei")
         self.assertEqual(submitted[0]["PlanFingerprint"], "")
         self.assertEqual(submitted[1]["PlanFingerprint"], "plan-123")
+        self.assertEqual(submitted[1]["RequestId"], "a" * 32)
         round_trips = [
             record
             for record in self._latency_records()
             if record["event"] == "hosted_save_round_trip"
         ]
-        self.assertEqual([record["transport"] for record in round_trips], [
-            "http_gateway",
-            "http_gateway",
-        ])
-        self.assertTrue(all(record["status_poll_count"] == 0 for record in round_trips))
+        self.assertEqual(
+            [record["transport"] for record in round_trips],
+            ["http_gateway", "http_gateway"],
+        )
+        self.assertEqual(
+            round_trips[0]["object_name"], "C 22 - CWOP DFM w/ Selected LDFs"
+        )
 
     def test_every_save_kind_uses_the_http_gateway(self) -> None:
         """Every dataset and method save procedure travels over HTTP."""
 
-        gateway_config = {
-            "enabled": True,
-            "url": "http://gateway.test:28767",
-            "user": "xwei",
-            "secret": "pilot-secret",
-            "allow_insecure_http": True,
-        }
         submitted: list[dict] = []
 
         def submit(_config, request, **_kwargs):
@@ -482,33 +262,7 @@ class EngineHostedSaveClientTests(unittest.TestCase):
                 "request_bytes": 128,
             }
 
-        with (
-            patch.object(
-                engine_hosted_save_service.config,
-                "load_gateway_config",
-                return_value=gateway_config,
-            ),
-            patch.object(
-                engine_hosted_save_service.user_identity_service,
-                "get_current_identity",
-                return_value={"login_name": "xwei", "display_name": "Wei, Xiao"},
-            ),
-            patch.object(
-                engine_hosted_save_service.hosted_save_http_client,
-                "probe_gateway",
-                return_value=self._capabilities(),
-            ),
-            patch.object(
-                engine_hosted_save_service.hosted_save_http_client,
-                "submit_hosted_save",
-                side_effect=submit,
-            ),
-            patch.object(
-                dependent_propagation_service,
-                "require_reserving_class_writable",
-                side_effect=AssertionError("HTTP transport must not touch SMB preflight"),
-            ),
-        ):
+        with self._submit(side_effect=submit):
             for save_kind in sorted(SAVE_JOB_KINDS):
                 engine_hosted_save_service.run_hosted_save(
                     save_kind,
@@ -521,100 +275,61 @@ class EngineHostedSaveClientTests(unittest.TestCase):
             [request["SaveKind"] for request in submitted],
             sorted(SAVE_JOB_KINDS),
         )
-        round_trips = [
-            record
-            for record in self._latency_records()
-            if record["event"] == "hosted_save_round_trip"
-        ]
-        self.assertEqual(
-            [record["transport"] for record in round_trips],
-            ["http_gateway"] * len(SAVE_JOB_KINDS),
-        )
 
-    def test_a_gateway_without_the_save_kind_stays_on_smb(self) -> None:
-        """A gateway older than a save kind degrades instead of refusing it.
+    def test_a_gateway_without_the_save_kind_says_the_server_needs_updating(self) -> None:
+        self.capabilities = self._capabilities(["dataset_sidecar"])
+        self._assert_refused(503, SERVER_UPDATE_MESSAGE, "kind_not_advertised")
 
-        The kind gate lives on the gateway, so posting a kind it never
-        advertised would be rejected outright and lose the save. Until it is
-        upgraded, that kind keeps the SMB transport.
-        """
+    def test_a_pc_with_no_credential_is_asked_to_sign_in(self) -> None:
+        self.gateway_config = {"enabled": False}
+        self._assert_refused(401, NOT_SIGNED_IN_MESSAGE, "gateway_disabled")
 
-        gateway_config = {
-            "enabled": True,
-            "url": "http://gateway.test:28767",
-            "user": "xwei",
-            "secret": "pilot-secret",
-            "allow_insecure_http": True,
-        }
+    def test_a_silent_gateway_is_reported_not_worked_around(self) -> None:
+        def unreachable(_config):
+            raise HTTPException(503, SERVER_UNREACHABLE_MESSAGE)
 
-        def respond(request):
-            write_save_job_result(self.root, request["RequestId"], {"ok": True})
-            write_save_job_status(self.root, request["RequestId"], "success")
-
-        thread = self._engine_stub(respond)
-        with (
-            patch.object(
-                engine_hosted_save_service.config,
-                "load_gateway_config",
-                return_value=gateway_config,
-            ),
-            patch.object(
-                engine_hosted_save_service.hosted_save_http_client,
-                "probe_gateway",
-                return_value=self._capabilities(["dataset_sidecar"]),
-            ),
-            patch.object(
-                engine_hosted_save_service.hosted_save_http_client,
-                "submit_hosted_save",
-                side_effect=AssertionError(
-                    "an unadvertised save kind must never be posted"
-                ),
-            ),
+        with patch.object(
+            engine_hosted_save_service.hosted_save_http_client,
+            "probe_gateway",
+            side_effect=unreachable,
         ):
-            result = engine_hosted_save_service.run_hosted_save(
-                "cape_cod_method",
-                "Demo Project",
-                "HPPREF\\HO+DF\\NJ",
-                args=["Demo Project", "HPPREF\\HO+DF\\NJ", {}],
-            )
-        thread.join(timeout=5)
-
-        self.assertTrue(result["ok"])
-        round_trip = next(
-            record
-            for record in reversed(self._latency_records())
-            if record["event"] == "hosted_save_round_trip"
-        )
-        self.assertEqual(round_trip["transport"], "smb")
-        self.assertEqual(round_trip["outcome"], "success")
-        # The probe still happened, and its cost is attributed honestly.
-        self.assertGreaterEqual(round_trip["phase_ms"]["gateway_capability_ms"], 0)
+            self._assert_refused(503, SERVER_UNREACHABLE_MESSAGE, "gateway_unreachable")
 
     def test_service_errors_keep_their_status_codes(self) -> None:
-        def respond(request):
-            write_save_job_status(
-                self.root,
-                request["RequestId"],
-                "error",
-                message="Output dataset is already owned by another method.",
-                status_code=409,
+        with self._submit(
+            side_effect=HTTPException(
+                409, "Output dataset is already owned by another method."
             )
-
-        thread = self._engine_stub(respond)
-        with self.assertRaises(HTTPException) as raised:
-            engine_hosted_save_service.run_hosted_save(
-                "cape_cod_method",
-                "Demo Project",
-                "HPPREF\\HO+DF\\NJ",
-                args=["Demo Project", "HPPREF\\HO+DF\\NJ", {}],
-            )
-        thread.join(timeout=5)
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                engine_hosted_save_service.run_hosted_save(
+                    "cape_cod_method",
+                    "Demo Project",
+                    "HPPREF\\HO+DF\\NJ",
+                    args=["Demo Project", "HPPREF\\HO+DF\\NJ", {}],
+                )
         self.assertEqual(raised.exception.status_code, 409)
         self.assertIn("already owned", str(raised.exception.detail))
+        round_trip = self._latency_records()[-1]
+        self.assertEqual(round_trip["http_status"], 409)
+        self.assertEqual(round_trip["failure_stage"], "gateway_round_trip")
 
-    def test_an_unclaimed_save_fails_fast_and_retracts_the_request(self) -> None:
-        with patch.object(
-            engine_hosted_save_service, "SAVE_JOB_QUEUED_TIMEOUT_SECONDS", 0.5
+    def test_a_credential_of_another_windows_user_is_refused(self) -> None:
+        self.gateway_config = {**GATEWAY_CONFIG, "user": "someone.else"}
+        with self._submit(side_effect=AssertionError("must not be posted")):
+            with self.assertRaises(HTTPException) as raised:
+                engine_hosted_save_service.run_hosted_save(
+                    "dfm_method",
+                    "Demo Project",
+                    "HPPREF\\HO+DF\\NJ",
+                    args=["Demo Project", "HPPREF\\HO+DF\\NJ", {}],
+                )
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_a_server_process_never_sends_a_save(self) -> None:
+        with (
+            patch.object(workspace_read_client, "_is_server_process", return_value=True),
+            self._submit(side_effect=AssertionError("must not be posted")),
         ):
             with self.assertRaises(HTTPException) as raised:
                 engine_hosted_save_service.run_hosted_save(
@@ -623,58 +338,8 @@ class EngineHostedSaveClientTests(unittest.TestCase):
                     "HPPREF\\HO+DF\\NJ",
                     args=["Demo Project", "HPPREF\\HO+DF\\NJ", {}],
                 )
-        self.assertEqual(raised.exception.status_code, 503)
-        requests_dir = self.root / "requests"
-        leftovers = [
-            item.name
-            for item in requests_dir.iterdir()
-            if item.name.startswith("arcrho_hosted_save_")
-        ]
-        self.assertEqual(leftovers, [], "an unclaimed request must be retracted")
-
-    def test_a_claimed_request_without_a_status_gets_the_processing_timeout(self) -> None:
-        def respond(request):
-            time.sleep(0.7)
-            write_save_job_status(
-                self.root,
-                request["RequestId"],
-                "success",
-                response={"ok": True},
-            )
-
-        thread = self._engine_stub(respond)
-        with patch.object(
-            engine_hosted_save_service,
-            "SAVE_JOB_QUEUED_TIMEOUT_SECONDS",
-            0.2,
-        ):
-            result = engine_hosted_save_service.run_hosted_save(
-                "dfm_method",
-                "Demo Project",
-                "HPPREF\\HO+DF\\NJ",
-                args=["Demo Project", "HPPREF\\HO+DF\\NJ", {}],
-            )
-        thread.join(timeout=5)
-        self.assertTrue(result["ok"])
-
-    def test_no_live_engine_refuses_before_writing_anything(self) -> None:
-        for item in self.instances_dir.iterdir():
-            item.unlink()
-        with self.assertRaises(HTTPException) as raised:
-            engine_hosted_save_service.run_hosted_save(
-                "dfm_method",
-                "Demo Project",
-                "HPPREF\\HO+DF\\NJ",
-                args=["Demo Project", "HPPREF\\HO+DF\\NJ", {}],
-            )
-        self.assertEqual(raised.exception.status_code, 503)
-        self.assertFalse((self.root / "requests").exists())
-        round_trip = self._latency_records()[-1]
-        self.assertEqual(round_trip["event"], "hosted_save_round_trip")
-        self.assertEqual(round_trip["outcome"], "error")
-        self.assertEqual(round_trip["http_status"], 503)
-        self.assertEqual(round_trip["failure_stage"], "preflight")
-        self.assertIn("preflight_engine_heartbeat_ms", round_trip["phase_ms"])
+        self.assertEqual(raised.exception.status_code, 500)
+        self.assertEqual(list(self.root.iterdir()), [self.latency_log_path.parent])
 
 
 class ClientSaveLatencyLogTests(unittest.TestCase):

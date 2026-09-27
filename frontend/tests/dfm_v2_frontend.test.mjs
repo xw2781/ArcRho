@@ -209,7 +209,7 @@ test("v2 payload and PI restore preserve distinct method/output identities", () 
   const builder = functionSlice(
     persistenceSource,
     "export function buildDfmMethodPayload",
-    "function normalizeRatioMatrixCellValue",
+    "async function runDfmMethodPreview",
   );
   for (const field of [
     "input_data_triangle_values",
@@ -255,7 +255,7 @@ test("the built payload carries the owned output category through", () => {
   const builder = functionSlice(
     persistenceSource,
     "export function buildDfmMethodPayload",
-    "function normalizeRatioMatrixCellValue",
+    "async function runDfmMethodPreview",
   );
   assert.match(builder, /"output_category": currentDfmOutputCategory/u);
   const grouped = functionSlice(

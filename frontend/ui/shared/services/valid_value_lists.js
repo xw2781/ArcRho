@@ -108,11 +108,6 @@ function extractDatasetNames(payload) {
   return dedupeAndSortValues(out, normalizeValidValueKey);
 }
 
-function extractReservingPathsFromPathTree(payload) {
-  const paths = Array.isArray(payload?.data?.paths) ? payload.data.paths : [];
-  return dedupeAndSortValues(paths, normalizeReservingClassPathKey).map(normalizeReservingClassPath);
-}
-
 function extractReservingPathsFromCombinations(payload) {
   const data = payload?.data && typeof payload.data === "object" ? payload.data : {};
   const rawPaths = [];
@@ -168,44 +163,6 @@ async function loadReservingClassTypeNameLookup(projectName, options = {}) {
   return lookup;
 }
 
-async function collectReservingPathsFromChildren(projectName) {
-  const queue = [""];
-  const seenPrefixKeys = new Set([""]);
-  const seenPathKeys = new Set();
-  const out = [];
-
-  while (queue.length) {
-    const prefix = queue.shift() || "";
-    const params = new URLSearchParams({ project_name: projectName });
-    if (prefix) params.set("prefix", prefix);
-
-    const payload = await readJson(
-      `/reserving_class_path_tree/children?${params.toString()}`,
-      "Failed to load reserving class path tree",
-    );
-    const children = Array.isArray(payload?.children) ? payload.children : [];
-
-    for (const child of children) {
-      const path = normalizeReservingClassPath(child?.path || "");
-      if (!path) continue;
-      const key = normalizeReservingClassPathKey(path);
-      if (!seenPathKeys.has(key)) {
-        seenPathKeys.add(key);
-        out.push(path);
-      }
-      if (!child?.has_children) continue;
-      if (seenPrefixKeys.has(key)) continue;
-      seenPrefixKeys.add(key);
-      queue.push(path);
-    }
-  }
-
-  out.sort((a, b) =>
-    String(a || "").localeCompare(String(b || ""), undefined, { sensitivity: "base", numeric: true }),
-  );
-  return out;
-}
-
 export async function loadProjectValidValueList(options = {}) {
   const forceReload = !!options?.forceReload;
   if (!forceReload && projectListCache.loaded) return projectListCache.items.slice();
@@ -246,7 +203,6 @@ export async function loadReservingClassValidValueList(projectName, options = {}
 
   const cacheKey = normalizeValidValueKey(project);
   const forceReload = !!options?.forceReload;
-  const hydrateFromChildren = !!options?.hydrateFromChildren;
   if (!forceReload && reservingClassListCache.has(cacheKey)) {
     const cachedItems = reservingClassListCache.get(cacheKey) || [];
     if (Array.isArray(cachedItems) && cachedItems.length) {
@@ -259,45 +215,17 @@ export async function loadReservingClassValidValueList(projectName, options = {}
     return Array.isArray(inFlightItems) ? inFlightItems.slice() : [];
   }
 
+  // The reserving classes the project's data holds, as the server read them.
   const loadPromise = (async () => {
     let items = [];
-    let shouldHydrateFromChildren = false;
     try {
       const payload = await readJson(
-        `/reserving_class_path_tree?project_name=${encodeURIComponent(project)}`,
-        "Failed to load reserving class paths",
+        `/reserving_class_combinations?project_name=${encodeURIComponent(project)}`,
+        "Failed to load reserving class combinations",
       );
-      items = extractReservingPathsFromPathTree(payload);
-      shouldHydrateFromChildren = payload?.exists === false || !items.length;
+      items = extractReservingPathsFromCombinations(payload);
     } catch {
       items = [];
-      shouldHydrateFromChildren = true;
-    }
-
-    if (!items.length) {
-      try {
-        const payload = await readJson(
-          `/reserving_class_combinations?project_name=${encodeURIComponent(project)}`,
-          "Failed to load reserving class combinations",
-        );
-        items = extractReservingPathsFromCombinations(payload);
-      } catch {
-        items = [];
-      }
-    }
-
-    if (hydrateFromChildren && (shouldHydrateFromChildren || !items.length)) {
-      try {
-        const hydratedPaths = await collectReservingPathsFromChildren(project);
-        if (hydratedPaths.length) {
-          items = dedupeAndSortValues(
-            [...items, ...hydratedPaths],
-            normalizeReservingClassPathKey,
-          ).map(normalizeReservingClassPath);
-        }
-      } catch {
-        // Keep previously resolved paths (path-tree/combinations) as fallback.
-      }
     }
 
     items = dedupeAndSortValues(items, normalizeReservingClassPathKey).map(normalizeReservingClassPath);

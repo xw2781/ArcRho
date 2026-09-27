@@ -1,4 +1,6 @@
+import importlib
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -9,16 +11,32 @@ from fastapi import HTTPException
 
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
-if str(FRONTEND_ROOT) not in sys.path:
-    sys.path.insert(0, str(FRONTEND_ROOT))
+REPOSITORY_ROOT = FRONTEND_ROOT.parent
+TEST_TEMP_ROOT = REPOSITORY_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+for path in (FRONTEND_ROOT, REPOSITORY_ROOT / "python-api" / "src"):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
+from arcrho_api import config as api_config
+from arcrho_workspace_mutation_contract import WORKSPACE_MUTATION_KINDS
 from app_server import config
-from app_server.services import arcrho_runtime_service, calculated_dataset_service, dataset_number_format_service
+from app_server.schemas.dataset import DatasetNumberFormatsSaveRequest
+from app_server.services import (
+    arcrho_runtime_service,
+    calculated_dataset_service,
+    dataset_number_format_service,
+    user_identity_service,
+    workspace_read_client,
+)
+from app_server.services.hosted_save_http_client import NOT_SIGNED_IN_MESSAGE
+
+dataset_router = importlib.import_module("app_server.api.dataset_router")
 
 
 class DatasetNumberFormatDefaultsTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         self.root = Path(self.temp_dir.name)
         self.preferences_path = self.root / "config" / "dataset_number_formats.json"
         self.path_patch = patch.object(
@@ -179,6 +197,84 @@ class DatasetNumberFormatDefaultsTests(unittest.TestCase):
         payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
         self.assertEqual(payload["number_format"], "0.0%")
         self.assertEqual(payload["decimal_places"], 1)
+
+
+class DatasetNumberFormatSaveTransportTests(unittest.TestCase):
+    """A Client PC saves the number-format defaults on the server host."""
+
+    GATEWAY = {"enabled": True, "url": "http://server:28767", "user": "alice", "secret": "x"}
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.preferences_path = self.root / "config" / "dataset_number_formats.json"
+        env = {key: value for key, value in os.environ.items() if key != api_config.RUNTIME_SERVER_ROOT_ENV}
+        env["USERNAME"] = "client.login"
+        self.requests: list[dict] = []
+        self.gateway_config = dict(self.GATEWAY)
+        for patcher in (
+            patch.dict(os.environ, env, clear=True),
+            patch.object(config, "get_dataset_number_formats_path", return_value=str(self.preferences_path)),
+            patch.object(config, "load_gateway_config", side_effect=lambda: self.gateway_config),
+            patch.object(
+                workspace_read_client,
+                "cached_gateway_capabilities",
+                return_value={"workspace_mutation_kinds": ["dataset_number_format_defaults_save"]},
+            ),
+            patch.object(workspace_read_client, "post_signed_json", side_effect=self._gateway),
+            patch.object(workspace_read_client, "_log"),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _gateway(self, gateway_config, path, request_payload, *, timeout):
+        """Run the request as the Gateway does: the registered service, as the signed user."""
+
+        request = json.loads(json.dumps(request_payload))
+        self.requests.append(request)
+        spec = WORKSPACE_MUTATION_KINDS[request["MutationKind"]]
+        function = getattr(importlib.import_module(f"app_server.services.{spec.module}"), spec.function)
+        with patch.dict(os.environ, {api_config.RUNTIME_SERVER_ROOT_ENV: str(self.root)}),                 user_identity_service.acting_identity(request["UserName"]):
+            answer = function(**request["Kwargs"])
+        return answer, str(self.root), 0
+
+    def _save(self, **fields):
+        request = DatasetNumberFormatsSaveRequest(
+            expected_revision=0,
+            default_number_format="0.00",
+            overrides=[{"dataset_type_name": "Frequency", "number_format": "0.0%"}],
+            **fields,
+        )
+        return dataset_router.save_dataset_number_format_defaults(request)
+
+    def test_a_client_save_is_a_receipt_mutation_run_as_the_signed_user(self) -> None:
+        self.assertTrue(WORKSPACE_MUTATION_KINDS["dataset_number_format_defaults_save"].receipt)
+        saved = self._save(request_id="a" * 32)
+
+        self.assertEqual([request["MutationKind"] for request in self.requests], ["dataset_number_format_defaults_save"])
+        self.assertEqual(self.requests[0]["RequestId"], "a" * 32)
+        self.assertEqual(saved["revision"], 1)
+        stored = json.loads(self.preferences_path.read_text(encoding="utf-8"))
+        self.assertEqual(stored["default_number_format"], "0.00")
+        self.assertEqual(stored["overrides"], [{"dataset_type_name": "Frequency", "number_format": "0.0%"}])
+        self.assertEqual(stored["updated_by"], "alice")
+
+    def test_a_pc_that_is_not_signed_in_writes_nothing(self) -> None:
+        self.gateway_config = {"enabled": False}
+        with self.assertRaises(HTTPException) as raised:
+            self._save()
+        self.assertEqual(raised.exception.status_code, 401)
+        self.assertEqual(raised.exception.detail, NOT_SIGNED_IN_MESSAGE)
+        self.assertEqual(self.requests, [])
+        self.assertFalse(self.preferences_path.exists())
+
+    def test_a_server_process_saves_in_place(self) -> None:
+        with patch.dict(os.environ, {api_config.RUNTIME_SERVER_ROOT_ENV: str(self.root)}):
+            saved = self._save()
+        self.assertEqual(self.requests, [])
+        self.assertEqual(saved["revision"], 1)
+        self.assertEqual(json.loads(self.preferences_path.read_text(encoding="utf-8"))["updated_by"], "client.login")
 
 
 if __name__ == "__main__":

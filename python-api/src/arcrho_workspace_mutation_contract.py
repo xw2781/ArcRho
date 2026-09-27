@@ -308,14 +308,6 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ("project_name",),
         ("patch",),
     ),
-    # Rebuilding a reserving class's index.json from its instance folders.
-    # Idempotent because the index is derived from the folder alone and an
-    # unchanged index is not rewritten, so a repeat lands the same file.
-    "dataset_index_rebuild": WorkspaceMutationKind(
-        "dataset_instance_index_service",
-        "rebuild_index",
-        ("project_name", "reserving_class"),
-    ),
     # Deleting a project's period-heading caches so the Engine rebuilds them.
     # Idempotent: a repeat finds the files already gone.
     "arcrho_headers_cache_clear": WorkspaceMutationKind(
@@ -370,6 +362,17 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         "project_settings_service",
         "clear_generated_dataset_csv_caches",
         ("source", "project_name"),
+    ),
+    # The workspace-wide dataset number-format defaults. The save is checked
+    # against the revision the window read and moves it, so a repeat would
+    # meet its own revision and refuse with 409: it carries a receipt. The
+    # revision may be 0 and the overrides empty, so both are optional.
+    "dataset_number_format_defaults_save": WorkspaceMutationKind(
+        "dataset_number_format_service",
+        "save_preferences",
+        ("default_number_format",),
+        ("expected_revision", "overrides"),
+        receipt=True,
     ),
     # Saving the dataset-type table. The server decides what the change needs:
     # a plan to confirm (a read), a direct write of a presentation-only change,

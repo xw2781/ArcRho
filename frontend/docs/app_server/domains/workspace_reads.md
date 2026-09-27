@@ -47,7 +47,6 @@ No new browser-facing route. These existing routes select the transport per requ
 | `GET /data_processing_rules` | `data_processing_rules` | `data_processing_rules_service.read_data_processing_rules` |
 | `POST /data_processing_rules/validate` | `data_processing_rules_validate` | `data_processing_rules_service.check_data_processing_rules` |
 | `GET /reserving_class_combinations` | `reserving_class_combinations` | `reserving_class_service.read_reserving_class_combinations` |
-| `GET /reserving_class_path_tree` | `reserving_class_path_tree` | `reserving_class_service.read_reserving_class_path_tree` |
 | `GET /reserving_class_path_tree/children` | `reserving_class_path_tree_children` | `reserving_class_service.read_reserving_class_path_tree_children` (writes nothing) |
 | `GET /reserving_class_types` | `reserving_class_types` | `reserving_class_service.read_reserving_class_types` (writes nothing) |
 | `GET /reserving_class_hidden_paths` | `reserving_class_hidden_paths` | `reserving_class_service.read_hidden_paths` (the signed user's file) |

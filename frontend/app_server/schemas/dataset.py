@@ -20,11 +20,12 @@ class DatasetSidecarLoadRequest(BaseModel):
 
 
 class DatasetNumberFormatOverride(BaseModel):
-    reserving_class: str = Field(..., min_length=1, max_length=512)
+    # Overrides are keyed by Dataset Type Name alone; the Preferences window
+    # sends no reserving class, and one sent by an older client is ignored.
     dataset_type_name: str = Field(..., min_length=1, max_length=256)
     number_format: str = Field(..., min_length=1, max_length=64)
 
-    @field_validator("reserving_class", "dataset_type_name", "number_format")
+    @field_validator("dataset_type_name", "number_format")
     @classmethod
     def normalize_text(cls, value: str) -> str:
         normalized = re.sub(r"\s+", " ", value.replace("\r", " ").replace("\n", " ").replace("\t", " ")).strip()
@@ -37,6 +38,8 @@ class DatasetNumberFormatsSaveRequest(BaseModel):
     expected_revision: int = Field(..., ge=0)
     default_number_format: str = Field(..., min_length=1, max_length=64)
     overrides: List[DatasetNumberFormatOverride] = Field(default_factory=list, max_length=5000)
+    # Names the user's save for the Gateway receipt; the client makes one if absent.
+    request_id: Optional[str] = None
 
     @field_validator("default_number_format")
     @classmethod

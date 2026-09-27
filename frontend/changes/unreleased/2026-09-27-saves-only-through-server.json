@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "server",
+  "audience": "user",
+  "summary": "Every save now goes through the server, and saving default number formats in Preferences works again.",
+  "details": [
+    "A save the server cannot take yet says the server needs updating, and a PC that is not signed in is asked to sign in, instead of writing to the shared drive.",
+    "Default number formats are saved on the server and record who saved them; a save that lists dataset type formats no longer fails.",
+    "The Dataset Viewer's reserving class list now shows the classes the project's data holds."
+  ]
+}

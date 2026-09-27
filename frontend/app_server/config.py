@@ -341,7 +341,6 @@ FIELD_MAPPING_SIGNIFICANCES = {
 RESERVING_CLASS_VALUES_FILE = "reserving_class_values.json"
 RESERVING_CLASS_COMBINATIONS_FILE = "reserving_class_combinations_cache.json"
 RESERVING_CLASS_TYPES_FILE = "reserving_class_types.json"
-RESERVING_CLASS_PATH_TREE_FILE = "reserving_class_path_tree_cache.json"
 SCRIPTING_PREFS_FILE = "scripting_prefs.json"
 LOCAL_PROJECT_PREFS_FILE = "local_project_prefs.json"
 DATASET_TYPES_FILE = "dataset_types.json"
@@ -507,13 +506,6 @@ def get_reserving_class_types_path(project_name: str) -> str:
     if not project_dir:
         raise ValueError(f"Project folder not found under projects: {project_name}")
     return os.path.join(project_dir, RESERVING_CLASS_TYPES_FILE)
-
-
-def get_reserving_class_path_tree_path(project_name: str) -> str:
-    project_dir = _find_existing_project_dir(project_name)
-    if not project_dir:
-        raise ValueError(f"Project folder not found under projects: {project_name}")
-    return os.path.join(project_dir, RESERVING_CLASS_PATH_TREE_FILE)
 
 
 def _get_user_appdata_cache_dir() -> str:

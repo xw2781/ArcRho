@@ -2,7 +2,7 @@
 
 The dataset sidecar panel, the unsaved dependents preview, the DFM's dataset
 references, the % Developed curve and the development pattern are Gateway
-reads, and the method-index refresh is a Gateway mutation. A Client PC asks
+reads. A Client PC asks
 the Gateway for each route's whole answer and refuses when it cannot; a
 server process runs the same service locally.
 """
@@ -35,7 +35,6 @@ from arcrho_workspace_read_contract import MAX_WORKSPACE_READ_REQUEST_BYTES, WOR
 from app_server import config  # noqa: E402
 from app_server.schemas.dataset import DatasetCalculatedPreviewRequest, DatasetSidecarLoadRequest  # noqa: E402
 from app_server.schemas.dfm_method import DfmDatasetReferencesResolveRequest  # noqa: E402
-from app_server.schemas.dfm_method_index import DfmMethodIndexRefreshRequest  # noqa: E402
 from app_server.services import (  # noqa: E402
     calculated_dataset_service,
     dataset_instance_index_service,
@@ -61,7 +60,7 @@ READ_KINDS = (
     "dfm_percent_developed_curve",
     "dfm_development_pattern",
 )
-MUTATION_KINDS = ("dataset_index_rebuild",)
+MUTATION_KINDS: tuple[str, ...] = ()
 TYPE_ROWS = [
     {"name": "Paid", "data_format": "Triangle", "calculated": False, "formula": "", "source": "Paid", "generated": True},
     {"name": "Double Paid", "data_format": "Triangle", "calculated": True, "formula": '"Paid" * 2', "source": "", "generated": False},
@@ -189,11 +188,6 @@ class DatasetMethodSideReadsHostedTests(unittest.TestCase):
             ("dfm_development_pattern", lambda: dfm_index_router.get_dfm_development_pattern(PROJECT, RC, "Paid Ultimate")),
         ]
 
-    def _refresh(self):
-        return dfm_index_router.refresh_dfm_method_index(
-            DfmMethodIndexRefreshRequest(project_name=PROJECT, reserving_class=RC)
-        )
-
     def _files(self) -> dict[str, tuple[bytes, int]]:
         return {
             str(path.relative_to(self.root)): (path.read_bytes(), path.stat().st_mtime_ns)
@@ -231,26 +225,15 @@ class DatasetMethodSideReadsHostedTests(unittest.TestCase):
                     route()
         self.assertEqual(self._files(), before)
 
-    def test_the_index_refresh_answers_the_same_through_the_gateway_and_repeats_to_the_same_file(self) -> None:
-        with self._server_process():
-            local = jsonable_encoder(self._refresh())
-        index_path = Path(local["folder_paths"]["data"]) / "index.json"
-        written = (index_path.read_bytes(), index_path.stat().st_mtime_ns)
-
-        self.kinds.clear()
-        hosted = self._refresh()
-
-        self.assertEqual(self.kinds, ["dataset_index_rebuild"])
-        for answer in (local, hosted):
-            answer.pop("index_elapsed_ms")
-        self.assertEqual(hosted, local)
-        self.assertTrue(hosted["index_persisted"])
-        self.assertEqual((index_path.read_bytes(), index_path.stat().st_mtime_ns), written)
+    def test_the_unused_method_index_refresh_is_gone(self) -> None:
+        # The DFM Name picker's refresh rebuilds through the dataset_index read.
+        self.assertNotIn("dataset_index_rebuild", WORKSPACE_MUTATION_KINDS)
+        self.assertFalse(hasattr(dfm_index_router, "refresh_dfm_method_index"))
 
     def test_a_client_refuses_without_the_gateway(self) -> None:
         before = self._files()
         with patch.object(config, "load_gateway_config", return_value={"enabled": False}):
-            for kind, route in self._reads() + [("dataset_index_rebuild", self._refresh)]:
+            for kind, route in self._reads():
                 with self.subTest(route=kind):
                     with self.assertRaises(HTTPException) as refused:
                         route()

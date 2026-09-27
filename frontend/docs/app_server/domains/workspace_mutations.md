@@ -26,7 +26,6 @@ No new browser-facing route. This existing route selects the transport per reque
 | `POST /reserving_class_hidden_paths` | `reserving_class_hidden_paths_save` | `reserving_class_service.save_hidden_paths` |
 | `POST /reserving_class_filter_spec` | `reserving_class_filter_spec_save` | `reserving_class_service.save_filter_spec` |
 | `POST /project-user-preferences` | `project_user_preferences_update` | `project_user_preferences_service.update_preferences` |
-| `POST /dfm/method-index/refresh` | `dataset_index_rebuild` | `dataset_instance_index_service.rebuild_index` |
 | `POST /arcrho/headers/cache/clear` | `arcrho_headers_cache_clear` | `arcrho_runtime_service.clear_arcrho_headers_cache` |
 | `POST /project_settings/{source}/create_project_folder` | `project_folder_create` (receipt) | `project_settings_service.create_project_folder` |
 | `POST /project_settings/{source}/rename_project_folder` | `project_folder_rename` (receipt) | `project_settings_service.rename_project_folder` |
@@ -34,6 +33,7 @@ No new browser-facing route. This existing route selects the transport per reque
 | `POST /project_settings/{source}` | `project_registry_save` (receipt) | `project_settings_service.update_project_settings` |
 | `POST /general_settings` | `general_settings_save` (receipt) | `project_settings_service.update_general_settings` |
 | `POST /project_settings/{source}/generated_dataset_cache/clear` | `generated_dataset_cache_clear` | `project_settings_service.clear_generated_dataset_csv_caches` |
+| `PUT /dataset/number-format-defaults` | `dataset_number_format_defaults_save` (receipt) | `dataset_number_format_service.save_preferences` |
 | `POST /dataset_types` | `dataset_types_save` | `dataset_types_change_service.save_dataset_types` |
 | `POST /project_settings/{source}/duplicate_project_folder` | `project_duplication_submit` | `project_settings_service.duplicate_project_folder` |
 | `POST /project_settings/{source}/duplicate_project_folder/cancel/{request_id}` | `project_duplication_cancel` | `project_settings_service.cancel_duplicate_project_folder` |
@@ -50,11 +50,11 @@ No new browser-facing route. This existing route selects the transport per reque
 
 The three preference writes (step 8 of [client_smb_retirement.md](../../../../docs/plans/client_smb_retirement.md)) change only the signed-in user's own `users/<login>/preferences.json`: the login is the acting identity of the signed request, never an argument. Each is Gateway-required. They are idempotent because each is a whole-value write: the hidden-path list and the filter spec (with the tree preferences when sent) replace the stored value outright, and a preferences patch sets each value it names, so a repeat lands the same state and only `updated_at` moves.
 
-The index rebuild (step 9) is Gateway-required. It is idempotent because `index.json` is derived from the class folders alone and an unchanged index is not rewritten, so a repeat leaves the same file.
-
 The header cache clear (step 11) is Gateway-required. It deletes the project's period-heading CSVs so the Engine rebuilds them; it is idempotent because a repeat finds the files already gone and answers `cleared_count: 0`.
 
 The six Project Settings writes (step 13 of the plan) are Gateway-required. Creating, renaming and deleting a project folder and saving the registry are not idempotent — a repeated create or rename meets the folder the first run made and refuses with `409`, a repeated registry save meets the revision the first run moved — and the General Settings save appends an audit entry each run, so all five carry a receipt. Clearing the generated CSV caches is idempotent: a repeat finds nothing left to clear and writes no audit entry. Opening a project folder in Explorer stays on the client, because it hands a path to a program on this PC.
+
+The dataset number-format defaults save (step 19) is Gateway-required and carries a receipt: it is checked against the revision the window read and moves it, so a repeat would meet its own revision and refuse with `409`. The row names the signed user as `updated_by`.
 
 The dataset-type table save and the project duplication submit and cancel (step 14) are Gateway-required. The two job submits are already keyed by the client's request id, so they are idempotent without a Gateway receipt, and that same id travels as the mutation's own: a replayed dataset-type change returns the job already queued (`resumed: true`), and a replayed duplication answers from the duplication's own submission receipt, which also refuses the id under a different source or target. The table save also decides whether the change needs the job at all; its direct write of a presentation-only change skips a table that already holds those rows, so a replay writes nothing and appends no second audit entry. A duplication cancel writes an advisory marker, and a repeat writes the same one.
 

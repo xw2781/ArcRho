@@ -4,8 +4,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter
 
-from app_server.schemas.dfm_method_index import DfmMethodIndexRefreshRequest
-from app_server.services import dataset_instance_index_service, workspace_mutation_client, workspace_read_client
+from app_server.services import dataset_instance_index_service, workspace_read_client
 
 router = APIRouter()
 
@@ -46,16 +45,4 @@ def get_dfm_development_pattern(
         "dfm_development_pattern",
         kwargs,
         local=lambda: dataset_instance_index_service.get_development_pattern(**kwargs),
-    )
-
-
-@router.post("/dfm/method-index/refresh")
-def refresh_dfm_method_index(req: DfmMethodIndexRefreshRequest) -> Dict[str, Any]:
-    # A rebuild rewrites index.json, so it is a mutation, run where the class
-    # folder is local disk.
-    kwargs = {"project_name": req.project_name, "reserving_class": req.reserving_class}
-    return workspace_mutation_client.run_workspace_mutation(
-        "dataset_index_rebuild",
-        kwargs,
-        local=lambda: dataset_instance_index_service.rebuild_index(**kwargs),
     )

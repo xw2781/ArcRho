@@ -33,7 +33,6 @@ from .scripting import (
 )
 from .dfm_rpc_bridge import DfmRpcBridgeRequest, DfmRpcBridgeApplyRequest, DfmRpcBridgeUpdateRemoteRequest
 from .result_selection import ResultSelectionLoadRequest, ResultSelectionSaveRequest
-from .dfm_method_index import DfmMethodIndexRefreshRequest
 from .project_user_preferences import ProjectUserPreferencesUpdateRequest
 from .data_processing_rules import (
     DataProcessingRulesSaveRequest,

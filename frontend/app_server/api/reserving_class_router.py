@@ -47,24 +47,13 @@ def get_reserving_class_combinations(project_name: str) -> Dict[str, Any]:
     )
 
 
-@router.get("/reserving_class_path_tree")
-def get_reserving_class_path_tree(project_name: str) -> Dict[str, Any]:
-    name = _required_project(project_name)
-    return _read(
-        "reserving_class_path_tree",
-        {"project_name": name},
-        lambda: reserving_class_service.read_reserving_class_path_tree(name),
-    )
-
-
 @router.get("/reserving_class_path_tree/children")
 def get_reserving_class_path_tree_children(
     project_name: str,
     prefix: str = "",
-    force: bool = False,
 ) -> Dict[str, Any]:
     name = _required_project(project_name)
-    kwargs: Dict[str, Any] = {"project_name": name, "prefix": prefix, "force": bool(force)}
+    kwargs: Dict[str, Any] = {"project_name": name, "prefix": prefix}
     return _read(
         "reserving_class_path_tree_children",
         kwargs,

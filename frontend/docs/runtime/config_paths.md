@@ -47,7 +47,6 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `get_project_source_import_path`
   - `get_project_temporary_view_dataset_cache_dir`
   - `get_reserving_class_combinations_path`
-  - `get_reserving_class_path_tree_path`
   - `get_reserving_class_types_path`
   - `get_reserving_class_values_path`
   - `get_root_path`

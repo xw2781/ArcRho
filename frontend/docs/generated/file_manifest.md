@@ -8,9 +8,9 @@ Excluded directories: `.cache`, `.pytest_cache`, `__pycache__`, `dist`, `local_w
 | Top-Level Segment | File Count |
 | --- | --- |
 | `(root)` | 10 |
-| `app_server` | 160 |
+| `app_server` | 159 |
 | `build` | 60 |
-| `changes` | 1247 |
+| `changes` | 1248 |
 | `docs` | 131 |
 | `electron` | 14 |
 | `icons` | 18 |

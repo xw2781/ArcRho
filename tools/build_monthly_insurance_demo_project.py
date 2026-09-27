@@ -490,7 +490,6 @@ def verify_aggregate_bottom_paths(
     # network-drive caches once per target path.
     children_by_prefix: dict[str, dict[str, dict[str, Any]]] = {}
     verified: list[str] = []
-    first_request = True
 
     for expected_path in expected_paths:
         prefix = ""
@@ -498,14 +497,9 @@ def verify_aggregate_bottom_paths(
             if prefix not in children_by_prefix:
                 response = client.get(
                     "/reserving_class_path_tree/children",
-                    params={
-                        "project_name": project_name,
-                        "prefix": prefix,
-                        "force": first_request,
-                    },
+                    params={"project_name": project_name, "prefix": prefix},
                     timeout_sec=180,
                 )
-                first_request = False
                 children = response.get("children", [])
                 children_by_prefix[prefix] = {
                     str(item.get("name") or ""): item

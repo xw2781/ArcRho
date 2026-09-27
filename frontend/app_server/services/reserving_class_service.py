@@ -25,7 +25,6 @@ from app_server.config import (
     get_reserving_class_types_path,
     get_reserving_class_values_path,
     get_reserving_class_combinations_path,
-    get_reserving_class_path_tree_path,
     get_project_settings_workbook_path,
     get_table_summary_cache_path,
     get_field_mapping_path,
@@ -262,37 +261,12 @@ def read_reserving_class_combinations(project_name: str) -> Dict[str, Any]:
         raise HTTPException(500, f"Failed to read reserving class combinations: {str(e)}")
 
 
-def read_reserving_class_path_tree(project_name: str) -> Dict[str, Any]:
-    filepath = _project_file_path(get_reserving_class_path_tree_path, project_name)
-    if not os.path.exists(filepath):
-        return {
-            "ok": True,
-            "exists": False,
-            "path": filepath,
-            "data": {"levels": [], "paths": [], "tree": dict(_EMPTY_PATH_TREE)},
-        }
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if not isinstance(data, dict):
-            data = {}
-        for key in ("levels", "paths"):
-            if not isinstance(data.get(key), list):
-                data[key] = []
-        if not isinstance(data.get("tree"), dict):
-            data["tree"] = dict(_EMPTY_PATH_TREE)
-        return {"ok": True, "exists": True, "path": filepath, "data": data}
-    except Exception as e:
-        raise HTTPException(500, f"Failed to read reserving class path tree: {str(e)}")
-
-
 def read_reserving_class_path_tree_children(
     project_name: str,
     prefix: str = "",
-    force: bool = False,
 ) -> Dict[str, Any]:
     try:
-        out = get_reserving_class_path_tree_children(project_name=project_name, prefix=prefix, force=bool(force))
+        out = get_reserving_class_path_tree_children(project_name=project_name, prefix=prefix)
         return {"ok": True, **out}
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
@@ -300,7 +274,7 @@ def read_reserving_class_path_tree_children(
         msg = str(e)
         raise HTTPException(404 if "Project folder not found under projects:" in msg else 400, msg)
     except PermissionError:
-        raise HTTPException(423, "Reserving class path tree cache is locked. Another user may have it open.")
+        raise HTTPException(423, "Reserving class files are locked. Another user may have them open.")
     except HTTPException:
         raise
     except Exception as e:
@@ -2055,17 +2029,6 @@ def _extract_reserving_level_info_from_combo_payload(
 
     return (level_numbers, level_labels, levels_payload)
 
-def _canonical_reserving_parts_key(parts: List[str]) -> str:
-    if not parts:
-        return ""
-    keys: List[str] = []
-    for raw in parts:
-        key = _canon_reserving_class_type_name(raw)
-        if not key:
-            return ""
-        keys.append(key)
-    return "\\".join(keys)
-
 def _canonicalize_reserving_name_list(names: List[str]) -> List[str]:
     sorted_names = sorted(
         [str(v if v is not None else "").strip() for v in names if str(v if v is not None else "").strip()],
@@ -2080,28 +2043,6 @@ def _canonicalize_reserving_name_list(names: List[str]) -> List[str]:
         seen.add(key)
         out.append(name)
     return out
-
-def _normalize_reserving_children_cache(raw: Any) -> Dict[str, List[str]]:
-    out: Dict[str, List[str]] = {}
-    if not isinstance(raw, dict):
-        return out
-    for raw_key, raw_names in raw.items():
-        key = str(raw_key if raw_key is not None else "")
-        if not isinstance(raw_names, list):
-            continue
-        names = _canonicalize_reserving_name_list([str(v if v is not None else "") for v in raw_names])
-        out[key] = names
-    return out
-
-def _is_same_optional_mtime(a: Any, b: Any) -> bool:
-    if a is None and b is None:
-        return True
-    if a is None or b is None:
-        return False
-    try:
-        return abs(float(a) - float(b)) <= 0.001
-    except Exception:
-        return False
 
 def _build_reserving_level_display_lookup_by_level(
     base_parts_list: List[List[str]],
@@ -2173,18 +2114,6 @@ def _expand_reserving_keys_with_parents_for_level(
             queue.append(parent_key)
     return out
 
-def _load_reserving_path_tree_cache_payload(cache_path: str) -> Dict[str, Any]:
-    if not os.path.exists(cache_path):
-        return {}
-    try:
-        with open(cache_path, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-        if isinstance(raw, dict):
-            return raw
-    except Exception:
-        return {}
-    return {}
-
 def _build_reserving_child_nodes(
     child_names: List[str],
     prefix_parts_display: List[str],
@@ -2227,19 +2156,10 @@ def _load_reserving_path_tree_inputs(project_name: str) -> Dict[str, Any]:
         reserving_rows if isinstance(reserving_rows, list) else [],
     )
 
-    rct_path = get_reserving_class_types_path(project_name)
-    rct_mtime: Optional[float] = None
-    try:
-        if os.path.exists(rct_path):
-            rct_mtime = os.stat(rct_path).st_mtime
-    except Exception:
-        rct_mtime = None
-
     table_path = str(combo_payload.get("table_path", "") or "").strip()
     return {
         "project_name": project_name,
         "combinations_path": combinations_path,
-        "cache_path": get_reserving_class_path_tree_path(project_name),
         "base_paths": base_paths,
         "level_numbers": level_numbers,
         "level_labels": level_labels,
@@ -2247,24 +2167,8 @@ def _load_reserving_path_tree_inputs(project_name: str) -> Dict[str, Any]:
         "rules_by_level": rules_by_level,
         "rule_count": rule_count,
         "parent_to_components_by_level": parent_to_components_by_level,
-        "rct_path": rct_path,
-        "rct_mtime": rct_mtime,
-        "field_signature": str(combo_payload.get("field_signature", "") or "").strip(),
         "table_path": table_path,
-        "table_path_norm": _norm_path_for_compare(table_path),
-        "source_csv_mtime": combo_payload.get("source_csv_mtime"),
-        "source_csv_size": combo_payload.get("source_csv_size"),
     }
-
-
-def _reserving_path_tree_cache_is_current(payload: Dict[str, Any], inputs: Dict[str, Any]) -> bool:
-    return bool(payload) and _payload_matches_reserving_snapshot(
-        payload,
-        field_signature=inputs["field_signature"],
-        table_path_norm=inputs["table_path_norm"],
-        source_csv_mtime=inputs["source_csv_mtime"],
-        source_csv_size=inputs["source_csv_size"],
-    ) and _is_same_optional_mtime(payload.get("reserving_class_types_mtime"), inputs["rct_mtime"])
 
 
 def _reserving_path_tree_matchers(inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -2356,15 +2260,12 @@ def _reserving_path_tree_child_names(
 def get_reserving_class_path_tree_children(
     project_name: str,
     prefix: str = "",
-    force: bool = False,
 ) -> Dict[str, Any]:
     """Children of one prefix, from the combinations and types as they stand.
 
     A read: it never refreshes the values (the source refresh job, a field
-    mapping save and a table summary refresh do) and never writes the tree
-    cache. It answers from a current cache that already holds the prefix and
-    computes the children otherwise, which on the server host is a
-    sub-millisecond match per prefix; ``force`` skips the cache.
+    mapping save and a table summary refresh do) and writes nothing. On the
+    server host each prefix is a sub-millisecond match.
     """
 
     project_name_clean = str(project_name or "").strip()
@@ -2392,18 +2293,7 @@ def get_reserving_class_path_tree_children(
     child_level_label = level_labels[child_level_index - 1] if child_level_index - 1 < len(level_labels) else f"Level {child_level_index}"
     has_children = child_level_index < len(level_numbers)
 
-    cache = _load_reserving_path_tree_cache_payload(inputs["cache_path"])
-    cache_valid = _reserving_path_tree_cache_is_current(cache, inputs)
-    children_cache = _normalize_reserving_children_cache(cache.get("children_cache")) if cache_valid else {}
-    cached_paths = cache.get("paths", []) if cache_valid else []
-    prefix_key = _canonical_reserving_parts_key(prefix_parts) if prefix_parts else ""
-
-    from_cache = not force and prefix_key in children_cache
-    if from_cache:
-        child_names = children_cache[prefix_key]
-        prefix_parts_display = list(prefix_parts)
-    else:
-        child_names, prefix_parts_display = _reserving_path_tree_child_names(inputs, prefix_parts, prefix_keys)
+    child_names, prefix_parts_display = _reserving_path_tree_child_names(inputs, prefix_parts, prefix_keys)
 
     return {
         "project_name": project_name_clean,
@@ -2418,12 +2308,8 @@ def get_reserving_class_path_tree_children(
             child_level_label=child_level_label,
             has_children=has_children,
         ),
-        "from_cache": from_cache,
-        "cache_path": inputs["cache_path"],
         "combination_path": inputs["combinations_path"],
         "table_path": inputs["table_path"],
         "base_path_count": len(inputs["base_paths"]),
-        "generated_path_count": len(cached_paths) if isinstance(cached_paths, list) else 0,
         "rule_count": inputs["rule_count"],
-        "cached_prefix_count": len(children_cache),
     }

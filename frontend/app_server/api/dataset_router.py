@@ -43,10 +43,18 @@ def get_dataset_number_format_defaults(
 
 @router.put("/dataset/number-format-defaults")
 def save_dataset_number_format_defaults(req: DatasetNumberFormatsSaveRequest) -> Dict[str, Any]:
-    return dataset_number_format_service.save_preferences(
-        expected_revision=req.expected_revision,
-        default_number_format=req.default_number_format,
-        overrides=[item.model_dump() for item in req.overrides],
+    # Written on the server host; the receipt answers a repeat of this save
+    # with its first outcome instead of a revision conflict.
+    kwargs = {
+        "expected_revision": req.expected_revision,
+        "default_number_format": req.default_number_format,
+        "overrides": [item.model_dump() for item in req.overrides],
+    }
+    return workspace_mutation_client.run_workspace_mutation(
+        "dataset_number_format_defaults_save",
+        kwargs,
+        local=lambda: dataset_number_format_service.save_preferences(**kwargs),
+        request_id=req.request_id,
     )
 
 

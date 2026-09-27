@@ -41,7 +41,7 @@ import {
   isRatioChartOpen,
   scheduleRatioChartRender,
   restoreRatioHistoryUi,
-} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260923a";
+} from "/ui/method_pages/dfm/dfm_ratios_tab.js?v=20260927smb19";
 import {
   renderResultsTable,
   wireResultsRatioBasisControls,
@@ -57,7 +57,7 @@ import {
   wireMethodName,
   wireDfmInstanceCreationNotice,
   wireDetailsThresholdReset,
-} from "/ui/method_pages/dfm/dfm_details.js?v=20260927c";
+} from "/ui/method_pages/dfm/dfm_details.js?v=20260927smb19";
 import {
   scheduleRatioSelectionLoad,
   saveRatioSelectionPattern,
@@ -67,18 +67,16 @@ import {
   applyDfmOwnedPatchPayload,
   buildDfmAssistantContextPayload,
   resolveCurrentDfmMethodSavePath,
-  startDfmMethodFileWatcher,
-  stopDfmMethodFileWatcher,
   scheduleDfmMethodPreview,
   cancelDfmMethodAsyncTasks,
   buildDfmMethodPayload,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260927c";
-import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260914b";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260927smb19";
+import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260927smb19";
 import {
   applyArcBotDfmEdit,
   revertArcBotDfmEdit,
   reviewArcBotDfmEditApproval,
-} from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260927c";
+} from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260927smb19";
 import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260903a";
 import {
   clearRatioHistoryTempSession,
@@ -88,7 +86,7 @@ import {
   runRatioRedo,
   runRatioUndo,
 } from "/ui/method_pages/dfm/dfm_ratio_history.js";
-import { wireDfmLoadSettingsButton } from "/ui/method_pages/dfm/dfm_load_settings_dialog.js?v=20260927c";
+import { wireDfmLoadSettingsButton } from "/ui/method_pages/dfm/dfm_load_settings_dialog.js?v=20260927smb19";
 import { readDfmMethodIdentityFromPage } from "/ui/method_pages/dfm/dfm_method_api.js?v=20260910a";
 import { readDatasetInputQueryValues } from "/ui/shared/tabs/data/data_tab_query_inputs.js";
 
@@ -674,9 +672,7 @@ export function initDfmRatios() {
       if (isRatioChartOpen()) scheduleRatioChartRender();
     },
   });
-  startDfmMethodFileWatcher();
   window.addEventListener("beforeunload", () => {
-    stopDfmMethodFileWatcher();
     cancelDfmMethodAsyncTasks();
     clearRatioHistoryTempSession();
   }, { once: true });

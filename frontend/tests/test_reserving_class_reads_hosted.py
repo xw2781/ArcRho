@@ -47,7 +47,6 @@ PROJECT = "Demo Project"
 GATEWAY = {"enabled": True, "url": "http://server:28767", "user": "alice", "secret": "x"}
 READ_KINDS = (
     "reserving_class_combinations",
-    "reserving_class_path_tree",
     "reserving_class_path_tree_children",
     "reserving_class_types",
     "reserving_class_hidden_paths",
@@ -89,8 +88,9 @@ class ReservingClassHostedTests(unittest.TestCase):
             "columns": ["Name", "Level", "Formula", "Source"],
             "rows": [["NJ", "1", "", "NJ"], ["NY", "1", "", "NY"], ["East", "1", "NJ + NY", "NJ + NY"]],
         })
+        # A file the retired path-tree cache left behind; nothing reads it.
         _write_json(self.project / "reserving_class_path_tree_cache.json", {
-            "mode": "lazy", "levels": [], "paths": ["NJ"], "tree": {"name": "All", "children": []},
+            "mode": "lazy", "paths": ["Stale"], "children_cache": {"": ["Stale"]},
         })
 
         env = {key: value for key, value in os.environ.items() if key != api_config.RUNTIME_SERVER_ROOT_ENV}
@@ -137,11 +137,10 @@ class ReservingClassHostedTests(unittest.TestCase):
     def _reads(self):
         return [
             ("reserving_class_combinations", lambda: rc_router.get_reserving_class_combinations(PROJECT)),
-            ("reserving_class_path_tree", lambda: rc_router.get_reserving_class_path_tree(PROJECT)),
             ("reserving_class_path_tree_children", lambda: rc_router.get_reserving_class_path_tree_children(PROJECT)),
             (
                 "reserving_class_path_tree_children",
-                lambda: rc_router.get_reserving_class_path_tree_children(PROJECT, prefix="East", force=True),
+                lambda: rc_router.get_reserving_class_path_tree_children(PROJECT, prefix="East"),
             ),
             ("reserving_class_types", lambda: rc_router.get_reserving_class_types(PROJECT)),
             ("reserving_class_hidden_paths", lambda: rc_router.get_reserving_class_hidden_paths(PROJECT)),
@@ -211,6 +210,12 @@ class ReservingClassHostedTests(unittest.TestCase):
         self.assertEqual([child["name"] for child in root["children"]], ["East", "NJ", "NY"])
         self.assertEqual([child["path"] for child in east["children"]], ["East\\Auto", "East\\Home"])
         self.assertFalse(east["children"][0]["has_children"])
+
+    def test_the_path_tree_cache_is_retired(self) -> None:
+        # The Dataset Viewer's value list reads the combinations instead.
+        self.assertNotIn("reserving_class_path_tree", WORKSPACE_READ_KINDS)
+        self.assertFalse(hasattr(rc_router, "get_reserving_class_path_tree"))
+        self.assertFalse(hasattr(config, "get_reserving_class_path_tree_path"))
 
     def test_the_types_read_shows_the_merge_without_writing_it(self) -> None:
         with self._server_process():

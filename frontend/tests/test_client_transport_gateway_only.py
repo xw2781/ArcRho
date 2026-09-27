@@ -37,7 +37,7 @@ from app_server.services.workspace_read_client import GatewayTransportFailure
 GATEWAY = {"enabled": True, "url": "http://gateway.test:28767", "user": "alice", "secret": "s"}
 CAPABILITIES = {
     "workspace_read_kinds": ["dataset_index"],
-    "workspace_mutation_kinds": ["dataset_index_rebuild"],
+    "workspace_mutation_kinds": ["arcrho_headers_cache_clear"],
     "engine_calculation_functions": ["ArcRhoTri"],
     "engine_calculation_operations": ["exchange"],
 }
@@ -85,7 +85,7 @@ class ClientTransportTests(unittest.TestCase):
                 "dataset_index", {"project_name": "Demo", "reserving_class": "Class"}, local=_local
             ),
             "mutation": lambda: workspace_mutation_client.run_workspace_mutation(
-                "dataset_index_rebuild", {"project_name": "Demo", "reserving_class": "Class"}, local=_local
+                "arcrho_headers_cache_clear", {"project_name": "Demo"}, local=_local
             ),
             "calculation": lambda: engine_calculation_service.run_engine_calculation(
                 PAIRS, str(FRONTEND_ROOT / "never.csv"), 15.0
@@ -184,7 +184,7 @@ class ServerProcessTransportTests(unittest.TestCase):
         ):
             read = workspace_read_client.run_workspace_read("dataset_index", {}, local=lambda: {"ran": "read"})
             mutation = workspace_mutation_client.run_workspace_mutation(
-                "dataset_index_rebuild", {}, local=lambda: {"ran": "mutation"}
+                "arcrho_headers_cache_clear", {}, local=lambda: {"ran": "mutation"}
             )
             calculation = engine_calculation_service.run_engine_calculation(PAIRS, "unused.csv", 15.0)
         self.assertEqual((read, mutation), ({"ran": "read"}, {"ran": "mutation"}))

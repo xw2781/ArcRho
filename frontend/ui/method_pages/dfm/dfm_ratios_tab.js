@@ -906,72 +906,10 @@ setRatioChartCallbacks({ onRatioStateMutated });
 // =============================================================================
 // Main Ratio Table Rendering
 // =============================================================================
-let pendingExternalChangeHighlights = null;
-
-function normalizeHighlightCells(cells) {
-  if (!Array.isArray(cells)) return [];
-  return cells
-    .map((cell) => ({
-      r: String(cell?.r ?? ""),
-      c: Number(cell?.c),
-      label: String(cell?.label || "").trim(),
-    }))
-    .filter((cell) => Number.isFinite(cell.c) && cell.c >= 0 && (cell.r || cell.label));
-}
-
 export function restoreRatioHistoryUi() {
   renderRatioTable();
   scheduleRatioSummaryUpdate();
   onRatioStateMutated();
-}
-
-function restartCellFlash(cell) {
-  if (!cell) return;
-  cell.classList.remove("dfmExternalJsonChanged");
-  void cell.offsetWidth;
-  cell.classList.add("dfmExternalJsonChanged");
-  window.setTimeout(() => {
-    cell.classList.remove("dfmExternalJsonChanged");
-  }, 2400);
-}
-
-function applyPendingExternalChangeHighlights() {
-  const pending = pendingExternalChangeHighlights;
-  pendingExternalChangeHighlights = null;
-  if (!pending) return;
-  window.requestAnimationFrame(() => {
-    const wrap = document.getElementById("ratioWrap");
-    if (!wrap) return;
-    normalizeHighlightCells(pending.ratioCells).forEach((cell) => {
-      const target = wrap.querySelector(
-        `table.ratioMainTable td.ratioCell[data-r="${CSS.escape(cell.r)}"][data-col="${cell.c}"]`,
-      );
-      restartCellFlash(target);
-    });
-
-    const rowIdByLabel = new Map();
-    summaryRowConfigs.forEach((cfg) => {
-      const id = String(cfg?.id || "");
-      if (!id) return;
-      rowIdByLabel.set(String(cfg?.label || id).trim(), id);
-      rowIdByLabel.set(id, id);
-    });
-    normalizeHighlightCells(pending.averageCells).forEach((cell) => {
-      const rowId = cell.r || rowIdByLabel.get(cell.label) || "";
-      if (!rowId) return;
-      const target = wrap.querySelector(
-        `table.ratioSummaryTable td.summaryCell[data-r="${CSS.escape(rowId)}"][data-col="${cell.c}"]`,
-      );
-      restartCellFlash(target);
-    });
-  });
-}
-
-export function queueDfmExternalChangeHighlights(changes = {}) {
-  const ratioCells = normalizeHighlightCells(changes.ratioCells);
-  const averageCells = normalizeHighlightCells(changes.averageCells);
-  if (!ratioCells.length && !averageCells.length) return;
-  pendingExternalChangeHighlights = { ratioCells, averageCells };
 }
 
 export function renderRatioTable() {
@@ -1286,7 +1224,6 @@ export function renderRatioTable() {
   // The marker the arrow keys move belongs to the state, not to the discarded
   // cell, so a re-render draws it again on the cell it named.
   paintRatioActiveCell();
-  applyPendingExternalChangeHighlights();
 }
 
 // =============================================================================

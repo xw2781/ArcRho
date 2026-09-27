@@ -423,24 +423,19 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
     ),
     # The reserving-class picker, path tree and types table. Each is one
     # route's whole answer read where the project files are local disk, and
-    # none writes: the combinations, the types file and the path-tree cache
-    # are rebuilt by their writers (the source refresh job, a field mapping or
-    # types save), never by a read.
+    # none writes: the combinations and the types file are rebuilt by their
+    # writers (the source refresh job, a field mapping or types save), never
+    # by a read.
     "reserving_class_combinations": WorkspaceReadKind(
         "reserving_class_service",
         "read_reserving_class_combinations",
-        ("project_name",),
-    ),
-    "reserving_class_path_tree": WorkspaceReadKind(
-        "reserving_class_service",
-        "read_reserving_class_path_tree",
         ("project_name",),
     ),
     "reserving_class_path_tree_children": WorkspaceReadKind(
         "reserving_class_service",
         "read_reserving_class_path_tree_children",
         ("project_name",),
-        ("prefix", "force"),
+        ("prefix",),
     ),
     "reserving_class_types": WorkspaceReadKind(
         "reserving_class_service",
