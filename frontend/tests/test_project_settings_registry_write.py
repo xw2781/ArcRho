@@ -21,10 +21,13 @@ for root in (FRONTEND_ROOT, PYTHON_API_SRC, SERVER_COMPONENTS_SRC):
 
 from app_server.services import project_settings_service  # noqa: E402
 
+TEST_TEMP_ROOT = REPOSITORY_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+
 
 class ProjectRegistryWriteRetryTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
         self.projects_dir = Path(self.temp_dir.name) / "projects"
         self.projects_dir.mkdir()
         self.index_path = self.projects_dir / "index.json"
@@ -63,7 +66,7 @@ class ProjectRegistryWriteRetryTests(unittest.TestCase):
         replace, calls = self._flaky_replace(failures=2)
         with patch.object(project_settings_service.os, "replace", side_effect=replace):
             result = project_settings_service.update_project_settings(
-                "project_map", [], ["Pricing\\Source Project (2)"], file_mtime=None
+                "project_map", [], ["Pricing\\Source Project (2)"]
             )
 
         self.assertTrue(result["ok"])
@@ -78,7 +81,7 @@ class ProjectRegistryWriteRetryTests(unittest.TestCase):
         with patch.object(project_settings_service.os, "replace", side_effect=replace):
             with self.assertRaises(HTTPException) as raised:
                 project_settings_service.update_project_settings(
-                    "project_map", [], ["Pricing\\Source Project (2)"], file_mtime=None
+                    "project_map", [], ["Pricing\\Source Project (2)"]
                 )
 
         self.assertEqual(raised.exception.status_code, 423)

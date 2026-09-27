@@ -17,13 +17,21 @@ from app_server.schemas.project_settings import (
     GeneratedDatasetCacheClearRequest,
     GeneralSettingsUpdateRequest,
 )
-from app_server.services import project_settings_service, workspace_read_client
+from app_server.services import project_settings_service, workspace_mutation_client, workspace_read_client
 
 router = APIRouter()
 
 
 # The GET routes read the project registry and General Settings on the server
-# host through the Gateway; a Client PC refuses rather than reading the share.
+# host through the Gateway, and the writes run there as workspace mutations; a
+# Client PC refuses rather than touching the share. Opening a project folder in
+# Explorer stays on this PC, because it hands a path to a program here.
+
+
+def _mutate(kind: str, kwargs: Dict[str, Any], local, request_id: str | None = None) -> Dict[str, Any]:
+    return workspace_mutation_client.run_workspace_mutation(
+        kind, kwargs, local=local, gateway_required=True, request_id=request_id
+    )
 
 
 @router.get("/project_settings")
@@ -48,7 +56,13 @@ def get_project_folders(source: str) -> Dict[str, Any]:
 
 @router.post("/project_settings/{source}/rename_project_folder")
 def rename_project_folder(source: str, req: RenameProjectFolderRequest) -> Dict[str, Any]:
-    return project_settings_service.rename_project_folder(source, req.old_name, req.new_name)
+    kwargs = {"source": source, "old_name": req.old_name, "new_name": req.new_name}
+    return _mutate(
+        "project_folder_rename",
+        kwargs,
+        lambda: project_settings_service.rename_project_folder(**kwargs),
+        req.request_id,
+    )
 
 
 @router.post(
@@ -100,12 +114,24 @@ def cancel_duplicate_project_folder(
 
 @router.post("/project_settings/{source}/create_project_folder")
 def create_project_folder(source: str, req: CreateProjectFolderRequest) -> Dict[str, Any]:
-    return project_settings_service.create_project_folder(source, req.name)
+    kwargs = {"source": source, "name": req.name}
+    return _mutate(
+        "project_folder_create",
+        kwargs,
+        lambda: project_settings_service.create_project_folder(**kwargs),
+        req.request_id,
+    )
 
 
 @router.post("/project_settings/{source}/delete_project_folder")
 def delete_project_folder(source: str, req: DeleteProjectFolderRequest) -> Dict[str, Any]:
-    return project_settings_service.delete_project_folder(source, req.name)
+    kwargs = {"source": source, "name": req.name}
+    return _mutate(
+        "project_folder_delete",
+        kwargs,
+        lambda: project_settings_service.delete_project_folder(**kwargs),
+        req.request_id,
+    )
 
 
 @router.post("/project_settings/{source}/open_project_folder")
@@ -115,7 +141,12 @@ def open_project_folder(source: str, req: OpenProjectFolderRequest) -> Dict[str,
 
 @router.post("/project_settings/{source}/generated_dataset_cache/clear")
 def clear_generated_dataset_csv_caches(source: str, req: GeneratedDatasetCacheClearRequest) -> Dict[str, Any]:
-    return project_settings_service.clear_generated_dataset_csv_caches(source, req.project_name)
+    kwargs = {"source": source, "project_name": req.project_name}
+    return _mutate(
+        "generated_dataset_cache_clear",
+        kwargs,
+        lambda: project_settings_service.clear_generated_dataset_csv_caches(**kwargs),
+    )
 
 
 @router.get("/project_settings/{source}")
@@ -130,11 +161,17 @@ def get_project_settings(source: str) -> Dict[str, Any]:
 
 @router.post("/project_settings/{source}")
 def update_project_settings(source: str, req: ProjectSettingsUpdateRequest) -> Dict[str, Any]:
-    return project_settings_service.update_project_settings(
-        source,
-        req.folders,
-        req.project_paths,
-        file_mtime=req.file_mtime,
+    kwargs = {
+        "source": source,
+        "folders": list(req.folders),
+        "project_paths": list(req.project_paths),
+        "expected_revision": req.expected_revision,
+    }
+    return _mutate(
+        "project_registry_save",
+        kwargs,
+        lambda: project_settings_service.update_project_settings(**kwargs),
+        req.request_id,
     )
 
 
@@ -152,10 +189,16 @@ def get_general_settings(project_name: str) -> Dict[str, Any]:
 
 @router.post("/general_settings")
 def update_general_settings(req: GeneralSettingsUpdateRequest) -> Dict[str, Any]:
-    return project_settings_service.update_general_settings(
-        project_name=req.project_name,
-        origin_start_date=req.origin_start_date,
-        origin_end_date=req.origin_end_date,
-        development_end_date=req.development_end_date,
-        auto_generated=bool(req.auto_generated),
+    kwargs = {
+        "project_name": req.project_name,
+        "origin_start_date": req.origin_start_date,
+        "origin_end_date": req.origin_end_date,
+        "development_end_date": req.development_end_date,
+        "auto_generated": bool(req.auto_generated),
+    }
+    return _mutate(
+        "general_settings_save",
+        kwargs,
+        lambda: project_settings_service.update_general_settings(**kwargs),
+        req.request_id,
     )

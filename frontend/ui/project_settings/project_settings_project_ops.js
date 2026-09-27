@@ -13,7 +13,7 @@ import {
   normalizeTreePath,
   pathEqualsCI,
   splitProjectTreePath,
-} from "/ui/project_settings/project_settings_project_map.js?v=20260901dup1";
+} from "/ui/project_settings/project_settings_project_map.js?v=20260927rev1";
 import {
   clearPendingDuplicateJob,
   createDuplicateRequestId,

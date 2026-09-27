@@ -6,13 +6,20 @@ asked again, or answered locally instead. A mutation cannot borrow that
 reasoning, so it gets its own registry and its own route rather than being
 smuggled into the read table.
 
-Only allowlisted kinds may execute remotely, and every registered kind must be
-**idempotent**: running it twice against the same workspace must leave the same
-end state as running it once. That is what lets this transport, like the read
-one, keep no durable receipt — an answer the client never saw is either already
-applied or safe to ask for again. A mutation that cannot make that promise
-belongs on the hosted-save path (``arcrho_hosted_save_http_contract``), which
-buys durability with a request file, an Engine claim, and a receipt.
+Only allowlisted kinds may execute remotely, and every registered kind must
+either be **idempotent** -- running it twice against the same workspace leaves
+the end state of running it once, so an answer the client never saw is either
+already applied or safe to ask for again -- or be marked ``receipt``. A receipt
+kind (create, rename or delete a project folder, a registry save checked
+against the revision it read) could not be run twice safely, so the Gateway
+keeps one receipt per signed user and request id: the first run records its
+outcome, and a repeat of the same request under that id answers from the
+receipt instead of running again, while a different request under the same id
+is refused with 409. For a receipt kind the request id names the user's action,
+not the HTTP attempt, so a retry after a lost answer reuses it. Receipts live
+beside the hosted-save receipts and expire with them. Anything that needs an
+Engine claim belongs on the hosted-save path
+(``arcrho_hosted_save_http_contract``).
 
 What the client may *not* do is fall back to its own mapped drive after the
 server may already have acted. Reads fall back freely; a mutation whose outcome
@@ -63,6 +70,9 @@ class WorkspaceMutationKind:
     # Named here so validation checks the right shape instead of coercing a
     # list to ``str`` and silently accepting "['a', 'b']" as one dataset.
     list_args: tuple[str, ...] = field(default_factory=tuple)
+    # True for a kind that is not idempotent: the Gateway answers a repeated
+    # request id from its stored receipt instead of running the kind again.
+    receipt: bool = False
 
     @property
     def allowed(self) -> frozenset[str]:
@@ -304,6 +314,53 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ("project_name",),
         ("origin_length", "development_length"),
     ),
+    # Project Settings writes. Creating, renaming and deleting a project
+    # folder and saving the registry are not idempotent -- a repeated create
+    # or rename meets the folder the first run made and refuses with 409, and
+    # a repeated registry save meets the revision the first run moved -- so
+    # they carry a receipt and a repeat answers with the first outcome. The
+    # General Settings save is a whole-value write but appends an audit entry
+    # each run, so it carries one too. Clearing the generated CSV caches is
+    # idempotent: a repeat finds nothing left to clear and writes no audit
+    # entry. ``source`` is the registry key (``project_map``); the lists and
+    # the revision may be empty or 0, so they are optional.
+    "project_folder_create": WorkspaceMutationKind(
+        "project_settings_service",
+        "create_project_folder",
+        ("source", "name"),
+        receipt=True,
+    ),
+    "project_folder_rename": WorkspaceMutationKind(
+        "project_settings_service",
+        "rename_project_folder",
+        ("source", "old_name", "new_name"),
+        receipt=True,
+    ),
+    "project_folder_delete": WorkspaceMutationKind(
+        "project_settings_service",
+        "delete_project_folder",
+        ("source", "name"),
+        receipt=True,
+    ),
+    "project_registry_save": WorkspaceMutationKind(
+        "project_settings_service",
+        "update_project_settings",
+        ("source",),
+        ("folders", "project_paths", "expected_revision"),
+        receipt=True,
+    ),
+    "general_settings_save": WorkspaceMutationKind(
+        "project_settings_service",
+        "update_general_settings",
+        ("project_name",),
+        ("origin_start_date", "origin_end_date", "development_end_date", "auto_generated"),
+        receipt=True,
+    ),
+    "generated_dataset_cache_clear": WorkspaceMutationKind(
+        "project_settings_service",
+        "clear_generated_dataset_csv_caches",
+        ("source", "project_name"),
+    ),
 }
 
 HTTP_WORKSPACE_MUTATION_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_MUTATION_KINDS))
@@ -385,7 +442,8 @@ def validate_workspace_mutation_request(payload: Mapping[str, Any]) -> dict[str,
         request_id = validate_request_id(payload.get("RequestId"))
         # Only logical identifiers travel; a machine-local project folder or a
         # drive-letter reserving-class path is refused before any lookup.
-        validate_project_name(normalized_kwargs["project_name"], "project_name")
+        if "project_name" in spec.allowed:
+            validate_project_name(normalized_kwargs.get("project_name"), "project_name")
         if "reserving_class" in spec.allowed and normalized_kwargs.get("reserving_class"):
             validate_reserving_class_path(normalized_kwargs["reserving_class"])
     except DependentPropagationContractError as exc:

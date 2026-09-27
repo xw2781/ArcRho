@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import json
+import os
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -25,7 +28,11 @@ for path in (ENGINE_SOURCE, API_SOURCE, FRONTEND_ROOT):
 
 from fastapi import HTTPException
 
-from arcrho_hosted_save_http_contract import default_gateway_config
+from arcrho_hosted_save_http_contract import (
+    default_gateway_config,
+    mutation_receipt_path,
+    request_sha256,
+)
 from arcrho_workspace_mutation_contract import (
     HTTP_WORKSPACE_MUTATION_KINDS,
     WORKSPACE_MUTATION_CAPABILITY_FIELD,
@@ -429,6 +436,174 @@ class WorkspaceMutationHttpRoundTripTests(unittest.TestCase):
         self.assertEqual(response["deleted_count"], 3)
         self.assertEqual(self.records[-1]["transport"], "smb")
         self.assertEqual(self.records[-1]["reason"], "gateway_unreachable")
+
+    def _lose_first_answer(self):
+        """Deliver the first request to the Gateway, then drop its answer."""
+
+        real_post = workspace_read_client.post_signed_json
+        sent: list[dict] = []
+
+        def post(gateway_config, path, request_payload, *, timeout):
+            sent.append(dict(request_payload))
+            answer = real_post(gateway_config, path, request_payload, timeout=timeout)
+            if len(sent) == 1:
+                raise workspace_read_client.GatewayTransportFailure(
+                    "gateway_connection_lost", accepted=True
+                )
+            return answer
+
+        return patch.object(workspace_read_client, "post_signed_json", side_effect=post), sent
+
+    def test_a_lost_answer_to_a_receipt_kind_is_replayed_not_run_again(self) -> None:
+        runs: list[str] = []
+
+        def create(source, name):
+            runs.append(name)
+            return {"ok": True, "created_folder": name}
+
+        lose, sent = self._lose_first_answer()
+        with _FakeMutationRuntime("project_folder_create", create), lose:
+            response = workspace_mutation_client.run_workspace_mutation(
+                "project_folder_create",
+                {"source": "project_map", "name": "Scratch"},
+                local=lambda: self.fail("the mutation must not run locally"),
+                gateway_required=True,
+                request_id="create-1",
+            )
+
+        self.assertEqual(response, {"ok": True, "created_folder": "Scratch"})
+        self.assertEqual(runs, ["Scratch"])
+        self.assertEqual([request["RequestId"] for request in sent], ["create-1", "create-1"])
+        self.assertEqual(sent[0], sent[1])
+
+    def test_a_lost_answer_to_an_idempotent_kind_is_not_resent(self) -> None:
+        lose, sent = self._lose_first_answer()
+        with _FakeMutationRuntime("cached_dataset_delete", lambda **_kwargs: {"ok": True}), lose:
+            with self.assertRaises(HTTPException) as caught:
+                self._run()
+        self.assertEqual(caught.exception.status_code, 504)
+        self.assertEqual(len(sent), 1)
+
+
+class WorkspaceMutationReceiptTests(unittest.TestCase):
+    """Receipt kinds against real project-folder services in a temporary root."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
+        self.addCleanup(self.temp_dir.cleanup)
+        self.root = Path(self.temp_dir.name)
+        self.projects = self.root / "projects"
+        (self.projects / "Alpha" / "data").mkdir(parents=True)
+        config = default_gateway_config()
+        config["host"] = "127.0.0.1"
+        config["users"] = {"alice": "alice-secret", "bob": "bob-secret"}
+        gateway_main._write_json_atomic(self.root / "config" / "arcrho_gateway.json", config)
+        for patcher in (
+            patch.object(app_config, "PROJECT_SETTINGS_DIR", str(self.projects)),
+            patch.object(workspace_read_client, "_is_server_process", return_value=True),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.executor = workspace_mutations.WorkspaceMutationExecutor(
+            self.root,
+            load_gateway_config=gateway_main._load_gateway_config,
+            log=lambda _root, _message: None,
+            ensure_runtime=lambda: None,
+        )
+
+    def _request(self, kind: str, kwargs: dict, *, user: str = "alice", request_id: str = "r-1") -> dict:
+        return build_workspace_mutation_request(
+            request_id=request_id, mutation_kind=kind, kwargs=kwargs, user_name=user
+        )
+
+    def _rename(self, new_name: str = "Beta", **overrides) -> dict:
+        return self._request(
+            "project_folder_rename",
+            {"source": "project_map", "old_name": "Alpha", "new_name": new_name},
+            **overrides,
+        )
+
+    def _receipt(self, user: str = "alice", request_id: str = "r-1") -> Path:
+        return mutation_receipt_path(self.root, user, request_id)
+
+    def test_a_repeated_rename_answers_from_its_receipt_and_is_never_applied_twice(self) -> None:
+        first = self.executor.execute("alice", self._rename())
+        # Put a folder back under the old name: a second real run would now
+        # rename it too (or refuse, since Beta exists). The replay does neither.
+        (self.projects / "Alpha").mkdir()
+        second = self.executor.execute("alice", self._rename())
+
+        self.assertEqual(first, {"ok": True, "old_folder": "Alpha", "new_folder": "Beta"})
+        self.assertEqual(second, first)
+        self.assertTrue((self.projects / "Alpha").is_dir())
+        self.assertTrue((self.projects / "Beta" / "data").is_dir())
+        receipt = json.loads(self._receipt().read_text(encoding="utf-8"))
+        self.assertEqual(receipt["state"], "success")
+        self.assertEqual(receipt["mutation_kind"], "project_folder_rename")
+
+    def test_a_different_change_under_the_same_id_is_refused(self) -> None:
+        self.executor.execute("alice", self._rename())
+        with self.assertRaises(workspace_reads.WorkspaceReadRefusal) as caught:
+            self.executor.execute("alice", self._rename("Gamma"))
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertFalse((self.projects / "Gamma").exists())
+
+    def test_receipts_are_kept_per_user(self) -> None:
+        self.executor.execute("alice", self._rename())
+        (self.projects / "Alpha").mkdir()
+        answer = self.executor.execute("bob", self._rename("Gamma", user="bob"))
+        self.assertEqual(answer["new_folder"], "Gamma")
+        self.assertTrue(self._receipt("bob").is_file())
+
+    def test_a_refusal_is_replayed_without_running_again(self) -> None:
+        runs: list[str] = []
+        real_create = importlib.import_module(
+            "app_server.services.project_settings_service"
+        ).create_project_folder
+
+        def create(source, name):
+            runs.append(name)
+            return real_create(source, name)
+
+        request = self._request("project_folder_create", {"source": "project_map", "name": "Alpha"})
+        with _FakeMutationRuntime("project_folder_create", create):
+            for _attempt in range(2):
+                with self.assertRaises(workspace_reads.WorkspaceReadRefusal) as caught:
+                    self.executor.execute("alice", request)
+                self.assertEqual(caught.exception.status_code, 409)
+                self.assertIn("already exists", caught.exception.detail)
+        self.assertEqual(runs, ["Alpha"])
+
+    def test_an_unfinished_receipt_is_reported_not_run(self) -> None:
+        request = self._rename()
+        gateway_main._write_json_atomic(
+            self._receipt(),
+            {"receipt_version": 1, "request_sha256": request_sha256(request), "state": "accepted"},
+        )
+        with self.assertRaises(workspace_reads.WorkspaceReadRefusal) as caught:
+            self.executor.execute("alice", request)
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertTrue((self.projects / "Alpha").is_dir())
+
+    def test_an_idempotent_kind_keeps_no_receipt(self) -> None:
+        with _FakeMutationRuntime("generated_dataset_cache_clear", lambda **_kwargs: {"ok": True}):
+            self.executor.execute(
+                "alice",
+                self._request("generated_dataset_cache_clear", {"source": "project_map", "project_name": "Alpha"}),
+            )
+        self.assertFalse((self.root / "runtime").exists())
+
+    def test_startup_expires_old_terminal_mutation_receipts(self) -> None:
+        self.executor.execute("alice", self._rename())
+        unfinished = self._receipt(request_id="r-2")
+        gateway_main._write_json_atomic(unfinished, {"state": "accepted"})
+        old = time.time() - 48 * 3600
+        for path in (self._receipt(), unfinished):
+            os.utime(path, (old, old))
+
+        self.assertEqual(gateway_main._prune_terminal_receipts(self.root, 24), 1)
+        self.assertFalse(self._receipt().exists())
+        self.assertTrue(unfinished.exists())
 
 
 if __name__ == "__main__":

@@ -263,3 +263,24 @@ def receipt_path(server_root: str | os.PathLike[str], request_id: str) -> Path:
     if not token or not token.replace("-", "").isalnum() or len(token) > 128:
         raise HostedSaveHttpContractError("Gateway request id is invalid.")
     return receipts_root(server_root) / f"{token}.json"
+
+
+def mutation_receipt_path(
+    server_root: str | os.PathLike[str], user: str, request_id: str
+) -> Path:
+    """Receipt of one workspace mutation, keyed by the signed user and request id.
+
+    Two users may send the same id without meeting each other's outcome. The
+    user segment keeps letters, digits, ``.``, ``_`` and ``-`` and writes any
+    other character as ``%XX``; the id is already a validated safe token.
+    """
+
+    login = normalize_user(user)
+    token = str(request_id or "").strip()
+    if not login or not token or not token.replace("-", "").replace("_", "").isalnum():
+        raise HostedSaveHttpContractError("Gateway mutation receipt key is invalid.")
+    segment = "".join(
+        character if character.isalnum() or character in "._-" else f"%{ord(character):02X}"
+        for character in login
+    )
+    return receipts_root(server_root) / "mutations" / segment / f"{token}.json"

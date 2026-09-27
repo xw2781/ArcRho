@@ -1,4 +1,11 @@
-"""Project settings and project index CRUD."""
+"""Project settings and project index CRUD.
+
+On a Client PC every write here runs on the server host through the Gateway
+(the routes in ``project_settings_router``); the functions themselves always
+act on the disk of the process that runs them. The project registry carries a
+``revision`` this module owns: every registry save must name the revision it
+read, a stale one is refused with 409, and the save moves it by one.
+"""
 from __future__ import annotations
 
 import getpass
@@ -8,6 +15,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -72,6 +80,9 @@ _GENERATED_CACHE_MAX_WORKERS = 4
 # caller reports the registry as locked.
 _PROJECT_INDEX_REPLACE_ATTEMPTS = 5
 _PROJECT_INDEX_REPLACE_RETRY_SECONDS = 0.2
+# The registry check and write run in the one process that hosts them, so a
+# process lock makes the revision compare-and-write atomic.
+_PROJECT_INDEX_WRITE_LOCK = threading.Lock()
 
 
 def _project_index_path() -> str:
@@ -159,6 +170,7 @@ def _normalize_project_index(data: Dict[str, Any]) -> Dict[str, Any]:
     folders = [_folder_entry_from_path(path) for path in sorted(folder_paths)]
     return {
         "version": int(data.get("version") or 1),
+        "revision": int(data.get("revision") or 0),
         "projects": projects,
         "folders": [f for f in folders if f["path"]],
     }
@@ -249,33 +261,27 @@ def get_project_folders(source: str) -> Dict[str, Any]:
 
 def update_project_settings(
     source: str,
-    folders_input: List[str],
-    project_paths_input: List[str],
-    file_mtime: float = None,
+    folders: List[str] | None = None,
+    project_paths: List[str] | None = None,
+    expected_revision: int = 0,
 ) -> Dict[str, Any]:
     """Authoritative write of the project registry.
 
     ``project_paths`` is the complete project list (each path's leaf segment is
     the project name); ``folders`` adds empty virtual folders. Projects absent
-    from ``project_paths`` are removed from the registry.
+    from ``project_paths`` are removed from the registry. ``expected_revision``
+    is the revision the caller read; any other stored revision is refused with
+    409, because someone saved in between.
     """
     if source not in config.PROJECT_SETTINGS_SOURCES:
         raise HTTPException(404, f"Unknown source: {source}")
 
-    filepath = _project_index_path()
-    version = 1
-    if os.path.exists(filepath):
-        st = os.stat(filepath)
-        if file_mtime is not None and abs(st.st_mtime - file_mtime) > 0.001:
-            raise HTTPException(409, "File was modified by another user. Please refresh and try again.")
-        version = int(_read_project_index().get("version") or 1)
-
-    folders, _ = _normalize_folder_structure_entry({"folders": list(folders_input) if folders_input else []})
-    _, project_paths = _normalize_folder_structure_entry({"project_paths": list(project_paths_input) if project_paths_input else []})
-    folder_set: set = set(folders)
+    folder_list, _ = _normalize_folder_structure_entry({"folders": list(folders) if folders else []})
+    _, project_path_list = _normalize_folder_structure_entry({"project_paths": list(project_paths) if project_paths else []})
+    folder_set: set = set(folder_list)
     projects: List[Dict[str, str]] = []
     seen_project_keys: set[str] = set()
-    for full in project_paths:
+    for full in project_path_list:
         folder, project = _split_project_tree_path(full)
         project_name = str(project or "").strip()
         project_key = project_name.lower()
@@ -286,21 +292,29 @@ def update_project_settings(
         projects.append({"name": project_name, "folder": folder})
     folder_entries = [_folder_entry_from_path(path) for path in sorted(folder_set)]
 
-    try:
-        path = _write_project_index({"version": version, "projects": projects, "folders": folder_entries})
-        st2 = os.stat(path)
-        return {
-            "ok": True,
-            "source": source,
-            "folders_count": len(folder_entries),
-            "project_paths_count": len(projects),
-            "path": path,
-            "mtime": st2.st_mtime,
-        }
-    except PermissionError:
-        raise HTTPException(423, "File is locked. Another user may have it open.")
-    except Exception as e:
-        raise HTTPException(500, f"Failed to save: {str(e)}")
+    with _PROJECT_INDEX_WRITE_LOCK:
+        version, revision = 1, 0
+        if os.path.exists(_project_index_path()):
+            current = _read_project_index()
+            version, revision = int(current.get("version") or 1), current["revision"]
+        if int(expected_revision or 0) != revision:
+            raise HTTPException(409, "The project registry was saved by another user. Please refresh and try again.")
+        try:
+            path = _write_project_index(
+                {"version": version, "revision": revision + 1, "projects": projects, "folders": folder_entries}
+            )
+        except PermissionError:
+            raise HTTPException(423, "File is locked. Another user may have it open.")
+        except Exception as e:
+            raise HTTPException(500, f"Failed to save: {str(e)}")
+    return {
+        "ok": True,
+        "source": source,
+        "folders_count": len(folder_entries),
+        "project_paths_count": len(projects),
+        "path": path,
+        "revision": revision + 1,
+    }
 
 
 def rename_project_folder(source: str, old_name: str, new_name: str) -> Dict[str, Any]:
@@ -1222,14 +1236,14 @@ def get_project_settings(source: str) -> Dict[str, Any]:
     if not os.path.exists(filepath):
         raise HTTPException(404, f"Project index file not found: {filepath}")
 
-    st = os.stat(filepath)
-    payload = project_index_folder_payload(_read_project_index())
+    index_data = _read_project_index()
+    payload = project_index_folder_payload(index_data)
 
     return {
         "ok": True,
         "source": source,
         "path": filepath,
-        "mtime": st.st_mtime,
+        "revision": index_data["revision"],
         "folders": payload["folders"],
         "project_paths": payload["project_paths"],
     }

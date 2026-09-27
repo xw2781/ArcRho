@@ -4,16 +4,24 @@ from pydantic import BaseModel, Field
 
 
 class ProjectSettingsUpdateRequest(BaseModel):
-    """Authoritative project registry write: virtual folders plus project paths."""
+    """Authoritative project registry write: virtual folders plus project paths.
+
+    ``expected_revision`` is the registry revision the caller read. The
+    optional ``request_id`` on this and the folder and General Settings writes
+    names the user's action, so a repeat under it answers with the first
+    outcome instead of applying the change twice.
+    """
 
     folders: List[str] = Field(default_factory=list)
     project_paths: List[str] = Field(default_factory=list)
-    file_mtime: Optional[float] = None
+    expected_revision: int = 0
+    request_id: Optional[str] = None
 
 
 class RenameProjectFolderRequest(BaseModel):
     old_name: str
     new_name: str
+    request_id: Optional[str] = None
 
 
 class DuplicateProjectFolderRequest(BaseModel):
@@ -62,10 +70,12 @@ class ProjectDuplicationJobStatusResponse(BaseModel):
 
 class CreateProjectFolderRequest(BaseModel):
     name: str
+    request_id: Optional[str] = None
 
 
 class DeleteProjectFolderRequest(BaseModel):
     name: str
+    request_id: Optional[str] = None
 
 
 class OpenProjectFolderRequest(BaseModel):
@@ -82,3 +92,4 @@ class GeneralSettingsUpdateRequest(BaseModel):
     origin_end_date: Optional[str] = ""
     development_end_date: Optional[str] = ""
     auto_generated: Optional[bool] = False
+    request_id: Optional[str] = None

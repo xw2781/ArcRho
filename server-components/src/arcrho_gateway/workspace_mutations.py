@@ -7,6 +7,11 @@ against local disk, where a delete plus an index rebuild costs a handful of
 milliseconds rather than one network round trip per file. The gateway performs
 no mutation-specific work of its own: the request names a kind, the contract
 maps the kind to the service, and the service's response goes back verbatim.
+
+A kind the contract marks ``receipt`` is not idempotent, so its outcome is kept
+in the Gateway's receipt store under the signed user and request id: a repeat
+of the same request answers from the receipt, and a different request under
+that id is refused with 409 (see ``arcrho_gateway.receipts``).
 """
 
 from __future__ import annotations
@@ -21,7 +26,9 @@ from arcrho_hosted_save_http_contract import (
     AUTH_SIGNATURE_HEADER,
     AUTH_TIMESTAMP_HEADER,
     AUTH_USER_HEADER,
+    mutation_receipt_path,
     normalize_user,
+    request_sha256,
     verify_request_signature,
 )
 from arcrho_workspace_mutation_contract import (
@@ -31,6 +38,14 @@ from arcrho_workspace_mutation_contract import (
     WORKSPACE_MUTATION_PATH,
     WorkspaceMutationContractError,
     validate_workspace_mutation_request,
+)
+from arcrho_gateway.receipts import (
+    TERMINAL_STATES,
+    ReceiptReadError,
+    now_iso,
+    read_json,
+    receipt_lock,
+    write_json_atomic,
 )
 from arcrho_gateway.workspace_reads import (
     WorkspaceReadHttpError,
@@ -92,6 +107,59 @@ class WorkspaceMutationExecutor:
                 503, "The Arco Server cannot run workspace mutations right now."
             ) from exc
 
+        spec = WORKSPACE_MUTATION_KINDS[request["MutationKind"]]
+        if not spec.receipt:
+            return self._run(authenticated_user, request)
+
+        path = mutation_receipt_path(self.root, authenticated_user, request["RequestId"])
+        with receipt_lock(str(path)):
+            try:
+                receipt = read_json(path)
+            except ReceiptReadError as exc:
+                raise WorkspaceReadHttpError(500, str(exc)) from exc
+            digest = request_sha256(request)
+            if receipt is not None:
+                if receipt.get("request_sha256") != digest:
+                    raise WorkspaceReadRefusal(
+                        409, "This request id was already used for a different change."
+                    )
+                self._log(
+                    self.root,
+                    f"mutation={request['RequestId']} user={authenticated_user} "
+                    f"kind={request['MutationKind']} replay={receipt.get('state')}",
+                )
+                return _receipt_outcome(receipt)
+            receipt = {
+                "receipt_version": 1,
+                "user": normalize_user(authenticated_user),
+                "request_id": request["RequestId"],
+                "mutation_kind": request["MutationKind"],
+                "request_sha256": digest,
+                "state": "accepted",
+                "accepted_at": now_iso(),
+                "updated_at": now_iso(),
+            }
+            write_json_atomic(path, receipt)
+            try:
+                response = self._run(authenticated_user, request)
+            except WorkspaceReadRefusal as exc:
+                receipt.update(state="error", status_code=exc.status_code, detail=exc.detail)
+                receipt["updated_at"] = now_iso()
+                write_json_atomic(path, receipt)
+                raise
+            except Exception:
+                receipt.update(
+                    state="error", status_code=500, detail="The Gateway failed unexpectedly."
+                )
+                receipt["updated_at"] = now_iso()
+                write_json_atomic(path, receipt)
+                raise
+            receipt.update(state="success", status_code=200, response=response)
+            receipt["updated_at"] = now_iso()
+            write_json_atomic(path, receipt)
+            return response
+
+    def _run(self, authenticated_user: str, request: Mapping[str, Any]) -> dict[str, Any]:
         from fastapi import HTTPException
         from fastapi.encoders import jsonable_encoder
 
@@ -130,6 +198,22 @@ class WorkspaceMutationExecutor:
             f"kind={request['MutationKind']} ok={response.get('ok')}",
         )
         return response
+
+
+def _receipt_outcome(receipt: Mapping[str, Any]) -> dict[str, Any]:
+    """Answer a repeated request the way its first run was answered."""
+
+    if receipt.get("state") not in TERMINAL_STATES:
+        # The run that wrote this receipt held its lock until it finished, so
+        # an unfinished receipt means the Gateway stopped part way.
+        raise WorkspaceReadRefusal(
+            409,
+            "The Arco Server stopped before finishing this change. "
+            "Refresh to see whether it was applied.",
+        )
+    if receipt.get("state") == "error":
+        raise WorkspaceReadRefusal(int(receipt.get("status_code") or 500), receipt.get("detail"))
+    return dict(receipt.get("response") or {})
 
 
 def _redact_text(value: Any) -> str:

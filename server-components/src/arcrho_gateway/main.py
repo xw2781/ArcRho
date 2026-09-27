@@ -9,7 +9,7 @@ import sys
 import threading
 import time
 import traceback
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PureWindowsPath
 from typing import Any, Mapping
@@ -32,7 +32,6 @@ except ModuleNotFoundError:
 os.environ.setdefault("ARCRHO_RUNTIME_SERVER_ROOT", str(get_project_root()))
 
 from arcrho_api.config import SERVER_ID_KEY, read_server_id  # noqa: E402
-from arcrho_api.io import persisted_json_text  # noqa: E402
 from arcrho_dependent_propagation_contract import (  # noqa: E402
     DependentPropagationContractError,
     EngineUnavailableError,
@@ -72,7 +71,6 @@ from arcrho_hosted_save_http_contract import (  # noqa: E402
     normalize_gateway_config,
     normalize_user,
     receipt_path,
-    receipts_root,
     request_sha256,
     server_config_path,
     verify_request_signature,
@@ -92,6 +90,14 @@ from arcrho_workspace_mutation_contract import (  # noqa: E402
 )
 from arcrho_log_retention_contract import apply_log_retention  # noqa: E402
 from arcrho_gateway.engine_calculations import EngineCalculationExecutor  # noqa: E402
+from arcrho_gateway.receipts import (  # noqa: E402
+    ReceiptReadError,
+    now_iso as _now_iso,
+    prune_terminal_receipts as _prune_terminal_receipts,
+    read_json,
+    receipt_lock as _receipt_lock,
+    write_json_atomic as _write_json_atomic,
+)
 from arcrho_gateway.workspace_mutations import WorkspaceMutationExecutor  # noqa: E402
 from arcrho_gateway.workspace_reads import (  # noqa: E402
     WorkspaceReadExecutor,
@@ -101,8 +107,6 @@ from arcrho_gateway.workspace_reads import (  # noqa: E402
 HEARTBEAT_SECONDS = 5.0
 STATUS_POLL_SECONDS = 0.05
 GATEWAY_KILL_ALL_KEY = "apps.gateway.kill_all"
-_RECEIPT_LOCKS_GUARD = threading.Lock()
-_RECEIPT_LOCKS: dict[str, threading.RLock] = {}
 
 
 class GatewayHttpError(Exception):
@@ -112,36 +116,11 @@ class GatewayHttpError(Exception):
         self.detail = str(detail)
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-
-
-def _write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f"{path.name}.{os.getpid()}.{time.time_ns()}.tmp")
-    try:
-        temporary.write_text(persisted_json_text(dict(payload)), encoding="utf-8")
-        os.replace(temporary, path)
-    except Exception:
-        temporary.unlink(missing_ok=True)
-        raise
-
-
 def _read_json(path: Path) -> dict[str, Any] | None:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None
-    except (OSError, json.JSONDecodeError) as exc:
-        raise GatewayHttpError(500, "A Gateway receipt could not be read.") from exc
-    if not isinstance(payload, dict):
-        raise GatewayHttpError(500, "A Gateway receipt is invalid.")
-    return payload
-
-
-def _receipt_lock(request_id: str) -> threading.RLock:
-    with _RECEIPT_LOCKS_GUARD:
-        return _RECEIPT_LOCKS.setdefault(request_id, threading.RLock())
+        return read_json(path)
+    except ReceiptReadError as exc:
+        raise GatewayHttpError(500, str(exc)) from exc
 
 
 def _load_gateway_config(root: Path) -> dict[str, Any]:
@@ -156,27 +135,6 @@ def _load_gateway_config(root: Path) -> dict[str, Any]:
             f"Gateway configuration could not be read: {path}"
         ) from exc
     return normalize_gateway_config(payload)
-
-
-def _prune_terminal_receipts(root: Path, retention_hours: int) -> int:
-    """Remove only terminal receipts older than the configured window."""
-
-    folder = receipts_root(root)
-    if not folder.is_dir():
-        return 0
-    cutoff = time.time() - timedelta(hours=retention_hours).total_seconds()
-    removed = 0
-    for path in folder.glob("*.json"):
-        try:
-            if path.stat().st_mtime >= cutoff:
-                continue
-            receipt = _read_json(path)
-            if receipt is not None and receipt.get("state") in {"success", "error"}:
-                path.unlink()
-                removed += 1
-        except (OSError, GatewayHttpError):
-            continue
-    return removed
 
 
 def _log_path(root: Path) -> Path:

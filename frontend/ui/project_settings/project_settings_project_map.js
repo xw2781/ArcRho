@@ -1,8 +1,8 @@
 /**
  * Project Settings - Project map store
  *
- * Single owner of the project registry document (`projectData`), its conflict-
- * detection mtime, the derived folder/project tree, and every read/write
+ * Single owner of the project registry document (`projectData`), the server's
+ * registry revision it was read at, the derived folder/project tree, and every read/write
  * against `/project_settings/<source>`. The registry is virtual folders plus
  * project paths (`Folder\Sub\Project`); each path's leaf segment is the
  * project name. Tree rendering and project CRUD are layered on top of this
@@ -65,11 +65,11 @@ export function createProjectMapStore(deps) {
 
   let projectData = null;   // { customFolders: [], projectPaths: [] }
   let treeData = null;      // Parsed folder -> projects structure
-  let currentMtime = null;  // Track file modification time for conflict detection
+  let currentRevision = 0;  // Registry revision this page read; a save names it
 
   const getProjectData = () => projectData;
   const getTreeData = () => treeData;
-  const getMtime = () => currentMtime;
+  const getRevision = () => currentRevision;
 
   function ensureFolderStructureState() {
     if (!projectData || typeof projectData !== "object") {
@@ -243,18 +243,18 @@ export function createProjectMapStore(deps) {
       customFolders: Array.isArray(result.folders) ? result.folders : [],
       projectPaths: Array.isArray(result.project_paths) ? result.project_paths : [],
     };
-    currentMtime = result.mtime;
+    currentRevision = Number(result.revision) || 0;
 
     buildTreeData();
     return { path: result.path };
   }
 
-  async function updateCurrentMtimeFromResponse(response) {
+  async function updateCurrentRevisionFromResponse(response) {
     try {
       const result = await response.json();
-      const nextMtime = Number(result?.mtime);
-      if (Number.isFinite(nextMtime)) {
-        currentMtime = nextMtime;
+      const nextRevision = Number(result?.revision);
+      if (Number.isFinite(nextRevision)) {
+        currentRevision = nextRevision;
       }
       return result;
     } catch {
@@ -270,7 +270,7 @@ export function createProjectMapStore(deps) {
       body: JSON.stringify({
         folders,
         project_paths: projectPaths,
-        file_mtime: currentMtime,
+        expected_revision: currentRevision,
       }),
     });
   }
@@ -293,7 +293,7 @@ export function createProjectMapStore(deps) {
       const errText = await res.text();
       throw new Error(`${label} failed: ${errText}`);
     }
-    await updateCurrentMtimeFromResponse(res);
+    await updateCurrentRevisionFromResponse(res);
   }
 
   /** Save the in-memory registry document. */
@@ -326,7 +326,7 @@ export function createProjectMapStore(deps) {
         throw new Error(`HTTP ${res.status}: ${text}`);
       }
 
-      await updateCurrentMtimeFromResponse(res);
+      await updateCurrentRevisionFromResponse(res);
       setStatus("Saved successfully.");
       return true;
     } catch (err) {
@@ -343,7 +343,7 @@ export function createProjectMapStore(deps) {
     ensureFolderPathWithParents,
     ensureFolderStructureState,
     findProjectBySnapshot,
-    getMtime,
+    getRevision,
     getProjectData,
     getProjectFolderFromStructure,
     getTreeData,
@@ -353,6 +353,6 @@ export function createProjectMapStore(deps) {
     save,
     saveFolderStructure,
     setProjectFolderInStructure,
-    updateCurrentMtimeFromResponse,
+    updateCurrentRevisionFromResponse,
   };
 }

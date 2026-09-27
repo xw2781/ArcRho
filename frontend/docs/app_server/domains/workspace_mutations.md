@@ -4,7 +4,7 @@
 <!-- MANUAL:BEGIN -->
 Run reserving-class file mutations that a Client PC would otherwise perform one SMB round trip at a time on the ArcRho Server host over HTTP. Like [`workspace_reads`](workspace_reads.md) this is a transport, not a domain of its own: the canonical `app_server` service function still owns the operation and runs unchanged either locally or inside the machine-wide ArcRho Gateway.
 
-It is a separate registry and a separate route from workspace reads because the reasoning that makes a read safe does not carry over. A read is a pure function of the workspace, so an uncertain answer may simply be asked again or answered locally instead; a mutation may not. Every registered mutation kind must be **idempotent** — running it twice must leave the same end state as running it once — which is what lets this transport, like the read one, keep no durable receipt. A mutation that cannot make that promise belongs on the hosted-save path (`arcrho_hosted_save_http_contract`), which buys durability with a request file, an Engine claim, and a receipt.
+It is a separate registry and a separate route from workspace reads because the reasoning that makes a read safe does not carry over. A read is a pure function of the workspace, so an uncertain answer may simply be asked again or answered locally instead; a mutation may not. Every registered mutation kind must either be **idempotent** — running it twice leaves the same end state as running it once, so a lost answer is safe to ask about again — or be marked `receipt`, in which case the Gateway keeps the first run's outcome under the signed user and request id and answers a repeat from it (see "Receipts" below). Anything that needs an Engine claim or the reserving-class lease belongs on the hosted-save path (`arcrho_hosted_save_http_contract`).
 <!-- MANUAL:END -->
 
 ## Entry Points
@@ -27,12 +27,20 @@ No new browser-facing route. This existing route selects the transport per reque
 | `POST /project-user-preferences` | `project_user_preferences_update` | `project_user_preferences_service.update_preferences` |
 | `POST /dfm/method-index/refresh` | `dataset_index_rebuild` | `dataset_instance_index_service.rebuild_index` |
 | `POST /arcrho/headers/cache/clear` | `arcrho_headers_cache_clear` | `arcrho_runtime_service.clear_arcrho_headers_cache` |
+| `POST /project_settings/{source}/create_project_folder` | `project_folder_create` (receipt) | `project_settings_service.create_project_folder` |
+| `POST /project_settings/{source}/rename_project_folder` | `project_folder_rename` (receipt) | `project_settings_service.rename_project_folder` |
+| `POST /project_settings/{source}/delete_project_folder` | `project_folder_delete` (receipt) | `project_settings_service.delete_project_folder` |
+| `POST /project_settings/{source}` | `project_registry_save` (receipt) | `project_settings_service.update_project_settings` |
+| `POST /general_settings` | `general_settings_save` (receipt) | `project_settings_service.update_general_settings` |
+| `POST /project_settings/{source}/generated_dataset_cache/clear` | `generated_dataset_cache_clear` | `project_settings_service.clear_generated_dataset_csv_caches` |
 
 The three preference writes (step 8 of [client_smb_retirement.md](../../../../docs/plans/client_smb_retirement.md)) change only the signed-in user's own `users/<login>/preferences.json`: the login is the acting identity of the signed request, never an argument. Each is Gateway-required. They are idempotent because each is a whole-value write: the hidden-path list and the filter spec (with the tree preferences when sent) replace the stored value outright, and a preferences patch sets each value it names, so a repeat lands the same state and only `updated_at` moves.
 
 The index rebuild (step 9) is Gateway-required. It is idempotent because `index.json` is derived from the class folders alone and an unchanged index is not rewritten, so a repeat leaves the same file.
 
 The header cache clear (step 11) is Gateway-required. It deletes the project's period-heading CSVs so the Engine rebuilds them; it is idempotent because a repeat finds the files already gone and answers `cleared_count: 0`.
+
+The six Project Settings writes (step 13 of the plan) are Gateway-required. Creating, renaming and deleting a project folder and saving the registry are not idempotent — a repeated create or rename meets the folder the first run made and refuses with `409`, a repeated registry save meets the revision the first run moved — and the General Settings save appends an audit entry each run, so all five carry a receipt. Clearing the generated CSV caches is idempotent: a repeat finds nothing left to clear and writes no audit entry. Opening a project folder in Explorer stays on the client, because it hands a path to a program on this PC.
 
 The review-status set is the Project Instance `Mark For Review` / `Set
 Reviewed` action, shared by the dataset table and Dependency Graph context
@@ -98,6 +106,7 @@ Gateway side: `POST /api/workspace-mutations` on the Gateway (`arcrho_workspace_
 - `python-api/src/arcrho_workspace_mutation_contract.py` - The canonical `WORKSPACE_MUTATION_KINDS` registry (kind → service module, function, required/optional keyword arguments, and which of them are name lists), request validation, route path, and timeout.
 - `app_server/services/workspace_mutation_client.py` - Client transport selection and the no-fallback-after-acceptance rule. It reuses the read transport's signing, capability probe cache, `post_signed_json`, and path rebasing rather than repeating them.
 - `server-components/src/arcrho_gateway/workspace_mutations.py` - Server-side executor: authenticates, validates against the registry, imports the bundled service, runs it under `acting_identity`, and maps a service `HTTPException` to the same status while preserving a structured refusal detail.
+- `server-components/src/arcrho_gateway/receipts.py` - The Gateway's one receipt store (atomic write, read, per-receipt lock, startup expiry), shared with hosted saves.
 - `server-components/src/arcrho_gateway/main.py` - Route dispatch and the capability field; the handler is the one `_handle_hosted_execution` shared with reads and calculations.
 - `server-components/src/arcrho_gateway/build_exe.py` - Registered mutation service modules join the hidden-import list and the pre-build import probe automatically.
 <!-- MANUAL:END -->
@@ -110,20 +119,20 @@ Gateway side: `POST /api/workspace-mutations` on the Gateway (`arcrho_workspace_
 - Structured refusals survive the wire. `POST /datasets/cached/delete` answers `409` with an object (`error`, `message`, `blocked_datasets`) that Project Instance renders as the dependents window, so the transport preserves a mapping `detail` instead of flattening it to text; only its free text is redacted for server paths.
 - Path rebasing is the read transport's: every string in the response that starts with the server's workspace root is rewritten onto this PC's own root, so `deleted_files[].path` and the returned `index.folder_paths` look exactly as a local delete would have produced them.
 - Identity: the request carries the enrolled `UserName` and the client's resolved display name, and the gateway binds `user_identity_service.acting_identity` around the mutation so anything it stamps on disk names the person who asked.
-- No idempotency receipt: registered kinds are idempotent by contract, so a lost response is safe to ask about again rather than needing a replay record.
+- Receipts: a kind marked `receipt` (`WorkspaceMutationKind.receipt`) is not idempotent, so the Gateway writes `runtime\arcrho_gateway\receipts\mutations\<user>\<request id>.json` (`mutation_receipt_path`) before running it and records the outcome — the response, or the refusal's status and detail — when it finishes, holding one lock per receipt for the whole run. A repeat of the same request under that id waits on the lock and answers from the receipt without running the service; a different request under the same id is refused with `409`; a receipt left `accepted` by a Gateway that stopped part way answers `409` telling the user to refresh. Keying by the signed user means two users never meet each other's outcome. A route may take the request id from its body (`request_id`) so a caller's repeat of one action reuses it; otherwise the client makes one per call, and when the answer is lost after the server had the request (a dropped connection or an unreadable reply, not a timeout) the client sends that same request once more and reports the replayed outcome. Receipts share the hosted-save receipt store and its retention: the Gateway removes terminal receipts older than `receipt_retention_hours` (24 by default) when it starts. Idempotent kinds keep no receipt.
 - Diagnostics: one record per mutation in `client_read_latency.jsonl`, keyed `read_kind: "mutation:<kind>"`, with the same `transport` / `reason` / timing fields the reads use.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks
 <!-- MANUAL:BEGIN -->
-1. Move another mutation to the server: confirm it is idempotent, add one `WorkspaceMutationKind` entry naming the service function and its keyword arguments (listing any list-valued argument in `list_args`), then wrap the route's service call in `workspace_mutation_client.run_workspace_mutation(...)`. `test_workspace_mutations.py` fails if the registry names an argument the function lacks or omits one it requires; the gateway build validates the import graph and bundles the module automatically. Rebuild and redeploy the gateway.
-2. If the operation is not idempotent, do not add it here — put it on the hosted-save path instead, which owns receipts, Engine claims, and the reserving-class lease.
+1. Move another mutation to the server: decide whether it is idempotent (mark it `receipt=True` if not), add one `WorkspaceMutationKind` entry naming the service function and its keyword arguments (listing any list-valued argument in `list_args`), then wrap the route's service call in `workspace_mutation_client.run_workspace_mutation(...)`. `test_workspace_mutations.py` fails if the registry names an argument the function lacks or omits one it requires; the gateway build validates the import graph and bundles the module automatically. Rebuild and redeploy the gateway.
+2. If the operation needs an Engine claim or the reserving-class lease, do not add it here — put it on the hosted-save path instead.
 3. A refusal the page acts on rather than merely displays should raise a mapping `detail` from the service. Both transports deliver the same object, so the page needs one shape; keep any server path out of the structured fields, because only free text is redacted.
 <!-- MANUAL:END -->
 
 ## Known Risks
 <!-- MANUAL:BEGIN -->
-- The idempotence requirement is a contract promise, not something the transport can verify. A kind registered here that quietly stops being idempotent would turn a lost response into a silently wrong end state.
+- The idempotence requirement is a contract promise, not something the transport can verify. A kind registered without `receipt` that quietly stops being idempotent would turn a lost response into a silently wrong end state.
 - The gateway is one process for the whole fleet, and a mutation holds a handler thread for its whole run; a large delete competes with hosted saves and reads in the same process.
 - The pilot transport is plain HTTP with HMAC, so dataset names travel unencrypted on the internal network. TLS is the first gate before broader rollout.
 <!-- MANUAL:END -->

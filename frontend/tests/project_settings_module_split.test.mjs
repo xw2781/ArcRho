@@ -56,12 +56,12 @@ test("the project map document has exactly one owner", () => {
     assert.doesNotMatch(source, /fetch\w*\(`\/project_settings\/\$\{sourceKey\}/);
   }
   assert.match(projectMap, /let projectData = null;/);
-  assert.match(projectMap, /let currentMtime = null;/);
+  assert.match(projectMap, /let currentRevision = 0;/);
   assert.match(projectMap, /let treeData = null;/);
   for (const [name, source] of SPLIT_MODULES) {
     if (name === "project_settings_project_map.js") continue;
     assert.doesNotMatch(source, /^let projectData/m, `${name} keeps its own project map copy`);
-    assert.doesNotMatch(source, /^let currentMtime/m, `${name} keeps its own mtime copy`);
+    assert.doesNotMatch(source, /^let currentRevision/m, `${name} keeps its own revision copy`);
   }
   // Project ops reaches the registry only through the store's guarded writers.
   assert.match(projectOps, /store\.saveFolderStructure\(/);

@@ -14,6 +14,12 @@ may only fall back when the failure proves the server never acted. Once the
 request has been accepted, an ambiguous outcome is reported to the user rather
 than re-run against the mapped drive, because the local run would be reasoning
 about a workspace the server has already changed.
+
+A kind the contract marks ``receipt`` is not idempotent. The caller names the
+user's action with one request id, and when the answer is lost after the
+server had the request the transport sends that same request once more: the
+Gateway answers the repeat from its receipt, so the change is never applied
+twice and the user still learns its outcome.
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ from fastapi import HTTPException
 from arcrho_hosted_save_http_contract import HostedSaveHttpContractError
 from arcrho_workspace_mutation_contract import (
     WORKSPACE_MUTATION_CAPABILITY_FIELD,
+    WORKSPACE_MUTATION_KINDS,
     WORKSPACE_MUTATION_PATH,
     WORKSPACE_MUTATION_TIMEOUT_SECONDS,
     WorkspaceMutationContractError,
@@ -54,12 +61,40 @@ def gateway_supports_mutation_kind(
     return str(mutation_kind) in {str(item) for item in advertised}
 
 
+def _post_mutation(
+    gateway_config: Mapping[str, Any],
+    mutation_kind: str,
+    request_payload: Mapping[str, Any],
+) -> tuple[Dict[str, Any], str, int]:
+    """Send one mutation; a receipt kind whose answer was lost is asked once more.
+
+    The repeat carries the same request id, so the Gateway answers it from the
+    first run's receipt. A timeout is not repeated: the first run may still be
+    working, and the repeat would only wait on it for another full budget.
+    """
+
+    attempts = 2 if WORKSPACE_MUTATION_KINDS[mutation_kind].receipt else 1
+    for attempt in range(1, attempts + 1):
+        try:
+            return workspace_read_client.post_signed_json(
+                gateway_config,
+                WORKSPACE_MUTATION_PATH,
+                request_payload,
+                timeout=WORKSPACE_MUTATION_TIMEOUT_SECONDS,
+            )
+        except GatewayTransportFailure as failure:
+            if attempt == attempts or not failure.accepted or failure.timed_out:
+                raise
+    raise AssertionError("unreachable")
+
+
 def run_workspace_mutation(
     mutation_kind: str,
     kwargs: Mapping[str, Any],
     *,
     local: Callable[[], Dict[str, Any]],
     gateway_required: bool = False,
+    request_id: str | None = None,
 ) -> Dict[str, Any]:
     """Serve one registered mutation over the gateway when possible, else locally.
 
@@ -67,6 +102,8 @@ def run_workspace_mutation(
     only when the gateway is unavailable, disabled, or has not advertised the
     kind — never after a request the server may already have acted on.
     Gateway-required operations refuse instead of falling back on Client PCs.
+    ``request_id`` names the user's action for a receipt kind; a fresh one is
+    used when the caller has none.
     """
 
     started_ns = time.perf_counter_ns()
@@ -112,7 +149,7 @@ def run_workspace_mutation(
                 context["reason"] = "kind_not_advertised"
         request_payload: Mapping[str, Any] | None = None
         if not context["reason"]:
-            request_id = uuid.uuid4().hex
+            request_id = str(request_id or "").strip() or uuid.uuid4().hex
             context["request_id"] = request_id
             try:
                 request_payload = build_workspace_mutation_request(
@@ -135,11 +172,8 @@ def run_workspace_mutation(
         if request_payload is not None:
             remote_started_ns = time.perf_counter_ns()
             try:
-                payload, server_root, response_bytes = workspace_read_client.post_signed_json(
-                    gateway_config,
-                    WORKSPACE_MUTATION_PATH,
-                    request_payload,
-                    timeout=WORKSPACE_MUTATION_TIMEOUT_SECONDS,
+                payload, server_root, response_bytes = _post_mutation(
+                    gateway_config, mutation_kind, request_payload
                 )
             except GatewayTransportFailure as failure:
                 remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0

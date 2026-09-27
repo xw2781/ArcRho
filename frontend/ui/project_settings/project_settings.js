@@ -23,15 +23,15 @@ import {
   normalizeTableColumnPreferenceKey,
   resizeCellTextarea,
   wireProjectSettingsTableScrollbarActivity,
-} from "/ui/project_settings/project_settings_table_columns.js?v=20260901dup1";
+} from "/ui/project_settings/project_settings_table_columns.js?v=20260927rev1";
 import {
   createGeneralSettingsFeature,
   formatBoundaryYmDisplay,
   normalizeBoundaryYmCanonical,
-} from "/ui/project_settings/project_settings_general_settings.js?v=20260901dup1";
-import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260901dup1";
-import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260901dup1";
-import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260901dup1";
+} from "/ui/project_settings/project_settings_general_settings.js?v=20260927rev1";
+import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260927rev1";
+import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260927rev1";
+import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260927rev1";
 import { createAutoSaveScheduler } from "/ui/project_settings/project_settings_auto_save.js?v=20260901dup1";
 import { createSourceRefreshFeature } from "/ui/project_settings/project_settings_source_refresh.js?v=20260905scope1";
 import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260816a";

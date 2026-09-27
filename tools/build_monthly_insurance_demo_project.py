@@ -683,7 +683,7 @@ def _register_project(
         {
             "folders": folders,
             "project_paths": project_paths,
-            "file_mtime": registry.get("mtime"),
+            "expected_revision": registry.get("revision", 0),
         },
         timeout_sec=30,
     )

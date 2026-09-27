@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Creating, renaming and deleting a project, saving the project list and General Settings, and clearing generated dataset files now run on the server. A change whose answer is lost on the network is never applied twice."
+}
