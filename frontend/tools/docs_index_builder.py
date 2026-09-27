@@ -473,6 +473,7 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/shell/workflow_host_actions.js", "Workflow import and shell-side workflow helpers."),
             ("ui/shell/app_lifecycle.js", "Refresh, restart, shutdown, and app confirmation flows."),
             ("ui/shell/titlebar_controls.js", "Electron titlebar minimize, maximize, close, and drag-restore controls."),
+            ("ui/shell/server_badge.js", "Title-bar badge naming this window's server whenever it is not production; opens the Server tab."),
             ("ui/shell/status_bar.js", "Status bar text, clock, and timestamp helpers."),
             ("ui/shell/shell_context.js", "Shared shell dependency registry."),
             ("electron/preload.js", "Renderer-safe host bridge APIs."),
@@ -498,7 +499,7 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
         "files": [
             ("ui/server/server.html", "Server tab iframe entrypoint: server list, add form, components panel with start and stop, confirmation dialog."),
             ("ui/server/server.js", "Server tab controller: listing, health, add server, the switch request to the shell, component polling while on screen, and start and stop."),
-            ("ui/server/server_model.js", "Pure rules for rows, labels, set-at-launch, add validation, switch messages, component groups, and start/stop progress."),
+            ("ui/server/server_model.js", "Pure rules for rows, labels, set-at-launch, add validation, switch messages, the title-bar badge, component groups, and start/stop progress."),
             ("ui/server/server.css", "Server tab styling on the shared theme tokens."),
             ("ui/shell/shell_messages.js", "Shell side of a switch: unsaved-changes guard, activation, and restart."),
             ("app_server/services/server_profile_service.py", "Server profile listing, health probe, folder inspection, activation, component-status transport, and start/stop of a server on this PC."),

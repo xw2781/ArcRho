@@ -16,5 +16,5 @@ Excluded directories: `.cache`, `.pytest_cache`, `__pycache__`, `dist`, `local_w
 | `icons` | 18 |
 | `tests` | 284 |
 | `tools` | 2 |
-| `ui` | 707 |
+| `ui` | 708 |
 | `user-manual` | 18 |

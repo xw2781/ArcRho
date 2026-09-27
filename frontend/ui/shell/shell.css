@@ -64,6 +64,39 @@
   height: 18px;
   flex-shrink: 0;
 }
+/* This window's server when it is not production; the theme's warning tokens keep it readable in
+   light and dark. */
+#titlebarServerBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 260px;
+  height: 18px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--ar-color-warning) 45%, transparent);
+  border-radius: 9px;
+  background: var(--ar-color-warning-soft);
+  color: var(--ar-color-warning);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+#titlebarServerBadge[hidden] { display: none; }
+#titlebarServerBadge::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+#titlebarServerBadge:hover {
+  background: color-mix(in srgb, var(--ar-color-warning) 14%, var(--ar-color-warning-soft));
+}
+#titlebarServerName { overflow: hidden; text-overflow: ellipsis; }
 .titlebarControls {
   display: flex;
   gap: 6px;

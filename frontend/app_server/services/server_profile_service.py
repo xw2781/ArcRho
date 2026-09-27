@@ -89,7 +89,8 @@ def list_server_profiles() -> Dict[str, Any]:
     """Every saved server with its address and credential, and what the launch fixed.
 
     ``current`` is the server this process works against, which differs from
-    the active profile while a launch override is set.
+    the active profile while a launch override is set. ``default_profile`` is
+    production's id; the title bar shows a badge whenever another server is in use.
     """
 
     cfg = config.load_workspace_config()
@@ -106,6 +107,7 @@ def list_server_profiles() -> Dict[str, Any]:
     return {
         "ok": True,
         "active_profile": cfg["active_profile"],
+        "default_profile": api_config.DEFAULT_PROFILE_ID,
         "profiles": profiles,
         "current": _server_entry(config.get_root_path(), Path(config.get_gateway_config_path())),
         "set_at_launch": _launch_overrides(),

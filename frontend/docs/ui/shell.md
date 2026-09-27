@@ -12,13 +12,14 @@ Detailed menu, floating-window, lifecycle, and bridge behavior belongs in focuse
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.shell.entry_points -->
-- `ui/index.html`: external scripts `/ui/shared/services/color_theme.js?v=20260923c`, `/ui/shell/ui_shell.js?v=20260926a`; inline imports _none_.
+- `ui/index.html`: external scripts `/ui/shared/services/color_theme.js?v=20260923c`, `/ui/shell/ui_shell.js?v=20260926b`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/`
 - `/app/restart`
 - `/app/restart_electron`
 - `/app/shutdown`
+- `/server_profiles`
 - `/server_profiles/activate`
 - `/workflow/default_dir`
 - `/workflow/load`
@@ -72,6 +73,7 @@ Detected `arcrho:*` message types in key JS files:
 - [`ui/shell/workflow_host_actions.js`](../../ui/shell/workflow_host_actions.js) - Workflow import and shell-side workflow helpers.
 - [`ui/shell/app_lifecycle.js`](../../ui/shell/app_lifecycle.js) - Refresh, restart, shutdown, and app confirmation flows.
 - [`ui/shell/titlebar_controls.js`](../../ui/shell/titlebar_controls.js) - Electron titlebar minimize, maximize, close, and drag-restore controls.
+- [`ui/shell/server_badge.js`](../../ui/shell/server_badge.js) - Title-bar badge naming this window's server whenever it is not production; opens the Server tab.
 - [`ui/shell/status_bar.js`](../../ui/shell/status_bar.js) - Status bar text, clock, and timestamp helpers.
 - [`ui/shell/shell_context.js`](../../ui/shell/shell_context.js) - Shared shell dependency registry.
 - [`electron/preload.js`](../../electron/preload.js) - Renderer-safe host bridge APIs.
@@ -85,6 +87,7 @@ Detected `arcrho:*` message types in key JS files:
 - Every docked tab draws a 14px type icon at its left edge. `tab_strip.js` emits only a `tabTypeIcon` element carrying the tab type; the drawing for that type is chosen entirely in [`ui/shell/tab-type-icons/tab_type_icons.css`](../../ui/shell/tab-type-icons/tab_type_icons.css), which masks one monochrome SVG per type over the tab's own text color so every theme is covered without a recolored copy. A tab type with no icon of its own falls back to a generic page glyph. The set can be reviewed at [`docs/ui/tab_type_icon_preview.html`](tab_type_icon_preview.html).
 - Home is permanently docked as the first tab. Dragging or docking other tabs cannot place a reorder preview before Home, move Home during preview animation, or persist Home anywhere else in restored tab state.
 - The tab strip's add-tab control uses a centered SVG plus with an accessible button hit target. Its surface, border, icon stroke, hover, active, and focus colors derive from shared theme tokens so the control remains legible without a light rectangle in Dark mode.
+- Whenever this window's server is not production (the default server profile), the titlebar shows a small amber badge after the app name naming it: the profile's name, or `Set at launch` while a launch override fixes the server. Its tooltip adds the Gateway address and the folder, and clicking it opens the Server tab. `ui/shell/server_badge.js` reads `GET /server_profiles` once as the shell starts, since the server changes only with a restart; the rule lives in `activeServerBadge` in `ui/server/server_model.js`. Production shows nothing.
 - In Dark mode, the three main-window titlebar controls use the shared raised surface and strong border tokens, with a restrained accent hover for minimize/maximize and a danger hover for close; their SVG strokes follow the current control foreground color.
 - Invokes app-server endpoints for workflow import helpers and configuration endpoints.
 - Uses Electron host bridge and explicit shell commands for shutdown/clear-cache actions; ordinary document unloads and reloads do not send app shutdown.

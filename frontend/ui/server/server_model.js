@@ -62,6 +62,24 @@ export function buildServerRows(listing) {
   return rows;
 }
 
+// The title-bar badge for this window's server, or null for production (the default profile).
+// A server set at launch always shows one. The badge names the server; its tooltip adds the
+// address and the folder.
+export function activeServerBadge(listing) {
+  if (!listing) return null;
+  let name = "Set at launch";
+  let server = listing.current;
+  if (!isSetAtLaunch(listing)) {
+    if (listing.active_profile === listing.default_profile) return null;
+    server = (listing.profiles || []).find((profile) => profile.id === listing.active_profile);
+    if (!server) return null;
+    name = server.name;
+  }
+  const folder = server?.root || "";
+  const label = serverLabel(name, server?.gateway_url);
+  return { text: name, title: folder ? `${label}\n${folder}` : label };
+}
+
 // The query string that asks the app server for one row's health; the launch row asks for this
 // window's own server.
 export function healthQuery(row) {

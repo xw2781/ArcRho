@@ -1,6 +1,6 @@
 # Local Server Root and Server Switcher
 
-Status: Steps 1-3 done 2026-09-26 — a private test server runs on the developer PC at `C:\Arco Server` beside production, with its own Gateway, credential and app profile, built from the working tree by `tools/local_server.py`; the app keeps a list of servers, one active, each with its own credential, behind three new app-server routes; every server root carries an id its Gateway reports, and the app refuses a Gateway whose id differs from its folder's (the server side reaches production with the step 6 deploy). Step 4 done 2026-09-26: a Server tab opened from Home lists the servers by name and address with a health dot, adds a server from its folder, and switches by restarting the app once no tab has unsaved changes. Step 7 done 2026-09-26: the tab's Components panel lists the server's running components with machine, user, last heard and stale state, grouped by role with each stop switch, read from disk for a folder on this PC and through the Gateway otherwise (the Gateway side reaches production with the step 6 deploy). Step 8 done 2026-09-26: for a server whose folder is on a fixed disk of this PC the panel starts and stops it, through the same module `tools/local_server.py` now uses; production shows only a line saying it is managed from Admin Control on the Server PC. Steps 5 and 6 (the active-server badge, the release) are planned and not started; the Server tab was added 2026-09-26 at the user's request; offline use for every user is recorded as a direction with open decisions, not yet broken into steps.
+Status: Steps 1-3 done 2026-09-26 — a private test server runs on the developer PC at `C:\Arco Server` beside production, with its own Gateway, credential and app profile, built from the working tree by `tools/local_server.py`; the app keeps a list of servers, one active, each with its own credential, behind three new app-server routes; every server root carries an id its Gateway reports, and the app refuses a Gateway whose id differs from its folder's (the server side reaches production with the step 6 deploy). Step 4 done 2026-09-26: a Server tab opened from Home lists the servers by name and address with a health dot, adds a server from its folder, and switches by restarting the app once no tab has unsaved changes. Step 7 done 2026-09-26: the tab's Components panel lists the server's running components with machine, user, last heard and stale state, grouped by role with each stop switch, read from disk for a folder on this PC and through the Gateway otherwise (the Gateway side reaches production with the step 6 deploy). Step 8 done 2026-09-26: for a server whose folder is on a fixed disk of this PC the panel starts and stops it, through the same module `tools/local_server.py` now uses; production shows only a line saying it is managed from Admin Control on the Server PC. Step 5 done 2026-09-26: the title bar shows a small badge naming the server whenever it is not production, including a server set at launch, and clicking it opens the Server tab. Step 6 (the release) is planned and not started; the Server tab was added 2026-09-26 at the user's request; offline use for every user is recorded as a direction with open decisions, not yet broken into steps.
 Last updated: 2026-09-26
 Related: [client_smb_retirement.md](client_smb_retirement.md) (the first work tested this way), [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md)
 
@@ -16,12 +16,12 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 2 | The app remembers more than one server, each with its own sign-in | [x] | 2026-09-26 | 70 min | 15 min | The app can hold several servers and switch the active one, and each server signs in with its own credential; there is no screen for it yet. |
 | 3 | The app refuses a server whose address and data folder do not belong together | [x] | 2026-09-26 | 55 min | 30 min | Pointing the app at one server's folder while signed in to another server is refused with a plain message instead of mixing the two. |
 | 4 | A Server tab opened from Home lists servers by name and address and switches between them | [x] | 2026-09-26 | 90 min | 37 min | Home has a Server card that opens a Server tab listing each server by name and address with a live health dot; a server can be added by choosing its folder, and switching restarts the app but waits until no tab has unsaved changes. |
-| 5 | The window shows which server it is using whenever it is not production | [ ] | | 30 min | | |
+| 5 | The window shows which server it is using whenever it is not production | [x] | 2026-09-26 | 30 min | 15 min | The title bar shows a small badge naming the server whenever it is not production, with its address in the tooltip; clicking it opens the Server tab. |
 | 6 | Deploy the server side and ship the app | [ ] | | 30 min | | |
 | 7 | The Server tab shows which server components are running and how long since each was last heard from | [x] | 2026-09-26 | 60 min | 26 min | The Server tab lists each running part of the server with its machine, user and how long since it was last heard from, flags silent ones as stale, and shows when a part's stop switch is on. |
 | 8 | A server on this PC can be started and stopped from the Server tab | [x] | 2026-09-26 | 45 min | 22 min | The Server tab starts and stops a server whose folder is on this PC, asks before stopping the one the window uses, and shows the parts going and coming back; production says it is managed from Admin Control on the Server PC. |
 
-Overall: 6 of 8 steps done. Estimated 470 min; actual so far 130 min (step 1 was not clocked). Order: 2, 3, 4, 7, 8, 5, then 6.
+Overall: 7 of 8 steps done. Estimated 470 min; actual so far 145 min (step 1 was not clocked). Order: 2, 3, 4, 7, 8, 5, then 6.
 
 ## How agents work this plan
 
@@ -171,23 +171,25 @@ Estimate: code edit 35 min, test/validation 20 min, total 55 min. Actual: code e
 
 Estimate: code edit 60 min, test/validation 30 min, total 90 min. Actual: code edit 17 min, test/validation 20 min, total 37 min; under half the estimate because the shell's tab, dirty-state and restart pieces needed only wiring. The "Done when" round trip was not driven on the developer's own app, by instruction: the switch was checked by tests and a mocked render, and the real app was checked in a `launch-app` session, which shows "Set at launch".
 
-**What was built.** `GET /server_profiles` also returns `current` (this process's server) and each server's credential user, and falls back to the folder's Gateway registry for the address before a credential exists; `GET /server_profiles/health` and `GET /server_profiles/inspect` were added. The switch runs in the shell (`handleServerSwitchMessage` in `shell_messages.js`, message `arcrho:server-switch`). The page is `frontend/ui/server/` with its rules in `server_model.js`; the Components panel is an empty placeholder for step 7. The Server tab's release fragment is in; step 6 adds only the badge's.
+**What was built.** `GET /server_profiles` also returns `current` (this process's server) and each server's credential user, and falls back to the folder's Gateway registry for the address before a credential exists; `GET /server_profiles/health` and `GET /server_profiles/inspect` were added. The switch runs in the shell (`handleServerSwitchMessage` in `shell_messages.js`, message `arcrho:server-switch`). The page is `frontend/ui/server/` with its rules in `server_model.js`; the Components panel is an empty placeholder for step 7. The Server tab's release fragment is in, and step 5 added the badge's line to it.
 
 ### Step 5 — Active-server badge
 
 **Goal.** The title bar shows the server's name whenever it is not production.
 
-**Read first.** The title bar in `frontend/ui/index.html` and its shell script; `GET /workspace_paths`.
+**Read first.** The title bar in `frontend/ui/index.html` and its shell script (`frontend/ui/shell/ui_shell.js`, `shell.css`); `frontend/app_server/services/server_profile_service.py` `list_server_profiles`; `frontend/ui/server/server_model.js` (`serverLabel`, `isSetAtLaunch`); [server.md](../../frontend/docs/ui/server.md).
 
 **Do.**
-- [ ] `GET /workspace_paths` returns the active profile's name and whether it is the default.
-- [ ] A small badge in the title bar when it is not.
+- [x] `GET /server_profiles` (not `/workspace_paths`, which the plan first named) reports `default_profile`, production's id, beside the `current` and `set_at_launch` it already gave, so the shell makes one read and no new route is needed.
+- [x] A small badge in the title bar whenever a launch override is set or the active profile is not the default. It names the profile (`Set at launch` for an override), its tooltip adds the address and folder, and clicking it opens the Server tab.
 
-**Tests.** Node test for the badge.
+**Tests.** Node tests for the badge rule and the shell module's one read, render and click (`frontend/tests/server_tab.test.mjs`); the listing reports the default profile (`frontend/tests/test_server_profiles_routes.py`).
 
 **Done when.** A `launch-app` session and a switched session both show the badge; production shows none.
 
-Estimate: code edit 20 min, test/validation 10 min, total 30 min.
+Estimate: code edit 20 min, test/validation 10 min, total 30 min. Actual: code edit 8 min, test/validation 7 min, total 15 min; half the estimate because the listing and the label rules already existed. The `launch-app` session was checked in the real app (the badge reads `Set at launch` and opens the Server tab); the switched and production cases were checked with the model tests and a mocked render in both themes, because switching the developer's own app was out of bounds.
+
+**What was built.** The rule is `activeServerBadge` in `server_model.js`, reusing the tab's name and address rules; `frontend/ui/shell/server_badge.js` makes the one read as the shell starts and wires the click. The badge uses the themes' warning tokens, so it needs no per-theme rule. A Server Connection save does not change which profile is active, so the badge does not re-read on it.
 
 ### Step 6 — Deploy and release
 
@@ -195,7 +197,7 @@ Estimate: code edit 20 min, test/validation 10 min, total 30 min.
 
 **Do.**
 - [ ] Deploy to the local root and check; then `python server-components/deploy.py`.
-- [ ] Release fragment for the badge (the Server tab's was added in step 4); the frontend release follows the server deploy.
+- [ ] The frontend release follows the server deploy; the badge's release line is already in the Server tab's fragment (step 5).
 
 **Done when.** Production's `/api/capabilities` carries `server_id` and lists `server_component_status`, and the released app switches servers.
 

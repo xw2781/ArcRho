@@ -19,7 +19,7 @@ import {
   serverLabel,
   shouldRefreshComponents,
   switchResultMessage,
-} from "./server_model.js?v=20260926c";
+} from "./server_model.js?v=20260926d";
 
 const $ = (id) => document.getElementById(id);
 const hostApi = () => window.ADAHost || window.parent?.ADAHost || null;

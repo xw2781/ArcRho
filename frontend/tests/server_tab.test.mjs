@@ -43,6 +43,7 @@ const tabActions = await importSource(
 
 const LISTING = {
   active_profile: "default",
+  default_profile: "default",
   profiles: [
     {
       id: "default",
@@ -100,6 +101,70 @@ test("a server set at launch leads the list and nothing can be switched", () => 
   assert.equal(model.healthQuery(rows[0]), "", "the launch row asks for this window's own server");
   assert.ok(rows.every((row) => !row.canSwitch));
   assert.ok(rows.slice(1).every((row) => !row.chip), "the saved active profile is not the one in use");
+});
+
+test("the title-bar badge names any server but production, with its address and folder in the tooltip", () => {
+  assert.equal(model.activeServerBadge(LISTING), null, "production shows no badge");
+  assert.equal(model.activeServerBadge(null), null);
+
+  const switched = { ...LISTING, active_profile: "local" };
+  assert.deepEqual(model.activeServerBadge(switched), {
+    text: "Local test",
+    title: "Local test \u2014 127.0.0.1:28767\nC:\\Arco Server",
+  });
+
+  // A launch override shows the badge even while the saved active profile is production.
+  const launched = { ...LISTING, set_at_launch: { root: "C:\\Arco Server", gateway_config: "" } };
+  assert.deepEqual(model.activeServerBadge(launched), {
+    text: "Set at launch",
+    title: "Set at launch \u2014 127.0.0.1:28767\nC:\\Arco Server",
+  });
+});
+
+test("the shell reads the server once, shows the badge, and opens the Server tab from it", async () => {
+  const badgeModule = await importSource(
+    (await read("../ui/shell/server_badge.js"))
+      .replace(/import \{ shell \} from "[^"]+";/u, "const shell = new Proxy({}, { get: (_, key) => globalThis.__badgeShell?.[key] });")
+      .replace(
+        /import \{ activeServerBadge \} from "[^"]+";/u,
+        `import { activeServerBadge } from ${JSON.stringify(new URL("../ui/server/server_model.js", import.meta.url).href)};`,
+      ),
+  );
+  const elements = {
+    titlebarServerBadge: { hidden: true, title: "", listeners: {}, addEventListener(type, fn) { this.listeners[type] = fn; } },
+    titlebarServerName: { textContent: "" },
+  };
+  const requests = [];
+  let opened = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.document = { getElementById: (id) => elements[id] || null };
+  globalThis.__badgeShell = { openServerTab: () => { opened += 1; } };
+  globalThis.fetch = async (url) => {
+    requests.push(url);
+    return { ok: true, json: async () => ({ ...LISTING, active_profile: "local" }) };
+  };
+  try {
+    await badgeModule.initServerBadge();
+    const button = elements.titlebarServerBadge;
+    assert.deepEqual(requests, ["/server_profiles"]);
+    assert.equal(button.hidden, false);
+    assert.equal(elements.titlebarServerName.textContent, "Local test");
+    assert.match(button.title, /127\.0\.0\.1:28767/u);
+    button.listeners.click();
+    assert.equal(opened, 1);
+
+    badgeModule.renderServerBadge(model.activeServerBadge(LISTING));
+    assert.equal(button.hidden, true, "production hides it");
+  } finally {
+    delete globalThis.document;
+    delete globalThis.__badgeShell;
+    globalThis.fetch = realFetch;
+  }
+
+  const [index, uiShell] = await Promise.all([read("../ui/index.html"), read("../ui/shell/ui_shell.js")]);
+  assert.match(index, /<button id="titlebarServerBadge" class="host-nodrag" type="button" hidden>/u);
+  assert.match(uiShell, /import \{ initServerBadge \} from "\.\/server_badge\.js\?v=/u);
+  assert.match(uiShell, /void initServerBadge\(\);/u);
 });
 
 test("adding a server needs a checked folder and a name no saved server uses", () => {

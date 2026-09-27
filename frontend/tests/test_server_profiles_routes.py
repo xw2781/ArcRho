@@ -77,6 +77,8 @@ class ServerProfileRouteTests(unittest.TestCase):
         listing = router.get_server_profiles()
 
         self.assertEqual(listing["active_profile"], "default")
+        # Production is the default profile, the one the title bar shows no badge for.
+        self.assertEqual(listing["default_profile"], "default")
         [profile] = listing["profiles"]
         self.assertEqual(profile["root"], str(self.production))
         self.assertEqual(profile["gateway_url"], "http://production:28767")

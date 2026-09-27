@@ -7,7 +7,7 @@ Server tab: lists the servers this PC knows by name and Gateway address, marks t
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.server.entry_points -->
-- `ui/server/server.html`: external scripts `./server.js?v=20260926c`, `/ui/shared/services/color_theme.js?v=20260923c`; inline imports _none_.
+- `ui/server/server.html`: external scripts `./server.js?v=20260926d`, `/ui/shared/services/color_theme.js?v=20260923c`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/server/${kind}`
@@ -31,7 +31,7 @@ Detected `arcrho:*` message types in key JS files:
 <!-- AUTO-GEN:BEGIN frontend.server.key_files -->
 - [`ui/server/server.html`](../../ui/server/server.html) - Server tab iframe entrypoint: server list, add form, components panel with start and stop, confirmation dialog.
 - [`ui/server/server.js`](../../ui/server/server.js) - Server tab controller: listing, health, add server, the switch request to the shell, component polling while on screen, and start and stop.
-- [`ui/server/server_model.js`](../../ui/server/server_model.js) - Pure rules for rows, labels, set-at-launch, add validation, switch messages, component groups, and start/stop progress.
+- [`ui/server/server_model.js`](../../ui/server/server_model.js) - Pure rules for rows, labels, set-at-launch, add validation, switch messages, the title-bar badge, component groups, and start/stop progress.
 - [`ui/server/server.css`](../../ui/server/server.css) - Server tab styling on the shared theme tokens.
 - [`ui/shell/shell_messages.js`](../../ui/shell/shell_messages.js) - Shell side of a switch: unsaved-changes guard, activation, and restart.
 - [`app_server/services/server_profile_service.py`](../../app_server/services/server_profile_service.py) - Server profile listing, health probe, folder inspection, activation, component-status transport, and start/stop of a server on this PC.
@@ -40,7 +40,8 @@ Detected `arcrho:*` message types in key JS files:
 
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
-- Opened from the Home Server card or the Server Connection dialog as one restorable `server` shell tab.
+- Opened from the Home Server card, the Server Connection dialog, or the titlebar's server badge as one restorable `server` shell tab.
+- `GET /server_profiles` also reports `default_profile`, production's profile id. The shell's titlebar badge shows whenever the active profile differs from it or a launch override is set, and uses the same name and address rules as the tab's rows.
 - Reads `GET /server_profiles`, `GET /server_profiles/health` (the app server probes each Gateway) and `GET /server_profiles/inspect`, and adds with `POST /server_profiles`.
 - Reads `GET /server/status` for the Components panel. The app server reads a server folder on a fixed disk of this PC directly and asks any other server's Gateway (the `server_component_status` read); a silent Gateway comes back as `answering: false` with a plain reason, never as a read over the share.
 - Starts and stops with `POST /server/start` and `POST /server/stop`. The status carries `control` (`available`, the refusal `detail`, and the `roles` start and stop cover), and the buttons show only when `available` is true. Stop asks for confirmation first, because the window loses its own server until it is started again. The page then shows `Starting... N s` or `Stopping... N s`, asks every 2 seconds, and ends when every covered role has a live heartbeat with its stop switch off (start) or none has a live heartbeat (stop), or after 90 seconds with an error line.

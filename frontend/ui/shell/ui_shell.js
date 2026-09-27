@@ -14,6 +14,7 @@ import { initShellMessages } from "./shell_messages.js?v=20260926a";
 import { initUiAutomation } from "./ui_automation.js?v=20260904resize2";
 import { handleShellFileDragOver, handleShellFileDrop, initShellFileDrops } from "./shell_file_drop.js?v=20260920a";
 import { initTitlebarControls } from "./titlebar_controls.js?v=20260517a";
+import { initServerBadge } from "./server_badge.js?v=20260926a";
 import { initFullscreenChrome, setFullscreenChrome, syncFullscreenChromeFromHost } from "./fullscreen_chrome.js?v=20260913b";
 import { initAiAssistant } from "../ai-assistant/arcrho.js?v=20260622a";
 import { closeMacroWindow, initMacroWindow, openMacroWindow } from "../macro/macro_window.js?v=20260908b";
@@ -47,6 +48,7 @@ function wire() {
   initFullscreenChrome();
   initAppLifecycle();
   initAiAssistant();
+  void initServerBadge();
   void initMacroWindow();
   void initFlightDeck();
 }
