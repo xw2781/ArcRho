@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+import uuid
+from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 
-from app_server import config
 from app_server.schemas.dataset_types import (
     DatasetTypesSaveRequest,
     DatasetTypesImportLocalFileRequest,
@@ -12,9 +12,9 @@ from app_server.schemas.dataset_types import (
 from app_server.services import (
     dataset_types_change_service,
     dataset_types_service,
+    workspace_mutation_client,
     workspace_read_client,
 )
-from app_server.services.audit_service import safe_append_project_audit_log
 
 router = APIRouter()
 
@@ -52,112 +52,32 @@ def import_local_dataset_types_file(req: DatasetTypesImportLocalFileRequest) -> 
 def save_dataset_types(req: DatasetTypesSaveRequest) -> Dict[str, Any]:
     """Apply one dataset-type table change: directly, as a plan, or as a job.
 
-    Two changes wear the same clothes in the grid and cost wildly different
-    things. Renaming a Category rewrites one file. Adding, removing, renaming
-    or re-formulating a type rewrites the sidecars of every instance the change
-    reaches and can invalidate calculated datasets, so it is first *planned*:
-    the route answers ``applied: "plan"`` naming the reserving classes the
-    change touches, and only a second POST carrying that plan submits the
-    durable Engine job, which holds those classes while it runs and whose
-    status the caller polls at ``/dataset_types/change_job/status``. A plan
-    that names no class and renames nothing is submitted at once: there is
-    nothing for the user to confirm.
-
-    Either way this route answers quickly: the long work never runs inside
-    the request, because an auto-saving grid cannot tell a slow save from a
-    lost one.
+    The decision and the write run on the server host
+    (``dataset_types_change_service.save_dataset_types``); a Client PC sends
+    them through the Gateway and never opens the table or a job file over the
+    share. A job's status is polled at ``/dataset_types/change_job/status``.
     """
 
     project_name = (req.project_name or "").strip()
     if not project_name:
         raise HTTPException(400, "project_name is required")
-
-    try:
-        config.get_dataset_types_path(project_name)
-    except ValueError as e:
-        raise HTTPException(404, str(e))
-
-    normalized_rows = dataset_types_service.normalize_submitted_rows(req.rows)
-    # Validate before deciding anything: a formula naming a type this table
-    # does not define is refused the same way on both paths, and the caller
-    # gets that answer without a job ever being queued.
-    dataset_types_service.require_resolvable_formulas(normalized_rows)
-
-    previous_rows = dataset_types_service.read_persisted_rows(project_name)
-    next_rows = dataset_types_service.resolve_persisted_rows(
-        project_name, normalized_rows
-    )
-
-    if not req.renames and not dataset_types_service.change_needs_project_job(
-        previous_rows, next_rows
-    ):
-        return _apply_presentation_only_change(project_name, normalized_rows)
-
-    if req.plan is None:
-        planned = dataset_types_change_service.plan_dataset_types_change(
-            project_name, normalized_rows, req.renames
-        )
-        # A rename is always shown, even when no class holds the old type:
-        # the planner may have rewritten formulas, and the grid has to adopt
-        # those rows before they are submitted.
-        if planned["plan"]["affected"] or req.renames:
-            return {"ok": True, "applied": "plan", "count": len(next_rows), **planned}
-        plan = planned["plan"]
-        rows = planned["rows"]
-        changed_types = planned["changed_types"]
-    else:
-        plan = req.plan
-        rows = normalized_rows
-        changed_types = dataset_types_change_service.changed_types_for_submission(
-            project_name, normalized_rows, req.renames
-        )
-
-    submitted = dataset_types_change_service.submit_dataset_types_change_job(
-        project_name,
-        rows,
-        req.renames,
-        changed_types,
-        plan,
-        request_id=(req.request_id or "").strip() or None,
-    )
-    return {
-        "ok": True,
-        "applied": "job",
-        "count": len(next_rows),
-        "changed_formula_types": changed_types,
-        "job": submitted,
+    # The client names the change with one request id and reuses it on a
+    # retry; it keys the job and travels as the mutation's own id.
+    request_id = (req.request_id or "").strip() or uuid.uuid4().hex
+    kwargs = {
+        "project_name": project_name,
+        "request_id": request_id,
+        "rows": list(req.rows),
+        "renames": list(req.renames),
+        "plan": req.plan,
     }
-
-
-def _apply_presentation_only_change(
-    project_name: str,
-    normalized_rows: List[List[Any]],
-) -> Dict[str, Any]:
-    """Write a change that re-derives nothing outside the table itself."""
-
-    try:
-        written = dataset_types_service.apply_dataset_types_rows(
-            project_name, normalized_rows
-        )
-    except PermissionError:
-        raise HTTPException(423, "Dataset types file is locked. Another user may have it open.")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, f"Failed to save dataset types: {str(e)}")
-
-    safe_append_project_audit_log(
-        project_name=project_name,
-        action=f"Saved Dataset Types ({written['count']} rows)",
+    return workspace_mutation_client.run_workspace_mutation(
+        "dataset_types_save",
+        kwargs,
+        local=lambda: dataset_types_change_service.save_dataset_types(**kwargs),
+        gateway_required=True,
+        request_id=request_id,
     )
-    return {
-        "ok": True,
-        "applied": "direct",
-        "path": written["path"],
-        "count": written["count"],
-        "changed_formula_types": [],
-        "job": None,
-    }
 
 
 @router.get("/dataset_types/change_job/status")
@@ -165,6 +85,19 @@ def get_dataset_types_change_job_status(
     project_name: str,
     job_id: str = "",
 ) -> Dict[str, Any]:
-    return dataset_types_change_service.get_dataset_types_change_status(
-        project_name, job_id
+    # Polled every few hundred milliseconds while the job runs; a poll the
+    # Gateway cannot answer is "unknown", never a failed job.
+    kwargs = {"project_name": project_name, "job_id": job_id}
+    return workspace_read_client.run_polled_workspace_read(
+        "dataset_types_change_status",
+        kwargs,
+        local=lambda: dataset_types_change_service.get_dataset_types_change_status(**kwargs),
+        unknown={
+            "ok": True,
+            "project_name": str(project_name or "").strip(),
+            "job_id": str(job_id or "").strip(),
+            "found": False,
+            "busy": False,
+            "busy_reason": "",
+        },
     )

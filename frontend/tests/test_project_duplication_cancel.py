@@ -12,6 +12,8 @@ from fastapi import HTTPException, status
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = FRONTEND_ROOT.parent
+TEST_TEMP_ROOT = REPOSITORY_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 PYTHON_API_SRC = REPOSITORY_ROOT / "python-api" / "src"
 SERVER_COMPONENTS_SRC = REPOSITORY_ROOT / "server-components" / "src"
 for root in (FRONTEND_ROOT, PYTHON_API_SRC, SERVER_COMPONENTS_SRC):
@@ -34,7 +36,7 @@ class ProjectDuplicationCancelRouteTests(unittest.TestCase):
     REQUEST_ID = "psdup_cancel_0001"
 
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
         self.root = Path(self.temp_dir.name)
         self.projects_dir = self.root / "projects"
         self.projects_dir.mkdir()
@@ -50,7 +52,7 @@ class ProjectDuplicationCancelRouteTests(unittest.TestCase):
                     "paths": {"projects_dir": "projects", "requests_dir": "requests"},
                 },
             ),
-            patch.object(project_settings_service.getpass, "getuser", return_value="Test User"),
+            patch.object(project_settings_service.user_identity_service, "get_windows_login_name", return_value="Test User"),
         )
         for item in self.patches:
             item.start()

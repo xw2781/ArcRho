@@ -8,7 +8,6 @@ read, a stale one is refused with 409, and the save moves it by one.
 """
 from __future__ import annotations
 
-import getpass
 import json
 import os
 import re
@@ -66,7 +65,7 @@ from app_server.helpers import (
     _normalize_folder_structure_entry,
     sanitize_dataset_file_name,
 )
-from app_server.services import file_read_cache, runtime_cache_provenance_service
+from app_server.services import file_read_cache, runtime_cache_provenance_service, user_identity_service
 from app_server.services.audit_service import safe_append_project_audit_log
 
 
@@ -368,7 +367,7 @@ def duplicate_project_folder(
             source_project_name=old_name,
             target_project_name=new_name,
             projects_directory=projects_directory,
-            user_name=getpass.getuser(),
+            user_name=user_identity_service.get_windows_login_name(),
         )
         receipt = build_project_duplication_submission_receipt(
             source_key=source,
@@ -800,7 +799,7 @@ def cancel_duplicate_project_folder(
         write_project_duplication_cancel_request(
             server_root,
             normalized_request_id,
-            user_name=getpass.getuser(),
+            user_name=user_identity_service.get_windows_login_name(),
         )
     except PermissionError as error:
         raise HTTPException(

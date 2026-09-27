@@ -888,3 +888,32 @@ test("a cancelled status is reported with its own code by the poll helper", asyn
     (error) => error?.code === "DUPLICATE_JOB_CANCELLED" && /Stopped by user/u.test(error.message),
   );
 });
+
+test("an unknown status keeps polling and never counts as a failure or a stall", async () => {
+  let clock = 100;
+  const processing = () => response({
+    ok: true,
+    status: "processing",
+    updated_at: "same",
+    progress: { stage: "copying", completed: 1, total: 3, label: "Copying" },
+  });
+  const responses = [
+    processing(),
+    ...Array.from({ length: 12 }, () => response({ ok: true, job_id: "job-unknown", unknown: true })),
+    processing(),
+    response({ ok: true, status: "success", progress: { completed: 3, total: 3 } }),
+  ];
+  const counts = [];
+  const result = await waitForDuplicateProjectJob({
+    fetchImpl: async () => responses.shift(),
+    statusUrl: "/status/job-unknown",
+    jobId: "job-unknown",
+    onProgress: (progress) => counts.push(progress.countText),
+    now: () => clock,
+    waitForPoll: async () => { clock += 750; },
+    staleStatusMs: 2000,
+    maxStatusRetries: 2,
+  });
+  assert.equal(result.status, "success");
+  assert.ok(counts.includes("Reconnecting..."));
+});

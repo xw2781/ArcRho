@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Saving dataset types and copying a project are now submitted and tracked on the server. While the server cannot be reached, the progress window keeps waiting instead of reporting the change or the copy as failed."
+}

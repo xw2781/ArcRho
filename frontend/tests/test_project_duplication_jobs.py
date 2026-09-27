@@ -4,6 +4,7 @@ import json
 import sys
 import tempfile
 import threading
+import typing
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -14,6 +15,8 @@ from fastapi import HTTPException, status
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = FRONTEND_ROOT.parent
+TEST_TEMP_ROOT = REPOSITORY_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 SERVER_COMPONENTS_SRC = REPOSITORY_ROOT / "server-components" / "src"
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
@@ -34,6 +37,7 @@ from app_server.api.project_settings_router import router
 from app_server.schemas.project_settings import (
     DuplicateProjectFolderJobResponse,
     ProjectDuplicationJobStatusResponse,
+    ProjectDuplicationUnknownStatusResponse,
 )
 from app_server.services import project_settings_service
 from arcrho_engine.project_duplication import (
@@ -45,7 +49,7 @@ class ProjectDuplicationJobTests(unittest.TestCase):
     REQUEST_ID = "0123456789abcdef0123456789abcdef"
 
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
         self.root = Path(self.temp_dir.name)
         self.projects_dir = self.root / "projects"
         self.requests_dir = self.root / "requests"
@@ -93,8 +97,8 @@ class ProjectDuplicationJobTests(unittest.TestCase):
         new_name: str = "Target Project",
     ) -> dict[str, object]:
         with patch.object(
-            project_settings_service.getpass,
-            "getuser",
+            project_settings_service.user_identity_service,
+            "get_windows_login_name",
             return_value="Test User",
         ):
             return project_settings_service.duplicate_project_folder(
@@ -587,7 +591,7 @@ class ProjectDuplicationJobTests(unittest.TestCase):
                 {"other_map": "other.json"},
                 clear=False,
             ),
-            patch.object(project_settings_service.getpass, "getuser", return_value="Test User"),
+            patch.object(project_settings_service.user_identity_service, "get_windows_login_name", return_value="Test User"),
             self.assertRaises(HTTPException) as raised,
         ):
             project_settings_service.duplicate_project_folder(
@@ -616,7 +620,7 @@ class ProjectDuplicationJobTests(unittest.TestCase):
                 return error.status_code, str(error.detail)
 
         with (
-            patch.object(project_settings_service.getpass, "getuser", return_value="Test User"),
+            patch.object(project_settings_service.user_identity_service, "get_windows_login_name", return_value="Test User"),
             ThreadPoolExecutor(max_workers=2) as executor,
         ):
             results = list(executor.map(submit, ("Target One", "Target Two")))
@@ -745,9 +749,10 @@ class ProjectDuplicationJobTests(unittest.TestCase):
 
         self.assertEqual(submit_route.status_code, status.HTTP_202_ACCEPTED)
         self.assertIs(submit_route.response_model, DuplicateProjectFolderJobResponse)
-        self.assertIs(
-            status_route.response_model,
-            ProjectDuplicationJobStatusResponse,
+        # A poll the Gateway cannot answer is the unknown answer, not a status.
+        self.assertEqual(
+            typing.get_args(status_route.response_model),
+            (ProjectDuplicationJobStatusResponse, ProjectDuplicationUnknownStatusResponse),
         )
 
 

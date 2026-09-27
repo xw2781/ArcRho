@@ -245,13 +245,20 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         (),
         ("project_name",),
     ),
-    # Planning a dataset-type change reads one index per reserving class of
-    # the project; from a Client PC that is one round trip each, so the plan
-    # the confirmation dialog shows is built on the server host when it can be.
-    "dataset_types_change_plan": WorkspaceReadKind(
-        "dataset_types_plan_service",
-        "plan_dataset_types_change_read",
-        ("project_name", "rows", "renames"),
+    # The dataset-type change job and a project duplication are polled while
+    # they run. The server reads the status the Engine wrote on its own disk;
+    # a Client PC never opens a status file over the share, and a poll the
+    # Gateway cannot answer is "unknown" rather than a failed job.
+    "dataset_types_change_status": WorkspaceReadKind(
+        "dataset_types_change_service",
+        "get_dataset_types_change_status",
+        ("project_name",),
+        ("job_id",),
+    ),
+    "project_duplication_status": WorkspaceReadKind(
+        "project_settings_service",
+        "get_duplicate_project_folder_status",
+        ("source", "request_id"),
     ),
     # Polling a source-refresh job over the mapped drive reads a file the
     # server rewrote seconds ago, and Windows' directory cache can keep serving

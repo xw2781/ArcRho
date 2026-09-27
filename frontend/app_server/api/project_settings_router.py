@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+import uuid
+from typing import Any, Dict, Union
 
 from fastapi import APIRouter, HTTPException, status
 
@@ -11,6 +12,7 @@ from app_server.schemas.project_settings import (
     DuplicateProjectFolderCancelResponse,
     DuplicateProjectFolderJobResponse,
     ProjectDuplicationJobStatusResponse,
+    ProjectDuplicationUnknownStatusResponse,
     CreateProjectFolderRequest,
     DeleteProjectFolderRequest,
     OpenProjectFolderRequest,
@@ -74,26 +76,41 @@ def duplicate_project_folder(
     source: str,
     req: DuplicateProjectFolderRequest,
 ) -> DuplicateProjectFolderJobResponse:
-    return project_settings_service.duplicate_project_folder(
-        source,
-        req.old_name,
-        req.new_name,
-        request_id=req.request_id,
+    # The copy runs on the Engine; the submit, its status and a cancel go
+    # through the Gateway, so a Client PC never touches the job files. The
+    # request id keys the job and travels as the mutation's own id.
+    request_id = str(req.request_id or "").strip() or uuid.uuid4().hex
+    kwargs = {
+        "source": source,
+        "old_name": req.old_name,
+        "new_name": req.new_name,
+        "request_id": request_id,
+    }
+    return _mutate(
+        "project_duplication_submit",
+        kwargs,
+        lambda: project_settings_service.duplicate_project_folder(**kwargs),
+        request_id,
     )
 
 
 @router.get(
     "/project_settings/{source}/duplicate_project_folder/status/{request_id}",
-    response_model=ProjectDuplicationJobStatusResponse,
+    response_model=Union[ProjectDuplicationJobStatusResponse, ProjectDuplicationUnknownStatusResponse],
     response_model_exclude_none=True,
 )
 def get_duplicate_project_folder_status(
     source: str,
     request_id: str,
-) -> ProjectDuplicationJobStatusResponse:
-    return project_settings_service.get_duplicate_project_folder_status(
-        source,
-        request_id,
+) -> Dict[str, Any]:
+    # Polled while the copy runs; a poll the Gateway cannot answer is
+    # "unknown", never a failed copy.
+    kwargs = {"source": source, "request_id": request_id}
+    return workspace_read_client.run_polled_workspace_read(
+        "project_duplication_status",
+        kwargs,
+        local=lambda: project_settings_service.get_duplicate_project_folder_status(**kwargs),
+        unknown={"ok": True, "job_id": str(request_id or "").strip()},
     )
 
 
@@ -106,9 +123,11 @@ def cancel_duplicate_project_folder(
     source: str,
     request_id: str,
 ) -> DuplicateProjectFolderCancelResponse:
-    return project_settings_service.cancel_duplicate_project_folder(
-        source,
-        request_id,
+    kwargs = {"source": source, "request_id": request_id}
+    return _mutate(
+        "project_duplication_cancel",
+        kwargs,
+        lambda: project_settings_service.cancel_duplicate_project_folder(**kwargs),
     )
 
 

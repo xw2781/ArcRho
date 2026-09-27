@@ -189,6 +189,36 @@ test("transient status failures are retried before giving up", async () => {
   assert.equal(terminal.status, "success");
 });
 
+test("an unknown status keeps polling and never counts as a failure or a stall", async () => {
+  let now = 0;
+  const unknown = () => jsonResponse({ ok: true, project_name: "Demo", job_id: "psdtc_1", found: false, unknown: true });
+  const responses = [
+    jsonResponse(processingStatus()),
+    ...Array.from({ length: 20 }, unknown),
+    jsonResponse(processingStatus()),
+    jsonResponse({
+      ok: true,
+      status: "success",
+      updated_at: "t9",
+      progress: { stage: "complete", completed: 2, total: 2, label: "Done" },
+      result: { rows_written: 1, datasets_updated: 0, datasets_recalculated: 0, failures: [] },
+    }),
+  ];
+  const labels = [];
+  const terminal = await waitForDatasetTypesChangeJob({
+    fetchImpl: async () => responses.shift(),
+    projectName: "Demo",
+    jobId: "psdtc_1",
+    onProgress: (progress) => labels.push(progress.label),
+    waitForPoll: async () => { now += 1000; },
+    now: () => now,
+    staleStatusMs: 5000,
+    maxStatusRetries: 2,
+  });
+  assert.equal(terminal.status, "success");
+  assert.ok(labels.includes("Waiting for the server to answer..."));
+});
+
 test("a job identity the workspace never received is reported as missing", async () => {
   await assert.rejects(
     waitForDatasetTypesChangeJob({

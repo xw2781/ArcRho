@@ -215,6 +215,20 @@ export async function waitForDuplicateProjectJob({
 
     consecutiveFailures = 0;
     const result = await response.json();
+    if (result?.unknown) {
+      // The server could not be asked. The copy runs on regardless, so keep
+      // asking, and do not let this gap count as a status that stopped moving.
+      const unknownNow = Number(now());
+      if (Number.isFinite(unknownNow)) lastActivityAt = unknownNow;
+      onProgress({
+        label: "Copy is still running; waiting for the server to answer...",
+        completed: 0,
+        total: 0,
+        countText: "Reconnecting...",
+      });
+      await waitForPoll(pollIntervalMs);
+      continue;
+    }
     if (result?.ok === false) throw new Error(String(result.message || result.error || "Project copy failed."));
     const progress = result?.progress || {};
     const total = Math.max(0, Number(progress.total) || 0);

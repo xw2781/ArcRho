@@ -10,7 +10,7 @@ Source Data offers two import sources for the same project-owned table: a flat C
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.project_settings.entry_points -->
-- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260927rev1`, `/ui/shared/services/color_theme.js?v=20260923c`; inline imports _none_.
+- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260927job1`, `/ui/shared/services/color_theme.js?v=20260923c`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/headers/cache/clear`
@@ -94,6 +94,7 @@ Detected `arcrho:*` message types in key JS files:
 - Folder tree "Create New Project" action calls `POST /project_settings/{source}/create_project_folder` before saving the updated project index.
 - Dataset Types pane persists changes through `POST /dataset_types` (debounced auto-save). The request always answers quickly. Adding a dataset type, renaming a Category and reordering rows are written directly and confirmed at once. Renaming or removing a type, changing a type's Data Format, Calculated flag or Formula, or adding a name that changes what an existing formula resolves to, comes back first as a *plan* (`applied: "plan"`): a `Confirm Dataset Type Change` dialog lists the reserving classes the change reaches, with how many datasets in each and why, and says that only those classes are locked. `Apply` posts the same table again carrying the plan, which submits the ArcRho Engine job the pane then follows; `Cancel` throws the edit away and shows the saved table. A change that reaches no class and renames nothing is submitted without the dialog.
 - The grid remembers every Name edit since the last save as a rename (`renames: [{from, to}]` on the POST), so the server applies a rename to the instances of the old type instead of treating it as one type removed and another added. Renaming A to B then B to C is sent as A to C; renaming back is no rename. The planner rewrites formulas that named the old type, and the grid adopts those rows when `Apply` is clicked so the table on screen is the table the Engine writes.
+- The dataset-type change job and a project duplication are polled while they run. A poll the server cannot answer (`unknown: true`) is not a failure: the progress popup says it is waiting for the server, polling goes on, and the gap does not count toward the stalled-job rule.
 - Data processing rules uses `GET /data_processing_rules`, `POST /data_processing_rules/validate`, and `POST /data_processing_rules` for project-scoped rule editing with optimistic revision checks.
 - Posts title/status events to shell.
 <!-- MANUAL:END -->

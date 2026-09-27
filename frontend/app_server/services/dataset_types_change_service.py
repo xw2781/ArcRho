@@ -1,4 +1,4 @@
-"""Client-side submission and status for Engine-hosted dataset-type changes.
+"""Saving the dataset-type table, and the Engine job a larger change becomes.
 
 Changing a project's dataset-type table used to run in whatever process the
 user clicked in. On a Client PC that meant writing the table over the mapped
@@ -15,9 +15,12 @@ and rebuilds those on local disk while the client only polls the status.
 Every other class of the project is writable again as soon as the table is
 the new one.
 
-The plan itself is built here first, through the hosted read when a Gateway
-is up, so the reserving classes it names are on screen before anything is
-submitted.
+``save_dataset_types`` decides what one save needs -- a plan for the user to
+confirm, a direct write of a presentation-only change, or the job -- and runs
+on the server host: a Client PC sends it through the Gateway as the
+``dataset_types_save`` workspace mutation and polls the job's status through
+the ``dataset_types_change_status`` read, so it never opens the table, a class
+index, or a job file over the share.
 
 Submission is idempotent by ``request_id``: the client generates the id before
 its first POST and reuses it on every retry, so a response lost in flight can
@@ -53,12 +56,14 @@ from arcrho_dependent_propagation_contract import (
 )
 from arcrho_source_refresh_contract import find_source_refresh_hold
 
+from app_server import config
 from app_server.services import (
     dataset_types_plan_service,
+    dataset_types_service,
     dependent_propagation_service,
     user_identity_service,
-    workspace_read_client,
 )
+from app_server.services.audit_service import safe_append_project_audit_log
 
 
 DATASET_TYPES_CHANGE_BUSY_MESSAGE = (
@@ -126,27 +131,134 @@ def _read_status(server_root: Path, request_id: str) -> Dict[str, Any] | None:
         ) from error
 
 
-def plan_dataset_types_change(
+def save_dataset_types(
     project_name: str,
-    rows: List[List[Any]],
-    renames: List[Dict[str, str]],
+    request_id: str,
+    rows: List[List[Any]] | None = None,
+    renames: List[Dict[str, str]] | None = None,
+    plan: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
-    """Build the plan the confirmation dialog shows, hosted when possible.
+    """Apply one dataset-type table change: directly, as a plan, or as a job.
 
-    The planner reads one index per reserving class, which from a Client PC
-    is one round trip each over the mapped drive; the Gateway answers from
-    local disk.
+    Two changes wear the same clothes in the grid and cost wildly different
+    things. Renaming a Category rewrites one file. Adding, removing, renaming
+    or re-formulating a type rewrites the sidecars of every instance the change
+    reaches and can invalidate calculated datasets, so it is first *planned*:
+    the answer is ``applied: "plan"`` naming the reserving classes the change
+    touches, and only a second save carrying that plan submits the durable
+    Engine job, which holds those classes while it runs. A plan that names no
+    class and renames nothing is submitted at once: there is nothing for the
+    user to confirm.
+
+    Either way this answers quickly: the long work never runs inside the
+    request, because an auto-saving grid cannot tell a slow save from a lost
+    one.
     """
 
-    name = _validated_project(project_name)
-    kwargs = {"project_name": name, "rows": rows, "renames": renames}
-    return workspace_read_client.run_workspace_read(
-        "dataset_types_change_plan",
-        kwargs,
-        local=lambda: dataset_types_plan_service.plan_dataset_types_change_read(
-            name, rows, renames
-        ),
+    project_name = (project_name or "").strip()
+    renames = list(renames or [])
+    try:
+        config.get_dataset_types_path(project_name)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+    normalized_rows = dataset_types_service.normalize_submitted_rows(rows or [])
+    # Validate before deciding anything: a formula naming a type this table
+    # does not define is refused the same way on both paths, and the caller
+    # gets that answer without a job ever being queued.
+    dataset_types_service.require_resolvable_formulas(normalized_rows)
+
+    previous_rows = dataset_types_service.read_persisted_rows(project_name)
+    next_rows = dataset_types_service.resolve_persisted_rows(
+        project_name, normalized_rows
     )
+
+    if not renames and not dataset_types_service.change_needs_project_job(
+        previous_rows, next_rows
+    ):
+        return _apply_presentation_only_change(
+            project_name, normalized_rows, unchanged=next_rows == previous_rows
+        )
+
+    if plan is None:
+        planned = dataset_types_plan_service.plan_dataset_types_change_read(
+            project_name, normalized_rows, renames
+        )
+        # A rename is always shown, even when no class holds the old type:
+        # the planner may have rewritten formulas, and the grid has to adopt
+        # those rows before they are submitted.
+        if planned["plan"]["affected"] or renames:
+            return {"ok": True, "applied": "plan", "count": len(next_rows), **planned}
+        plan = planned["plan"]
+        submitted_rows = planned["rows"]
+        changed_types = planned["changed_types"]
+    else:
+        submitted_rows = normalized_rows
+        changed_types = changed_types_for_submission(
+            project_name, normalized_rows, renames
+        )
+
+    submitted = submit_dataset_types_change_job(
+        project_name,
+        submitted_rows,
+        renames,
+        changed_types,
+        plan,
+        request_id=(request_id or "").strip() or None,
+    )
+    return {
+        "ok": True,
+        "applied": "job",
+        "count": len(next_rows),
+        "changed_formula_types": changed_types,
+        "job": submitted,
+    }
+
+
+def _apply_presentation_only_change(
+    project_name: str,
+    normalized_rows: List[List[Any]],
+    *,
+    unchanged: bool,
+) -> Dict[str, Any]:
+    """Write a change that re-derives nothing outside the table itself.
+
+    A table that already holds these rows is left alone, with no audit entry,
+    so a repeated save of the same table changes nothing.
+    """
+
+    if unchanged:
+        return {
+            "ok": True,
+            "applied": "direct",
+            "path": config.get_dataset_types_path(project_name),
+            "count": len(normalized_rows),
+            "changed_formula_types": [],
+            "job": None,
+        }
+    try:
+        written = dataset_types_service.apply_dataset_types_rows(
+            project_name, normalized_rows
+        )
+    except PermissionError:
+        raise HTTPException(423, "Dataset types file is locked. Another user may have it open.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to save dataset types: {str(e)}")
+
+    safe_append_project_audit_log(
+        project_name=project_name,
+        action=f"Saved Dataset Types ({written['count']} rows)",
+    )
+    return {
+        "ok": True,
+        "applied": "direct",
+        "path": written["path"],
+        "count": written["count"],
+        "changed_formula_types": [],
+        "job": None,
+    }
 
 
 def changed_types_for_submission(

@@ -68,6 +68,14 @@ class ProjectDuplicationJobStatusResponse(BaseModel):
     message: Optional[str] = None
 
 
+class ProjectDuplicationUnknownStatusResponse(BaseModel):
+    """A status poll the Gateway could not answer: ask again, the copy runs on."""
+
+    ok: Literal[True]
+    job_id: str
+    unknown: Literal[True]
+
+
 class CreateProjectFolderRequest(BaseModel):
     name: str
     request_id: Optional[str] = None

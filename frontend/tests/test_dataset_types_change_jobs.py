@@ -59,6 +59,7 @@ from app_server.services import (
     dataset_types_service,
     dependent_propagation_service,
     source_refresh_service,
+    workspace_read_client,
 )
 
 
@@ -329,6 +330,8 @@ class DatasetTypesChangeJobTests(unittest.TestCase):
                 "is_server_process",
                 return_value=True,
             ),
+            # The save route runs its service here, as the Gateway runs it.
+            patch.object(workspace_read_client, "_is_server_process", return_value=True),
         ]
         for item in self.patches:
             item.start()

@@ -361,6 +361,34 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         "clear_generated_dataset_csv_caches",
         ("source", "project_name"),
     ),
+    # Saving the dataset-type table. The server decides what the change needs:
+    # a plan to confirm (a read), a direct write of a presentation-only change,
+    # or a queued Engine job. It needs no receipt: the job is keyed by the
+    # client's request id, so a replay returns the job already queued, and the
+    # direct write is a whole-table write that skips an unchanged table, so a
+    # replay writes nothing and appends no second audit entry. The request id
+    # is also the mutation's own. The rows, renames and plan may be empty.
+    "dataset_types_save": WorkspaceMutationKind(
+        "dataset_types_change_service",
+        "save_dataset_types",
+        ("project_name", "request_id"),
+        ("rows", "renames", "plan"),
+    ),
+    # Submitting a project duplication is idempotent by its request id through
+    # the duplication's own submission receipt, which binds the id to one
+    # source and target, so it needs no Gateway receipt on top. Cancelling
+    # writes an advisory marker; a repeat writes the same marker, and a job
+    # already finished is reported as it is.
+    "project_duplication_submit": WorkspaceMutationKind(
+        "project_settings_service",
+        "duplicate_project_folder",
+        ("source", "old_name", "new_name", "request_id"),
+    ),
+    "project_duplication_cancel": WorkspaceMutationKind(
+        "project_settings_service",
+        "cancel_duplicate_project_folder",
+        ("source", "request_id"),
+    ),
 }
 
 HTTP_WORKSPACE_MUTATION_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_MUTATION_KINDS))

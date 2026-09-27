@@ -194,6 +194,15 @@ export async function waitForDatasetTypesChangeJob({
 
     consecutiveFailures = 0;
     const result = await response.json();
+    if (result?.unknown) {
+      // The server could not be asked. The job runs on regardless, so keep
+      // asking, and do not let this gap count as a status that stopped moving.
+      const unknownNow = Number(now());
+      if (Number.isFinite(unknownNow)) lastActivityAt = unknownNow;
+      onProgress({ stage: "", label: "Waiting for the server to answer...", completed: 0, total: 0 });
+      await waitForPoll(pollIntervalMs);
+      continue;
+    }
     const progress = result?.progress || {};
     const total = Math.max(0, Number(progress.total) || 0);
     const completed = Math.max(0, Number(progress.completed) || 0);

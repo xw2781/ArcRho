@@ -33,6 +33,9 @@ No new browser-facing route. This existing route selects the transport per reque
 | `POST /project_settings/{source}` | `project_registry_save` (receipt) | `project_settings_service.update_project_settings` |
 | `POST /general_settings` | `general_settings_save` (receipt) | `project_settings_service.update_general_settings` |
 | `POST /project_settings/{source}/generated_dataset_cache/clear` | `generated_dataset_cache_clear` | `project_settings_service.clear_generated_dataset_csv_caches` |
+| `POST /dataset_types` | `dataset_types_save` | `dataset_types_change_service.save_dataset_types` |
+| `POST /project_settings/{source}/duplicate_project_folder` | `project_duplication_submit` | `project_settings_service.duplicate_project_folder` |
+| `POST /project_settings/{source}/duplicate_project_folder/cancel/{request_id}` | `project_duplication_cancel` | `project_settings_service.cancel_duplicate_project_folder` |
 
 The three preference writes (step 8 of [client_smb_retirement.md](../../../../docs/plans/client_smb_retirement.md)) change only the signed-in user's own `users/<login>/preferences.json`: the login is the acting identity of the signed request, never an argument. Each is Gateway-required. They are idempotent because each is a whole-value write: the hidden-path list and the filter spec (with the tree preferences when sent) replace the stored value outright, and a preferences patch sets each value it names, so a repeat lands the same state and only `updated_at` moves.
 
@@ -41,6 +44,8 @@ The index rebuild (step 9) is Gateway-required. It is idempotent because `index.
 The header cache clear (step 11) is Gateway-required. It deletes the project's period-heading CSVs so the Engine rebuilds them; it is idempotent because a repeat finds the files already gone and answers `cleared_count: 0`.
 
 The six Project Settings writes (step 13 of the plan) are Gateway-required. Creating, renaming and deleting a project folder and saving the registry are not idempotent — a repeated create or rename meets the folder the first run made and refuses with `409`, a repeated registry save meets the revision the first run moved — and the General Settings save appends an audit entry each run, so all five carry a receipt. Clearing the generated CSV caches is idempotent: a repeat finds nothing left to clear and writes no audit entry. Opening a project folder in Explorer stays on the client, because it hands a path to a program on this PC.
+
+The dataset-type table save and the project duplication submit and cancel (step 14) are Gateway-required. The two job submits are already keyed by the client's request id, so they are idempotent without a Gateway receipt, and that same id travels as the mutation's own: a replayed dataset-type change returns the job already queued (`resumed: true`), and a replayed duplication answers from the duplication's own submission receipt, which also refuses the id under a different source or target. The table save also decides whether the change needs the job at all; its direct write of a presentation-only change skips a table that already holds those rows, so a replay writes nothing and appends no second audit entry. A duplication cancel writes an advisory marker, and a repeat writes the same one.
 
 The review-status set is the Project Instance `Mark For Review` / `Set
 Reviewed` action, shared by the dataset table and Dependency Graph context
