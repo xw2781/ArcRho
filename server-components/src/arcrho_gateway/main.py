@@ -31,6 +31,7 @@ except ModuleNotFoundError:
 
 os.environ.setdefault("ARCRHO_RUNTIME_SERVER_ROOT", str(get_project_root()))
 
+from arcrho_api.config import SERVER_ID_KEY, read_server_id  # noqa: E402
 from arcrho_api.io import persisted_json_text  # noqa: E402
 from arcrho_dependent_propagation_contract import (  # noqa: E402
     DependentPropagationContractError,
@@ -321,6 +322,9 @@ def _wait_for_engine(root: Path, request: Mapping[str, Any]) -> tuple[int, dict[
 class Gateway:
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
+        # Written once, while the Gateway is stopped for a deploy; clients refuse
+        # a Gateway whose id differs from the folder they are pointed at.
+        self.server_id = read_server_id(self.root)
         self.reads = WorkspaceReadExecutor(
             self.root, load_gateway_config=_load_gateway_config, log=_log
         )
@@ -345,6 +349,7 @@ class Gateway:
             "contract_version": HTTP_CONTRACT_VERSION,
             "allowed_save_kinds": list(HTTP_SAVE_KINDS),
             "insecure_http_pilot": True,
+            SERVER_ID_KEY: self.server_id,
             **self.reads.capability_fields(),
             **self.calculations.capability_fields(),
             **self.mutations.capability_fields(),

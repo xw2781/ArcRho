@@ -36,6 +36,11 @@ GATEWAY_CONFIG_ENV = "ARCRHO_GATEWAY_CONFIG"
 DEFAULT_PROFILE_ID = "default"
 DEFAULT_PROFILE_NAME = "Production"
 PROFILE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+# A server's identity: a GUID ``server_config.ensure_server_config`` writes once
+# into the root's component configuration, and the Gateway reports from
+# ``/api/capabilities`` under the same key.
+SERVER_ID_KEY = "server_id"
+SERVER_CONFIG_RELATIVE_PATH = Path("config") / "config.json"
 # A running desktop app already knows its workspace root; asking it is the last
 # resort before the packaged default, so keep the probe short enough that a
 # stopped app never stalls a macro.
@@ -55,6 +60,18 @@ def get_config_path() -> Path:
     """Return the Arco host workspace config file used by the Python API."""
 
     return config_dir() / WORKSPACE_PATHS_FILE_NAME
+
+
+def read_server_id(server_root: str | Path) -> str:
+    """Return the server id written in ``server_root``'s configuration, or ``""``."""
+
+    try:
+        payload = json.loads(
+            (Path(server_root) / SERVER_CONFIG_RELATIVE_PATH).read_text(encoding="utf-8-sig")
+        )
+    except (OSError, ValueError):
+        return ""
+    return str(payload.get(SERVER_ID_KEY) or "").strip() if isinstance(payload, dict) else ""
 
 
 def env_server_root() -> str:

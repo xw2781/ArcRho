@@ -14,7 +14,7 @@ Excluded directories: `.cache`, `.pytest_cache`, `__pycache__`, `dist`, `local_w
 | `docs` | 130 |
 | `electron` | 14 |
 | `icons` | 18 |
-| `tests` | 281 |
+| `tests` | 282 |
 | `tools` | 2 |
 | `ui` | 702 |
 | `user-manual` | 18 |

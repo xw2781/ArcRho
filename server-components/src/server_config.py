@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -158,11 +159,47 @@ def write_server_config(path: Path, payload: dict[str, Any]) -> None:
         raise
 
 
+def with_server_id(
+    payload: dict[str, Any], *, keep_from: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Return ``payload`` carrying the server's identity.
+
+    The id is a GUID minted once per server root and never replaced: an id
+    already in ``payload``, or else in ``keep_from`` (the configuration being
+    reset), is kept. Clients compare it with the id the Gateway reports, so a
+    new id would lock every client out until the Gateway restarted. The key is
+    imported here rather than at module scope for the reason given in
+    :func:`_persisted_json_text`.
+    """
+
+    from arcrho_api.config import SERVER_ID_KEY
+
+    for source in (payload, keep_from or {}):
+        server_id = str(source.get(SERVER_ID_KEY) or "").strip()
+        if server_id:
+            return payload if source is payload else {**payload, SERVER_ID_KEY: server_id}
+    return {**payload, SERVER_ID_KEY: str(uuid.uuid4())}
+
+
+def ensure_server_id(server_root: str | os.PathLike[str]) -> str:
+    """Write the server id into the root's configuration if missing; return it."""
+
+    from arcrho_api.config import SERVER_ID_KEY
+
+    root = Path(server_root).expanduser().resolve()
+    path = resolve_server_config_path(root)
+    existing = read_server_config(path, root, merge_defaults=False)
+    updated = with_server_id(existing)
+    if updated is not existing:
+        write_server_config(path, updated)
+    return updated[SERVER_ID_KEY]
+
+
 def ensure_server_config(server_root: str | os.PathLike[str]) -> tuple[Path, dict[str, Any]]:
     root = Path(server_root).expanduser().resolve()
     path = resolve_server_config_path(root)
     existing = read_server_config(path, root, merge_defaults=False)
-    merged = merge_missing_defaults(existing, default_server_config(root))
+    merged = with_server_id(merge_missing_defaults(existing, default_server_config(root)))
     if not path.exists() or merged != existing:
         write_server_config(path, merged)
     return path, merged

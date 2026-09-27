@@ -34,6 +34,7 @@ from build_runtime import (
 # switch, and heartbeats.
 align_workspace_root_env()
 
+from server_config import ensure_server_id  # noqa: E402
 from utils import (  # noqa: E402
     component_app_name,
     get_config_value,
@@ -132,6 +133,9 @@ def gateway_stopped():
     set_config_value(KILL_ALL_KEY, True)
     try:
         wait_for_shutdown()
+        # The Gateway reports this id from its capabilities and reads it once
+        # as it starts, so it is written while the Gateway is down.
+        ensure_server_id(DEPLOY_ROOT)
         yield
     finally:
         set_config_value(KILL_ALL_KEY, previous)

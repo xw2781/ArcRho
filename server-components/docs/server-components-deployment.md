@@ -129,6 +129,18 @@ time, canonical component inventory, file sizes, and SHA-256 hashes. It is
 installer metadata, not project data. Unknown apps and all non-`apps` workspace
 data remain outside installer ownership.
 
+## Server identity
+
+Every server root carries a `server_id`, a GUID in `config/config.json` that is
+written once and never replaced. `server_config.ensure_server_config` adds it
+(the installer, adoption and `tools/local_server.py`), and the Gateway's own
+deploy adds it with `ensure_server_id` while the Gateway is stopped, which is
+how an existing server gains one. An Admin Control configuration reset keeps
+it. The Gateway reads the id once as it starts and returns it from
+`/api/capabilities`; the desktop app refuses a Gateway whose id differs from
+the one in the folder it is pointed at, so a credential for one server is never
+used against another server's folder.
+
 ## Install, adoption, upgrade, and repair
 
 The helper selects the lifecycle operation from the receipt and workspace:

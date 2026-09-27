@@ -1,6 +1,6 @@
 # Local Server Root and Server Switcher
 
-Status: Steps 1-2 done 2026-09-26 — a private test server runs on the developer PC at `C:\Arco Server` beside production, with its own Gateway, credential and app profile, built from the working tree by `tools/local_server.py`; the app keeps a list of servers, one active, each with its own credential, behind three new app-server routes. Steps 3-8 (server identity, the Server tab opened from Home with its switcher and component monitor, starting and stopping a server on this PC, the active-server badge, the release) are planned and not started; the Server tab was added 2026-09-26 at the user's request; offline use for every user is recorded as a direction with open decisions, not yet broken into steps.
+Status: Steps 1-3 done 2026-09-26 — a private test server runs on the developer PC at `C:\Arco Server` beside production, with its own Gateway, credential and app profile, built from the working tree by `tools/local_server.py`; the app keeps a list of servers, one active, each with its own credential, behind three new app-server routes; every server root carries an id its Gateway reports, and the app refuses a Gateway whose id differs from its folder's (the server side reaches production with the step 6 deploy). Steps 4-8 (the Server tab opened from Home with its switcher and component monitor, starting and stopping a server on this PC, the active-server badge, the release) are planned and not started; the Server tab was added 2026-09-26 at the user's request; offline use for every user is recorded as a direction with open decisions, not yet broken into steps.
 Last updated: 2026-09-26
 Related: [client_smb_retirement.md](client_smb_retirement.md) (the first work tested this way), [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md)
 
@@ -14,14 +14,14 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | A private test server runs on the developer's PC beside production | [x] | 2026-09-26 | 90 min | not clocked | The developer can build, deploy and try server changes on their own PC; nobody else sees them. |
 | 2 | The app remembers more than one server, each with its own sign-in | [x] | 2026-09-26 | 70 min | 15 min | The app can hold several servers and switch the active one, and each server signs in with its own credential; there is no screen for it yet. |
-| 3 | The app refuses a server whose address and data folder do not belong together | [ ] | | 55 min | | |
+| 3 | The app refuses a server whose address and data folder do not belong together | [x] | 2026-09-26 | 55 min | 30 min | Pointing the app at one server's folder while signed in to another server is refused with a plain message instead of mixing the two. |
 | 4 | A Server tab opened from Home lists servers by name and address and switches between them | [ ] | | 90 min | | |
 | 5 | The window shows which server it is using whenever it is not production | [ ] | | 30 min | | |
 | 6 | Deploy the server side and ship the app | [ ] | | 30 min | | |
 | 7 | The Server tab shows which server components are running and how long since each was last heard from | [ ] | | 60 min | | |
 | 8 | A server on this PC can be started and stopped from the Server tab | [ ] | | 45 min | | |
 
-Overall: 2 of 8 steps done. Estimated 470 min; actual so far 15 min (step 1 was not clocked). Order: 2, 3, 4, 7, 8, 5, then 6.
+Overall: 3 of 8 steps done. Estimated 470 min; actual so far 45 min (step 1 was not clocked). Order: 2, 3, 4, 7, 8, 5, then 6.
 
 ## How agents work this plan
 
@@ -137,18 +137,20 @@ Estimate: code edit 50 min, test/validation 20 min, total 70 min. Actual: code e
 
 **Goal.** A server says which one it is, and the client refuses a Gateway that serves a different root from the one it is pointed at.
 
-**Read first.** `server-components/src/server_config.py`; the capabilities handler in `server-components/src/arcrho_gateway/main.py`; `frontend/app_server/services/workspace_read_client.py` (`cached_gateway_capabilities`).
+**Read first.** `server-components/src/server_config.py`; the capabilities handler in `server-components/src/arcrho_gateway/main.py`; `frontend/app_server/services/workspace_read_client.py` (`cached_gateway_capabilities`); `frontend/app_server/services/hosted_save_http_client.py` (`probe_gateway`, which every capability check goes through, including the hosted-save one); `gateway_stopped` in `server-components/src/arcrho_gateway/build_exe.py`; the `reset-config` handler in `server-components/src/arcrho_admin/main.py`.
 
 **Do.**
-- [ ] `server_id` written once into `config.json` by `ensure_server_config`.
-- [ ] `/api/capabilities` returns it (additive).
-- [ ] The client compares it with the active root's `config.json` and refuses with a plain message on mismatch.
+- [x] `server_id` written once into `config.json` by `ensure_server_config`, and by the Gateway's deploy (`ensure_server_id`, while the Gateway is stopped), which is how production gains one in step 6. An Admin Control configuration reset keeps it. The key and the client's reader live in `arcrho_api.config`.
+- [x] `/api/capabilities` returns it (additive); the Gateway reads it once as it starts.
+- [x] The client compares it with the active root's `config.json` and refuses with a plain message (409, never a fall back to the share) in `probe_gateway`. A found root id is kept for the process; a missing one is re-read after 30 s.
 
-**Tests.** Mismatch refused; a Gateway that sends no id is refused on a Client PC once this ships (all users run the latest version).
+**Rule chosen for a missing id.** The ids must be equal, and both sides lacking one is the only agreement allowed without an id. So a Gateway that reports no id is refused whenever the folder has one (the folder was updated but the Gateway was not, or the credential belongs to another server), and a Gateway that reports an id is refused for a folder without one. Production's folder and Gateway both lack an id until the step 6 deploy writes it, so the working tree keeps working against production today; once that deploy lands every Gateway carries an id and the "no id" case is refused everywhere. The check covers the desktop app's app server only; scripts and notebooks (`arcrho_api.gateway`) and the Excel add-in do not make it.
+
+**Tests.** Mismatch refused; a Gateway that sends no id is refused for a folder that has one; a refused read never runs over the share; the id is written once and survives a reset (`frontend/tests/test_gateway_server_identity.py`, `server-components/tests/test_server_identity.py`).
 
 **Done when.** Pointing the app at the local folder with the production credential is refused rather than served.
 
-Estimate: code edit 35 min, test/validation 20 min, total 55 min.
+Estimate: code edit 35 min, test/validation 20 min, total 55 min. Actual: code edit 15 min, test/validation 15 min, total 30 min.
 
 ### Step 4 — The Server tab, opened from Home
 

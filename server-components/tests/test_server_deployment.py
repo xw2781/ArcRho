@@ -160,6 +160,8 @@ class ServerDeploymentTests(unittest.TestCase):
         config = default_server_config(root)
         config["resq"] = {"user_name": "service", "password": "secret"}
         config["apps"]["orchestrator"]["max_workers"] = 9
+        # A server that already has its identity keeps it, so the file is untouched.
+        config["server_id"] = "0b6f7c1e-2a4d-4f1b-9d3e-5c8a7b6e4f21"
         config_path.parent.mkdir(parents=True)
         config_path.write_text(
             json.dumps(config, separators=(",", ":")) + "\n", encoding="utf-8"

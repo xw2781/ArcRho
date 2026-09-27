@@ -48,6 +48,7 @@ try:
         merge_missing_defaults,
         read_server_config,
         resolve_server_config_path,
+        with_server_id,
         write_server_config,
     )
     from src.utils import get_config_value, get_project_root, resolve_app_exe, resolve_app_path
@@ -57,6 +58,7 @@ except ModuleNotFoundError:
         merge_missing_defaults,
         read_server_config,
         resolve_server_config_path,
+        with_server_id,
         write_server_config,
     )
     from utils import get_config_value, get_project_root, resolve_app_exe, resolve_app_path
@@ -667,7 +669,8 @@ class AdminHandler(BaseHTTPRequestHandler):
             os.startfile(CONFIG_FILE.parent)
             self.send_json({"ok": True})
         elif parsed.path == "/api/reset-config":
-            config = default_config()
+            # A reset keeps the server's identity; see with_server_id.
+            config = with_server_id(default_config(), keep_from=load_config())
             save_config(config)
             self.send_json({"ok": True, "path": str(CONFIG_FILE), "config": config})
         elif parsed.path == "/api/clear-stale-instances":

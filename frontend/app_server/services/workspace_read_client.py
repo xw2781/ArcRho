@@ -107,6 +107,9 @@ def cached_gateway_capabilities(gateway_config: Mapping[str, Any]) -> Dict[str, 
     try:
         payload: Dict[str, Any] | None = hosted_save_http_client.probe_gateway(gateway_config)
         ttl = CAPABILITY_CACHE_SECONDS
+    except hosted_save_http_client.GatewayServerMismatch:
+        # Never an "unreachable" Gateway: that would send the request to the share.
+        raise
     except HTTPException:
         payload = None
         ttl = CAPABILITY_FAILURE_CACHE_SECONDS
