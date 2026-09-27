@@ -1,15 +1,15 @@
 ---
 name: job-tests-read-live-gateway
-description: "test_dataset_types_change_jobs and test_data_processing_rules_jobs patch the root but not the Gateway, so their plan read goes to this PC's live Gateway; failures there are environment, not code"
+description: "Test suites that patch the root but not the Gateway reach this PC's live (production) Gateway, for reads and even writes; the rules and dataset-type job tests did until 2026-09-27"
 metadata:
   node_type: memory
   type: project
   originSessionId: dceedf07-29d5-400b-9dfb-1b5d138ebc34
-  modified: 2026-09-27T01:52:49.122Z
+  modified: 2026-09-27T04:52:39.808Z
 ---
 
-`frontend/tests/test_dataset_types_change_jobs.py` and `test_data_processing_rules_jobs.py` patch `load_workspace_paths` to a temp root but leave the Gateway credential alone. The change plan is built through a hosted read when a Gateway is configured, so on the Client PC that read goes to production's Gateway with a temp project name (read-only; the job files themselves land in the temp root). Their pass/fail depends on which Gateway is live. Seen 2026-09-26 while running the server switcher plan (docs/plans/local_server_root_and_server_switcher.md).
+Tests that patch `load_workspace_paths` to a temp root but leave the Gateway credential alone still sign requests to whichever Gateway this PC is enrolled with, which on the Client PC is production's. Found 2026-09-26/27 while running docs/plans/client_smb_retirement.md: `test_dataset_types_change_jobs.py` and `test_data_processing_rules*.py` sent hosted plan reads and, after step 3, audit-log appends to production. Nothing was written only because production did not offer the new operation yet. Step 3 (commit 048f9e4a) stubbed the append in those two modules.
 
-**Why:** after that plan's step 6 gives production a `server_id`, the identity check will refuse these reads (the temp root has no id), changing how they fail.
+**Why:** once production's Gateway offers a kind, an unisolated test writes real entries (and could create "Example Project"/"Demo Project" folders) on production.
 
-**How to apply:** do not treat their failures as regressions without rerunning at the base commit; the real fix is setting `ARCRHO_GATEWAY_CONFIG` to a missing file in their setUp. Related: [[local-test-root]], [[worktree-baseline-masks-new-failures]].
+**How to apply:** until the plan's step 21 guard lands, any new test that exercises a route with a registered read/mutation/save kind must stub the Gateway client or set `ARCRHO_GATEWAY_CONFIG` to a missing file; don't treat those modules' failures as regressions without rerunning at the base commit. Related: [[local-test-root]], [[worktree-baseline-masks-new-failures]].
