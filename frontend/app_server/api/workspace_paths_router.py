@@ -62,6 +62,16 @@ def get_server_profiles() -> Dict[str, Any]:
     return server_profile_service.list_server_profiles()
 
 
+@router.get("/server_profiles/health")
+def get_server_health(id: str = "") -> Dict[str, Any]:
+    return server_profile_service.server_health(id)
+
+
+@router.get("/server_profiles/inspect")
+def inspect_server_folder(root: str) -> Dict[str, Any]:
+    return server_profile_service.inspect_server_folder(root)
+
+
 @router.post("/server_profiles")
 def save_server_profile(req: ServerProfileSaveRequest) -> Dict[str, Any]:
     return server_profile_service.save_server_profile(

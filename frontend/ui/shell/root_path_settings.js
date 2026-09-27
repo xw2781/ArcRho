@@ -138,6 +138,10 @@ export function initRootPathSettingsModal() {
   });
 
   cancelBtn.addEventListener("click", () => closeRootPathSettingsModal());
+  $("rootPathServerTabBtn")?.addEventListener("click", () => {
+    closeRootPathSettingsModal();
+    shell.openServerTab?.();
+  });
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) closeRootPathSettingsModal();
   });

@@ -17,6 +17,7 @@ from arcrho_hosted_save_http_contract import (
     AUTH_TIMESTAMP_HEADER,
     AUTH_USER_HEADER,
     CAPABILITIES_PATH,
+    HEALTH_PATH,
     HOSTED_SAVE_PATH,
     HOSTED_SAVE_PROGRESS_PATH,
     canonical_request_bytes,
@@ -96,6 +97,15 @@ def require_same_server(capabilities: Mapping[str, Any]) -> None:
     reported = str(capabilities.get(api_config.SERVER_ID_KEY) or "").strip()
     if reported != root_server_id(config.get_root_path()):
         raise GatewayServerMismatch()
+
+
+def probe_gateway_health(url: str) -> None:
+    """Raise unless the Gateway at ``url`` answers its unauthenticated health check."""
+
+    request = Request(f"{url}{HEALTH_PATH}", method="GET", headers={"Accept": "application/json"})
+    with _DIRECT_HTTP_OPENER.open(request, timeout=GATEWAY_HEALTH_TIMEOUT_SECONDS) as response:
+        if _response_json(response).get("ok") is not True:
+            raise ValueError("Gateway health check did not report ok.")
 
 
 def probe_gateway(gateway_config: Mapping[str, Any]) -> dict[str, Any]:

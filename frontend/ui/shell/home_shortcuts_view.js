@@ -6,7 +6,7 @@
 // exactly like restoring that page from Browsing History.
 
 import { $, shell } from "./shell_context.js?v=20260510a";
-import { homeCardIconForTabType } from "./home_card_icons.js?v=20260923c";
+import { homeCardIconForTabType } from "./home_card_icons.js?v=20260926a";
 import { buildRestoreSummary } from "./shell_activity_history.js";
 import { attachArcrhoTooltip } from "../shared/components/tooltip/tooltip.js?v=20260925a";
 import {
@@ -34,6 +34,7 @@ const TAB_TYPE_LABELS = {
   agent_guide: "ArcBot Guide",
   file_explorer: "File Browser",
   browsing_history: "Browsing History",
+  server: "Server",
 };
 
 let shortcutsDocument = createEmptyHomeShortcuts();

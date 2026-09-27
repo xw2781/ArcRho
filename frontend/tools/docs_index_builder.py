@@ -58,6 +58,7 @@ MD_LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 FRONTEND_ENTRY_HTMLS = [
     "ui/index.html",
     "ui/file_explorer/file_explorer.html",
+    "ui/server/server.html",
     "ui/dataset_viewer/dataset_viewer.html",
     "ui/method_pages/dfm/dfm.html",
     "ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html",
@@ -489,6 +490,18 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/shared/file-icons/fileIconResolver.js", "Canonical shared common-file-type icon resolver."),
             ("electron/preload.js", "Renderer-safe folder preferences, listing, watch, and open APIs."),
             ("electron/main.js", "Desktop favorite persistence, metadata listing, folder watching, and read-only Excel opening."),
+        ],
+    },
+    "server": {
+        "doc": "docs/ui/server.md",
+        "html": ["ui/server/server.html"],
+        "files": [
+            ("ui/server/server.html", "Server tab iframe entrypoint: server list, add form, components placeholder, switch dialog."),
+            ("ui/server/server.js", "Server tab controller: listing, health, add server, and the switch request to the shell."),
+            ("ui/server/server_model.js", "Pure rules for rows, labels, set-at-launch, add validation, and switch messages."),
+            ("ui/server/server.css", "Server tab styling on the shared theme tokens."),
+            ("ui/shell/shell_messages.js", "Shell side of a switch: unsaved-changes guard, activation, and restart."),
+            ("app_server/services/server_profile_service.py", "Server profile listing, health probe, folder inspection, and activation."),
         ],
     },
     "dataset": {
@@ -1139,6 +1152,13 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "tasks": "1. Change File Explorer behavior or layout: update `ui/file_explorer/` and focused tests together.\n2. Change shell tab lifecycle: update Home launch, tab actions, iframe host, visibility messaging, and shell docs together.\n3. Change folder/file host operations: preserve existing preload IPC names and update Electron main/preload plus integration tests.",
             "risks": "- Folder paths can become inaccessible or disappear while pinned; these must remain visible as favorites and surface recoverable list errors.\n- File opening is delegated to desktop associations; Excel read-only opening requires the explicit `/r` host path.\n- Watchers must stop while the tab is hidden and be replaced when navigation changes folders.",
         },
+        "server": {
+            "purpose": "Server tab: lists the servers this PC knows by name and Gateway address, marks the one in use, adds a server from its folder, and switches between them by restarting the app.",
+            "external": "- Opened from the Home Server card or the Server Connection dialog as one restorable `server` shell tab.\n- Reads `GET /server_profiles`, `GET /server_profiles/health` (the app server probes each Gateway) and `GET /server_profiles/inspect`, and adds with `POST /server_profiles`.\n- Switches by posting `arcrho:server-switch` to the shell, which refuses while any tab is dirty, activates the profile, runs the ordinary restart, and answers with `arcrho:server-switch-result`.\n- Uses the host `pickFolder` bridge when present; the folder text field is the fallback.",
+            "data": "- Holds no state of its own; the profile list lives in `%APPDATA%\\ArcRho\\workspace_paths.json`, owned by `arcrho_api.config`.\n- While a launch override is set (`set_at_launch`), shows that server as `Set at launch` and turns switching and adding off.\n- The Components panel is a placeholder until component status lands.",
+            "tasks": "1. Change what a row shows: update `server_model.js`, `server.js`, and `tests/server_tab.test.mjs` together.\n2. Change what a switch does: update the shell handler in `shell_messages.js`, the activate route, and both test files.",
+            "risks": "- A switch restarts the app server; it must stay blocked while any tab holds unsaved changes.\n- Never save profiles from a `launch-app` session; the routes refuse with 409 and the page disables the controls.",
+        },
         "dataset": {
             "purpose": "Dataset editing/analysis page used inside shell tabs.",
             "external": "- Calls app-server dataset/book/arcrho endpoints.\n- Sends status/hotkey/close signals to parent shell.",
@@ -1697,6 +1717,7 @@ def render_frontend_index_key_files(doc_path: str) -> str:
     files = [
         ("docs/ui/shell.md", "Shell tab host index."),
         ("docs/ui/file_explorer.md", "File Explorer feature index."),
+        ("docs/ui/server.md", "Server tab index."),
         ("docs/ui/dataset.md", "Dataset feature index."),
         ("docs/ui/dfm.md", "DFM feature index."),
         ("docs/ui/bornhuetter_ferguson.md", "Bornhuetter Ferguson method-page index."),

@@ -1,6 +1,6 @@
 # Local Server Root and Server Switcher
 
-Status: Steps 1-3 done 2026-09-26 — a private test server runs on the developer PC at `C:\Arco Server` beside production, with its own Gateway, credential and app profile, built from the working tree by `tools/local_server.py`; the app keeps a list of servers, one active, each with its own credential, behind three new app-server routes; every server root carries an id its Gateway reports, and the app refuses a Gateway whose id differs from its folder's (the server side reaches production with the step 6 deploy). Steps 4-8 (the Server tab opened from Home with its switcher and component monitor, starting and stopping a server on this PC, the active-server badge, the release) are planned and not started; the Server tab was added 2026-09-26 at the user's request; offline use for every user is recorded as a direction with open decisions, not yet broken into steps.
+Status: Steps 1-3 done 2026-09-26 — a private test server runs on the developer PC at `C:\Arco Server` beside production, with its own Gateway, credential and app profile, built from the working tree by `tools/local_server.py`; the app keeps a list of servers, one active, each with its own credential, behind three new app-server routes; every server root carries an id its Gateway reports, and the app refuses a Gateway whose id differs from its folder's (the server side reaches production with the step 6 deploy). Step 4 done 2026-09-26: a Server tab opened from Home lists the servers by name and address with a health dot, adds a server from its folder, and switches by restarting the app once no tab has unsaved changes. Steps 5-8 (the active-server badge, the component monitor, starting and stopping a server on this PC, the release) are planned and not started; the Server tab was added 2026-09-26 at the user's request; offline use for every user is recorded as a direction with open decisions, not yet broken into steps.
 Last updated: 2026-09-26
 Related: [client_smb_retirement.md](client_smb_retirement.md) (the first work tested this way), [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md)
 
@@ -15,13 +15,13 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 1 | A private test server runs on the developer's PC beside production | [x] | 2026-09-26 | 90 min | not clocked | The developer can build, deploy and try server changes on their own PC; nobody else sees them. |
 | 2 | The app remembers more than one server, each with its own sign-in | [x] | 2026-09-26 | 70 min | 15 min | The app can hold several servers and switch the active one, and each server signs in with its own credential; there is no screen for it yet. |
 | 3 | The app refuses a server whose address and data folder do not belong together | [x] | 2026-09-26 | 55 min | 30 min | Pointing the app at one server's folder while signed in to another server is refused with a plain message instead of mixing the two. |
-| 4 | A Server tab opened from Home lists servers by name and address and switches between them | [ ] | | 90 min | | |
+| 4 | A Server tab opened from Home lists servers by name and address and switches between them | [x] | 2026-09-26 | 90 min | 37 min | Home has a Server card that opens a Server tab listing each server by name and address with a live health dot; a server can be added by choosing its folder, and switching restarts the app but waits until no tab has unsaved changes. |
 | 5 | The window shows which server it is using whenever it is not production | [ ] | | 30 min | | |
 | 6 | Deploy the server side and ship the app | [ ] | | 30 min | | |
 | 7 | The Server tab shows which server components are running and how long since each was last heard from | [ ] | | 60 min | | |
 | 8 | A server on this PC can be started and stopped from the Server tab | [ ] | | 45 min | | |
 
-Overall: 3 of 8 steps done. Estimated 470 min; actual so far 45 min (step 1 was not clocked). Order: 2, 3, 4, 7, 8, 5, then 6.
+Overall: 4 of 8 steps done. Estimated 470 min; actual so far 82 min (step 1 was not clocked). Order: 2, 3, 4, 7, 8, 5, then 6.
 
 ## How agents work this plan
 
@@ -156,20 +156,22 @@ Estimate: code edit 35 min, test/validation 20 min, total 55 min. Actual: code e
 
 **Goal.** A "Server" card on Home opens one Server tab. It lists the servers by name and address, marks the active one, adds one by choosing its folder, and switching restarts the app server. The Server Connection dialog stays for first-run setup and links to the tab.
 
-**Read first.** [shell.md](../../frontend/docs/ui/shell.md) "Common Change Tasks" (the recipe for a new tab type); `frontend/ui/shell/home_view.js` (the fixed card groups and their click wiring); `frontend/ui/shell/tab_actions.js` (`openProjectSettingsTab`, the single-instance pattern, and `RESTORABLE_ACTIVITY_TYPES`); `frontend/ui/shell/iframe_host.js` `ensureIframe` (the `agent_guide` case is the simplest template); `frontend/ui/shell/root_path_settings.js`; `frontend/ui/shell/app_lifecycle.js` (restart); skill `arcrho-ui-design`.
+**Read first.** [shell.md](../../frontend/docs/ui/shell.md) "Common Change Tasks" (the recipe for a new tab type); `frontend/ui/shell/home_view.js` (the fixed card groups and their click wiring); `frontend/ui/shell/tab_actions.js` (`openProjectSettingsTab`, the single-instance pattern, and `RESTORABLE_ACTIVITY_TYPES`); `frontend/ui/shell/iframe_host.js` `ensureIframe` (the `agent_guide` case is the simplest template); `frontend/ui/shell/root_path_settings.js`; `frontend/ui/shell/app_lifecycle.js` (restart); `frontend/ui/shell/shell_messages.js` (where iframe requests are handled, and the harness `tests/project_settings_shell_progress.test.mjs` uses to test one); `frontend/ui/shell/shell_activity_history.js` and `home_card_icons.js` (the restorable-type list and Home icon kinds); skill `arcrho-ui-design`.
 
 **Do.**
-- [ ] A `Server` card in Home's General group, `openServerTab()` in `tab_actions.js`, a `server` tab type in `iframe_host.js`, and a tab icon.
-- [ ] A new page `frontend/ui/server/server.html` (+ its script and styles) fetching the step 2 routes: one row per profile with name, address, a health dot from `/api/health` (probed by the app server, not the page), and the active one marked.
-- [ ] Add server: pick the folder; the address fills in from the folder's Gateway registry; the name is editable. A details section shows the folder, credential file and user.
-- [ ] Switching is blocked while any tab has unsaved changes; an env override shows the server as "set at launch" and read-only.
-- [ ] Update `shell.md` and bump the `?v=` stamps of every edited module.
+- [x] A `Server` card in Home's General group, `openServerTab()` in `tab_actions.js`, a `server` tab type in `iframe_host.js`, and a tab icon.
+- [x] A new page `frontend/ui/server/server.html` (+ its script and styles) fetching the step 2 routes: one row per profile with name, address, a health dot from `/api/health` (probed by the app server, not the page), and the active one marked.
+- [x] Add server: pick the folder; the address fills in from the folder's Gateway registry; the name is editable. A details section shows the folder, credential file and user.
+- [x] Switching is blocked while any tab has unsaved changes; an env override shows the server as "set at launch" and read-only.
+- [x] Update `shell.md` and bump the `?v=` stamps of every edited module.
 
 **Tests.** Node tests for the list, add and blocked switch; the new tab type opens once and is restorable.
 
 **Done when.** The developer opens the Server tab from Home and switches between production and the local root and back, and each side's saves land on its own server.
 
-Estimate: code edit 60 min, test/validation 30 min, total 90 min.
+Estimate: code edit 60 min, test/validation 30 min, total 90 min. Actual: code edit 17 min, test/validation 20 min, total 37 min; under half the estimate because the shell's tab, dirty-state and restart pieces needed only wiring. The "Done when" round trip was not driven on the developer's own app, by instruction: the switch was checked by tests and a mocked render, and the real app was checked in a `launch-app` session, which shows "Set at launch".
+
+**What was built.** `GET /server_profiles` also returns `current` (this process's server) and each server's credential user, and falls back to the folder's Gateway registry for the address before a credential exists; `GET /server_profiles/health` and `GET /server_profiles/inspect` were added. The switch runs in the shell (`handleServerSwitchMessage` in `shell_messages.js`, message `arcrho:server-switch`). The page is `frontend/ui/server/` with its rules in `server_model.js`; the Components panel is an empty placeholder for step 7. The Server tab's release fragment is in; step 6 adds only the badge's.
 
 ### Step 5 — Active-server badge
 
@@ -193,7 +195,7 @@ Estimate: code edit 20 min, test/validation 10 min, total 30 min.
 
 **Do.**
 - [ ] Deploy to the local root and check; then `python server-components/deploy.py`.
-- [ ] Release fragment for the Server tab and the badge; the frontend release follows the server deploy.
+- [ ] Release fragment for the badge (the Server tab's was added in step 4); the frontend release follows the server deploy.
 
 **Done when.** Production's `/api/capabilities` carries `server_id` and lists `server_component_status`, and the released app switches servers.
 

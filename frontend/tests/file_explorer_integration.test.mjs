@@ -27,7 +27,7 @@ test("Home launches File Explorer as a standard restorable ArcRho tab", async ()
   assert.match(shell, /openFileExplorerTab/u);
   // file_explorer is no longer a payload-free descriptor type; it carries the folder it was opened at.
   assert.match(history, /tabType === "file_explorer"\) \{\s*const path = toText\(raw\.path \|\| raw\.fileExplorerPath\);/u);
-  assert.match(history, /\["workflow", "agent_guide", "browsing_history"\]/u);
+  assert.match(history, /\["workflow", "agent_guide", "browsing_history", "server"\]/u);
 });
 
 test("File Explorer renders Favorites beside a persistent details-style file list", async () => {

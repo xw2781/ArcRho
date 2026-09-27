@@ -227,6 +227,8 @@ export function createIframeHost(deps) {
       iframe.src = `/ui/file_explorer/file_explorer.html?v=${encodeURIComponent(uiVersionParam)}`;
     } else if (tab.type === "agent_guide") {
       iframe.src = `/ui/agent_guide/agent_guide.html?v=${encodeURIComponent(uiVersionParam)}`;
+    } else if (tab.type === "server") {
+      iframe.src = `/ui/server/server.html?v=${encodeURIComponent(uiVersionParam)}`;
     } else if (tab.type === "task_designer") {
       const params = new URLSearchParams();
       const options = tab.taskDesignerOptions && typeof tab.taskDesignerOptions === "object" ? tab.taskDesignerOptions : {};

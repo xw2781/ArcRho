@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "shell",
+  "audience": "user",
+  "summary": "A new Server tab, opened from Home, lists the servers this PC knows by name and address, shows whether each one is answering, and switches between them.",
+  "details": [
+    "Add a server by choosing its folder; its address is read from the folder.",
+    "Switching restarts the app and is blocked while any tab has unsaved changes.",
+    "The Server Connection dialog now links to the Server tab."
+  ]
+}

@@ -46,6 +46,7 @@ const THEMED_DOCUMENTS = [
   "../ui/project_settings/project_settings.html",
   "../ui/shell/browsing_history.html",
   "../ui/agent_guide/agent_guide.html",
+  "../ui/server/server.html",
   "../ui/task_designer/task_designer.html",
   "../ui/arcode/index.html",
   "../ui/arcode/main.html",
@@ -772,6 +773,7 @@ test("large page styles are maintained as feature CSS instead of inline blocks",
     ["../ui/method_pages/result_selection/result_selection.html", "/ui/method_pages/result_selection/result_selection.css"],
     ["../ui/shell/browsing_history.html", "/ui/shell/browsing_history.css"],
     ["../ui/agent_guide/agent_guide.html", "/ui/agent_guide/agent_guide.css"],
+    ["../ui/server/server.html", "/ui/server/server.css"],
   ];
   for (const [path, stylesheet] of extractedPages) {
     const html = read(path);

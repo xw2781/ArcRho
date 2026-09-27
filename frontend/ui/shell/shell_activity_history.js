@@ -137,7 +137,7 @@ export function normalizeShellActivityEntry(raw) {
   } else if (tabType === "file_explorer") {
     const path = toText(raw.path || raw.fileExplorerPath);
     if (path) entry.path = path;
-  } else if (!["workflow", "agent_guide", "browsing_history"].includes(tabType)) {
+  } else if (!["workflow", "agent_guide", "browsing_history", "server"].includes(tabType)) {
     return null;
   }
 

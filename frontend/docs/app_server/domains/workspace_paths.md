@@ -12,6 +12,8 @@ Runtime workspace path read/update domain, and the server profiles: the servers 
 | `GET` | `/server_profiles` | `get_server_profiles` | - | - | `server_profile_service.list_server_profiles` |
 | `POST` | `/server_profiles` | `save_server_profile` | `ServerProfileSaveRequest` | [`app_server/schemas/workspace_paths.py`](../../../app_server/schemas/workspace_paths.py) | `server_profile_service.save_server_profile` |
 | `POST` | `/server_profiles/activate` | `activate_server_profile` | `ServerProfileActivateRequest` | [`app_server/schemas/workspace_paths.py`](../../../app_server/schemas/workspace_paths.py) | `server_profile_service.activate_server_profile` |
+| `GET` | `/server_profiles/health` | `get_server_health` | `str` | - | `server_profile_service.server_health` |
+| `GET` | `/server_profiles/inspect` | `inspect_server_folder` | `str` | - | `server_profile_service.inspect_server_folder` |
 | `GET` | `/workspace_paths` | `get_workspace_paths` | - | - | - |
 | `POST` | `/workspace_paths` | `update_workspace_paths` | `WorkspacePathsUpdateRequest` | [`app_server/schemas/workspace_paths.py`](../../../app_server/schemas/workspace_paths.py) | `hosted_save_enrollment_service.auto_enroll_current_user` |
 <!-- AUTO-GEN:END -->
@@ -26,11 +28,13 @@ Runtime workspace path read/update domain, and the server profiles: the servers 
 
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
-- Used by shell root-path settings modal.
+- Used by the shell root-path settings modal and the Server tab (`ui/server/`).
 - Triggers `config.refresh_runtime_paths()` and clears absolute-path runtime caches on updates.
 - After persisting a Server Connection, retries automatic Gateway enrollment for a user who has no local gateway configuration.
 - `GET /workspace_paths` reports whether the AppData config file already exists so the shell can detect first-time setup.
-- `GET /server_profiles` lists every saved server with its folder, credential file, Gateway address (read from that credential) and whether the credential exists, marks the active one, and reports under `set_at_launch` any root or credential fixed by `ARCRHO_SERVER_ROOT`/`ARCRHO_RUNTIME_SERVER_ROOT`/`ARCRHO_GATEWAY_CONFIG`, so a page can show that server read-only.
+- `GET /server_profiles` lists every saved server with its folder, credential file, the credential's user, Gateway address (read from that credential, or from the folder's Gateway registry before the first switch creates it) and whether the credential exists, marks the active one, returns under `current` the server this process actually uses, and reports under `set_at_launch` any root or credential fixed by `ARCRHO_SERVER_ROOT`/`ARCRHO_RUNTIME_SERVER_ROOT`/`ARCRHO_GATEWAY_CONFIG`, so a page can show that server read-only.
+- `GET /server_profiles/health?id=<profile>` asks that server's Gateway `/api/health` from the app server with the short capability timeout and returns `ok` plus a reason; without an `id` it asks about this process's own server. The Server tab uses it for each row's dot, so the page never contacts a Gateway itself.
+- `GET /server_profiles/inspect?root=<folder>` checks a folder is a server root (it holds `projects`) and returns its resolved path, its leaf name as a suggested server name, and the address its `config\arcrho_gateway.json` registry gives clients (`client_url`, else `host:port` unless the host is a wildcard). It writes nothing. The registry is read from the folder (over the share for a remote server) on purpose: it is how a client learns a Gateway's address before it holds a credential for it, the same read enrollment makes, so there is no Gateway to ask yet.
 - `POST /server_profiles` adds a server (or replaces the one with the same `id`; without an `id` one is derived from the name). The folder must hold a `projects` folder.
 - `POST /server_profiles/activate` makes one server active. When the active server changes, the response carries `restart_required: true` and the caller restarts the app the way File > Restart does (`restartApplication` in `ui/shell/app_lifecycle.js`). The route refreshes runtime paths, clears path caches, and enrolls against the new server's Gateway registry when that server's credential does not exist yet, but restarts nothing itself.
 - Both profile writes are refused with 409 while a launch override is set, because they would change the per-machine file the production app reads.

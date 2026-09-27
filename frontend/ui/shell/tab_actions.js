@@ -25,6 +25,7 @@ const RESTORABLE_ACTIVITY_TYPES = new Set([
   "agent_guide",
   "file_explorer",
   "browsing_history",
+  "server",
 ]);
 const TASK_DESIGNER_TYPE = "task_designer";
 let activeHistorySaveTimer = 0;
@@ -407,6 +408,7 @@ export function openShellActivityHistoryEntry(entry) {
   if (normalized.tabType === "agent_guide") return openAgentGuideTab();
   if (normalized.tabType === "browsing_history") return openBrowsingHistoryTab();
   if (normalized.tabType === "file_explorer") return openFileExplorerTab({ path: normalized.path || "" });
+  if (normalized.tabType === "server") return openServerTab();
   return null;
 }
 
@@ -467,6 +469,22 @@ export function openAgentGuideTab() {
     iframe: null,
     layout: "docked",
   };
+  shell.state.tabs.push(tab);
+  setDockedActive(id);
+  shell.render?.();
+  shell.saveState?.();
+  return tab;
+}
+
+// One Server tab: it lists this PC's servers and switches between them.
+export function openServerTab() {
+  const existing = shell.state.tabs.find(t => t.type === "server");
+  if (existing) {
+    setActive(existing.id);
+    return existing;
+  }
+  const id = `sv_${shell.state.nextId++}`;
+  const tab = { id, title: "Server", type: "server", iframe: null, layout: "docked" };
   shell.state.tabs.push(tab);
   setDockedActive(id);
   shell.render?.();

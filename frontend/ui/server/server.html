@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/ui/shared/services/color_theme.js?v=20260923c"></script>
+  <title>Server</title>
+  <link rel="stylesheet" href="/ui/server/server.css?v=20260926a"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260923c">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260923c">
+  <link rel="stylesheet" href="/ui/shared/styles/themes/revolutionary.css?v=20260923c">
+</head>
+<body>
+  <div class="svShell">
+    <header class="svHeader">
+      <div class="svTitleBlock">
+        <h1>Server</h1>
+        <div class="svSubtitle">The app works against one server at a time. Switching restarts the app.</div>
+      </div>
+      <div class="svHeaderActions">
+        <button id="svRefreshBtn" class="svBtn" type="button">Refresh</button>
+        <button id="svAddBtn" class="svBtn primary" type="button">Add Server</button>
+      </div>
+    </header>
+    <main class="svMain">
+      <div id="svLaunchNotice" class="svNotice" role="note" hidden>
+        This window's server was set when the app was launched, so switching and adding servers are turned off here.
+      </div>
+      <section class="svPanel" aria-labelledby="svServersTitle">
+        <div class="svPanelHeader">
+          <h2 id="svServersTitle">Servers</h2>
+          <span id="svServerCount" class="svCount"></span>
+        </div>
+        <form id="svAddForm" class="svAddForm" autocomplete="off" hidden>
+          <div class="svFormGrid">
+            <label for="svAddFolder">Folder : </label>
+            <div class="svFolderControl">
+              <input id="svAddFolder" class="svInput" type="text" placeholder="C:\Arco Server" spellcheck="false">
+              <button id="svAddBrowse" class="svBtn" type="button">Browse...</button>
+            </div>
+            <label for="svAddName">Name : </label>
+            <input id="svAddName" class="svInput" type="text" spellcheck="false">
+            <span class="svFormLabel">Address : </span>
+            <span id="svAddAddress" class="svReadonly">Choose a folder to read its address.</span>
+          </div>
+          <div class="svFormActions">
+            <button id="svAddCancel" class="svBtn" type="button">Cancel</button>
+            <button id="svAddSave" class="svBtn primary" type="submit">Add</button>
+          </div>
+        </form>
+        <div id="svServerList" class="svServerList" role="list">
+          <div class="svEmpty">Loading servers...</div>
+        </div>
+        <div id="svMessage" class="svMessage" role="status" aria-live="polite"></div>
+      </section>
+      <section id="svComponentsPanel" class="svPanel" aria-labelledby="svComponentsTitle">
+        <div class="svPanelHeader">
+          <h2 id="svComponentsTitle">Components</h2>
+        </div>
+        <div class="svEmpty">Component status is not shown here yet.</div>
+      </section>
+    </main>
+  </div>
+  <div id="svConfirmOverlay" class="svOverlay" hidden>
+    <div class="svDialog" role="dialog" aria-modal="true" aria-labelledby="svConfirmTitle">
+      <div id="svConfirmTitle" class="svDialogTitle">Switch Server</div>
+      <div id="svConfirmMessage" class="svDialogMessage"></div>
+      <div class="svDialogButtons">
+        <button id="svConfirmCancel" class="svBtn" type="button">Cancel</button>
+        <button id="svConfirmOk" class="svBtn primary" type="button">Switch and Restart</button>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="./server.js?v=20260926a"></script>
+</body>
+</html>

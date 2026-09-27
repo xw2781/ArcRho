@@ -377,6 +377,10 @@ input, textarea, select, option, [contenteditable="true"] {
   gap: 8px;
   margin-top: 14px;
 }
+/* Saved servers and switching live in the Server tab; the dialog stays for first-run setup. */
+#rootPathServerTabBtn {
+  margin-right: auto;
+}
 
 #forceRebuildSettingsOverlay {
   position: fixed;
@@ -1132,6 +1136,7 @@ iframe.floatingTabIframe {
 .homeIconBox.agentGuide { color: #0891b2; }
 .homeIconBox.shortcut { color: #475569; }
 .homeIconBox.theme { color: #6366f1; }
+.homeIconBox.server { color: #0f766e; }
 .card h3 {
   margin: 1px 0 6px 0;
   color: #202327;

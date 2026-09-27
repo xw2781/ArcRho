@@ -138,6 +138,50 @@ export function handleProjectSettingsProgressMessage(
   return true;
 }
 
+// Switching servers restarts the app server, so the shell refuses while any tab holds unsaved
+// changes, then activates the server and runs the ordinary restart. Only the Server tab may ask.
+export async function handleServerSwitchMessage(
+  source,
+  msg,
+  origin = globalThis.location?.origin || "",
+) {
+  if (msg?.type !== "arcrho:server-switch") return false;
+  const expectedOrigin = String(globalThis.location?.origin || "");
+  if (expectedOrigin && origin !== expectedOrigin) return false;
+  const tabs = shell.state?.tabs || [];
+  if (!tabs.some((tab) => tab.type === "server" && tab.iframe?.contentWindow === source)) return false;
+  const reply = (payload) => {
+    try {
+      source.postMessage({ type: "arcrho:server-switch-result", requestId: msg.requestId, ...payload }, expectedOrigin || "*");
+    } catch {}
+  };
+  const dirtyTabs = tabs.filter((tab) => tab.isDirty).map((tab) => String(tab.title || tab.type));
+  if (dirtyTabs.length) {
+    reply({ ok: false, dirtyTabs });
+    return true;
+  }
+  let data;
+  try {
+    const response = await fetch("/server_profiles/activate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: String(msg.id || "") }),
+    });
+    data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      reply({ ok: false, error: String(data?.detail || `The server could not be switched (${response.status}).`) });
+      return true;
+    }
+  } catch (err) {
+    reply({ ok: false, error: String(err?.message || err) });
+    return true;
+  }
+  const restartRequired = data?.restart_required === true;
+  reply({ ok: true, restartRequired });
+  if (restartRequired) await shell.restartApplication?.();
+  return true;
+}
+
 export function initShellMessages() {
   if (shellMessagesWired) return;
   shellMessagesWired = true;
@@ -146,6 +190,10 @@ export function initShellMessages() {
     if (!msg) return;
     if (msg.type === "arcrho:project-settings-progress") {
       handleProjectSettingsProgressMessage(e.source, msg, e.origin);
+      return;
+    }
+    if (msg.type === "arcrho:server-switch") {
+      void handleServerSwitchMessage(e.source, msg, e.origin);
       return;
     }
     if (msg.type === "arcrho:close-shell-menus") return shell.closeAllShellMenus?.();

@@ -88,7 +88,7 @@ def _normalize_path(path_like: str | Path) -> Path:
     return Path(path_like).expanduser().resolve()
 
 
-def _validate_server_root(path_like: str | Path) -> Path:
+def validate_server_root(path_like: str | Path) -> Path:
     root = _normalize_path(path_like)
     try:
         valid_root = root.exists() and root.is_dir()
@@ -242,7 +242,7 @@ def upsert_server_profile(
     profile_id = (profile_id.strip() or profile_id_for(name)).lower()
     if not PROFILE_ID_PATTERN.match(profile_id):
         raise ValueError("A server profile id uses letters, digits, '_' or '-' only.")
-    _validate_server_root(root)
+    validate_server_root(root)
     profile = {"id": profile_id, "name": name.strip() or profile_id, "root": root.strip()}
     if gateway_config.strip():
         profile["gateway_config"] = gateway_config.strip()
@@ -298,7 +298,7 @@ def _load_default_server_root() -> Path | None:
     """Return the packaged default root only when it is a real Arco Server."""
 
     try:
-        return _validate_server_root(DEFAULT_WORKSPACE_ROOT)
+        return validate_server_root(DEFAULT_WORKSPACE_ROOT)
     except InvalidArcRhoServerError:
         return None
 
@@ -371,7 +371,7 @@ def set_server_root(server_root: str | Path, *, persist: bool = True, validate: 
     """Set the default Arco Server root in process and in the host config."""
 
     global _explicit_server_root, _server_root, _discovery_attempted
-    root = _validate_server_root(server_root) if validate else _normalize_path(server_root)
+    root = validate_server_root(server_root) if validate else _normalize_path(server_root)
     _explicit_server_root = root
     _server_root = root
     _discovery_attempted = False

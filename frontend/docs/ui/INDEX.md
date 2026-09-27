@@ -11,6 +11,7 @@ Frontend module map for page entrypoints, shell orchestration, and feature-speci
 | --- | --- | --- |
 | `ui/index.html` | 2 external scripts | - |
 | `ui/file_explorer/file_explorer.html` | 2 external scripts | - |
+| `ui/server/server.html` | 2 external scripts | - |
 | `ui/dataset_viewer/dataset_viewer.html` | 2 external scripts | 1 inline import |
 | `ui/method_pages/dfm/dfm.html` | 2 external scripts | 3 inline imports |
 | `ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson.html` | 3 external scripts | - |
@@ -31,6 +32,7 @@ Frontend module map for page entrypoints, shell orchestration, and feature-speci
 <!-- AUTO-GEN:BEGIN frontend.index.key_files -->
 - [`docs/ui/shell.md`](shell.md) - Shell tab host index.
 - [`docs/ui/file_explorer.md`](file_explorer.md) - File Explorer feature index.
+- [`docs/ui/server.md`](server.md) - Server tab index.
 - [`docs/ui/dataset.md`](dataset.md) - Dataset feature index.
 - [`docs/ui/dfm.md`](dfm.md) - DFM feature index.
 - [`docs/ui/bornhuetter_ferguson.md`](bornhuetter_ferguson.md) - Bornhuetter Ferguson method-page index.

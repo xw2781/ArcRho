@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import URLError
 
 from fastapi import HTTPException
 
@@ -25,7 +26,7 @@ from app_server.schemas.workspace_paths import (  # noqa: E402
     ServerProfileActivateRequest,
     ServerProfileSaveRequest,
 )
-from app_server.services import hosted_save_enrollment_service  # noqa: E402
+from app_server.services import hosted_save_enrollment_service, server_profile_service  # noqa: E402
 
 # The api package re-exports each module's router object under the module's name.
 router = importlib.import_module("app_server.api.workspace_paths_router")
@@ -125,6 +126,77 @@ class ServerProfileRouteTests(unittest.TestCase):
         self.assertEqual(listing["set_at_launch"]["root"], str(self.local))
         self.assertEqual(caught.exception.status_code, 409)
         self.assertEqual(self.config_path.read_bytes(), before)
+
+    def test_a_server_without_a_credential_shows_its_registry_address(self) -> None:
+        self._add_local()
+
+        listing = router.get_server_profiles()
+
+        local = listing["profiles"][1]
+        self.assertEqual(local["gateway_url"], "http://127.0.0.1:28767")
+        self.assertEqual(local["user"], "")
+        self.assertEqual(listing["current"]["root"], str(self.production))
+        self.assertEqual(listing["current"]["gateway_url"], "http://production:28767")
+
+    def test_health_is_probed_by_the_app_server_for_one_profile_or_this_window(self) -> None:
+        self._add_local()
+        probed = []
+
+        def probe(url):
+            probed.append(url)
+            if "127.0.0.1" in url:
+                raise URLError("connection refused")
+
+        with patch.object(server_profile_service.hosted_save_http_client, "probe_gateway_health", side_effect=probe):
+            local = router.get_server_health(id="local")
+            current = router.get_server_health(id="")
+
+        self.assertEqual(probed, ["http://127.0.0.1:28767", "http://production:28767"])
+        self.assertFalse(local["ok"])
+        self.assertIn("connection refused", local["detail"])
+        self.assertTrue(current["ok"])
+        with self.assertRaises(HTTPException) as caught:
+            router.get_server_health(id="missing")
+        self.assertEqual(caught.exception.status_code, 404)
+
+    def test_the_health_probe_asks_the_gateway_health_path(self) -> None:
+        opened = []
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b'{"ok": true}'
+
+        def open_request(request, timeout):
+            opened.append((request.full_url, timeout))
+            return Response()
+
+        client = server_profile_service.hosted_save_http_client
+        with patch.object(client._DIRECT_HTTP_OPENER, "open", side_effect=open_request):
+            client.probe_gateway_health("http://127.0.0.1:28767")
+
+        self.assertEqual(opened, [("http://127.0.0.1:28767/api/health", client.GATEWAY_HEALTH_TIMEOUT_SECONDS)])
+
+    def test_inspecting_a_folder_reads_its_registry_address(self) -> None:
+        found = router.inspect_server_folder(root=str(self.local))
+
+        self.assertEqual(found["root"], str(self.local.resolve()))
+        self.assertEqual(found["name"], "local")
+        self.assertEqual(found["gateway_url"], "http://127.0.0.1:28767")
+
+        registry = default_gateway_config()
+        registry["host"] = "SERVERPC"
+        (self.production / "config" / "arcrho_gateway.json").write_text(json.dumps(registry), encoding="utf-8")
+        self.assertEqual(router.inspect_server_folder(root=str(self.production))["gateway_url"], "http://SERVERPC:28767")
+
+        with self.assertRaises(HTTPException) as caught:
+            router.inspect_server_folder(root=str(self.settings))
+        self.assertEqual(caught.exception.status_code, 400)
 
     def test_unknown_server_is_refused(self) -> None:
         with self.assertRaises(HTTPException) as caught:
