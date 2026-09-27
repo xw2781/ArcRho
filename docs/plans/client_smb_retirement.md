@@ -19,7 +19,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 3 | Audit log entries from two PCs can no longer overwrite each other | [x] | 2026-09-27 | 45 min | 41 min | The project audit log is read and written on the server, so entries saved from two PCs at once no longer overwrite each other. |
 | 4 | ArcBot edits go through the normal save instead of writing files directly | [x] | 2026-09-27 | 70 min | 28 min | ArcBot's edits now land in the open page and save through its normal Save; "revert the latest ArcBot edit" undoes it in that page, and no backup files are written next to the method. |
 | 5 | Editing a method file by hand no longer writes around the save | [x] | 2026-09-27 | 35 min | 18 min | "Open DFM JSON" now shows the method read only, loaded from the server; it cannot be saved there, so a method changes only through its DFM page. |
-| 6 | Deploy the server side of steps 1-3 | [ ] | | 20 min | | |
+| 6 | Deploy the server side of steps 1-3 | [ ] | | 20 min | | Local test server done 2026-09-27 (it offers every new save and audit-log operation); production waits for the user |
 | 7 | Project configuration pages load from the server | [ ] | | 70 min | | |
 | 8 | Reserving-class pickers and filters load and save through the server | [ ] | | 70 min | | |
 | 9 | Dataset and method side panels load from the server | [ ] | | 65 min | | |
