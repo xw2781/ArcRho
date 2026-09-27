@@ -11,17 +11,17 @@ Provides project-folder filesystem operations used by Project Settings tree acti
 <!-- AUTO-GEN:BEGIN app_server.project_settings.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
-| `GET` | `/general_settings` | `get_general_settings` | `str` | - | `project_settings_service.get_general_settings` |
+| `GET` | `/general_settings` | `get_general_settings` | `str` | - | `project_settings_service.get_general_settings`, `workspace_read_client.run_workspace_read` |
 | `POST` | `/general_settings` | `update_general_settings` | `GeneralSettingsUpdateRequest` | [`app_server/schemas/project_settings.py`](../../../app_server/schemas/project_settings.py) | `project_settings_service.update_general_settings` |
-| `GET` | `/project_settings` | `list_project_settings_sources` | - | - | `project_settings_service.list_project_settings_sources` |
-| `GET` | `/project_settings/{source}` | `get_project_settings` | `str` | - | `project_settings_service.get_project_settings` |
+| `GET` | `/project_settings` | `list_project_settings_sources` | - | - | `workspace_read_client.run_workspace_read` |
+| `GET` | `/project_settings/{source}` | `get_project_settings` | `str` | - | `project_settings_service.get_project_settings`, `workspace_read_client.run_workspace_read` |
 | `POST` | `/project_settings/{source}` | `update_project_settings` | `ProjectSettingsUpdateRequest` | [`app_server/schemas/project_settings.py`](../../../app_server/schemas/project_settings.py) | `project_settings_service.update_project_settings` |
 | `POST` | `/project_settings/{source}/create_project_folder` | `create_project_folder` | `CreateProjectFolderRequest` | [`app_server/schemas/project_settings.py`](../../../app_server/schemas/project_settings.py) | `project_settings_service.create_project_folder` |
 | `POST` | `/project_settings/{source}/delete_project_folder` | `delete_project_folder` | `DeleteProjectFolderRequest` | [`app_server/schemas/project_settings.py`](../../../app_server/schemas/project_settings.py) | `project_settings_service.delete_project_folder` |
 | `POST` | `/project_settings/{source}/duplicate_project_folder` | `duplicate_project_folder` | `DuplicateProjectFolderRequest` | [`app_server/schemas/project_settings.py`](../../../app_server/schemas/project_settings.py) | `project_settings_service.duplicate_project_folder` |
 | `POST` | `/project_settings/{source}/duplicate_project_folder/cancel/{request_id}` | `cancel_duplicate_project_folder` | `str` | - | `project_settings_service.cancel_duplicate_project_folder` |
 | `GET` | `/project_settings/{source}/duplicate_project_folder/status/{request_id}` | `get_duplicate_project_folder_status` | `str` | - | `project_settings_service.get_duplicate_project_folder_status` |
-| `GET` | `/project_settings/{source}/folders` | `get_project_folders` | `str` | - | `project_settings_service.get_project_folders` |
+| `GET` | `/project_settings/{source}/folders` | `get_project_folders` | `str` | - | `project_settings_service.get_project_folders`, `workspace_read_client.run_workspace_read` |
 | `POST` | `/project_settings/{source}/generated_dataset_cache/clear` | `clear_generated_dataset_csv_caches` | `GeneratedDatasetCacheClearRequest` | [`app_server/schemas/project_settings.py`](../../../app_server/schemas/project_settings.py) | `project_settings_service.clear_generated_dataset_csv_caches` |
 | `POST` | `/project_settings/{source}/open_project_folder` | `open_project_folder` | `OpenProjectFolderRequest` | [`app_server/schemas/project_settings.py`](../../../app_server/schemas/project_settings.py) | `project_settings_service.open_project_folder` |
 | `POST` | `/project_settings/{source}/rename_project_folder` | `rename_project_folder` | `RenameProjectFolderRequest` | [`app_server/schemas/project_settings.py`](../../../app_server/schemas/project_settings.py) | `project_settings_service.rename_project_folder` |
@@ -39,6 +39,7 @@ Provides project-folder filesystem operations used by Project Settings tree acti
 <!-- MANUAL:BEGIN -->
 - Heavily used by `project_settings.js` UI flows.
 - Provides `/general_settings` read/write for Source Data Origin/Development boundary values.
+- The GET routes (`/project_settings`, `/project_settings/{source}`, `/project_settings/{source}/folders`, `/general_settings`) read on the server host through the Gateway as the `project_settings_sources`, `project_registry`, `project_folders` and `general_settings` hosted reads; a Client PC answers `503` rather than reading the share (see [`workspace_reads`](workspace_reads.md)).
 - Provides project-folder CRUD-style endpoints under `/project_settings/{source}/*_project_folder` (including empty-folder creation for new-project tree action).
 - Provides `POST /project_settings/{source}/open_project_folder` for opening a selected project directory in the host OS file explorer.
 <!-- MANUAL:END -->

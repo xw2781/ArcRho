@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import os
-import json
 from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 
-from app_server import config
 from app_server.schemas.field_mapping import FieldMappingSaveRequest
-from app_server.services import field_mapping_service
+from app_server.services import field_mapping_service, workspace_read_client
 
 router = APIRouter()
 
@@ -17,30 +14,14 @@ router = APIRouter()
 def get_field_mapping(project_name: str) -> Dict[str, Any]:
     if not project_name or not project_name.strip():
         raise HTTPException(400, "Missing project_name parameter")
-
-    try:
-        filepath = config.get_field_mapping_path(project_name)
-    except ValueError as e:
-        raise HTTPException(404, str(e))
-
-    if not os.path.exists(filepath):
-        return {
-            "ok": True,
-            "exists": False,
-            "path": filepath,
-            "data": {"project_name": project_name, "rows": []},
-        }
-
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if not isinstance(data, dict):
-            data = {"project_name": project_name, "rows": []}
-        if not isinstance(data.get("rows"), list):
-            data["rows"] = []
-        return {"ok": True, "exists": True, "path": filepath, "data": data}
-    except Exception as e:
-        raise HTTPException(500, f"Failed to read field mapping: {str(e)}")
+    # Read on the server host through the Gateway; a Client PC never opens
+    # the mapping over the share.
+    return workspace_read_client.run_workspace_read(
+        "field_mapping",
+        {"project_name": project_name},
+        local=lambda: field_mapping_service.get_field_mapping(project_name),
+        gateway_required=True,
+    )
 
 
 @router.post("/field_mapping")

@@ -22,7 +22,9 @@ The SQL Server profile lives with the project and is shared by every user of tha
 
 `POST /source_table/profile` also accepts an optional `csv_path` for `csv`-sourced projects and writes it into the project's `field_mapping.json::table_path`, making the profile save the single writer of the external CSV selection; an omitted `csv_path` leaves the stored path unchanged.
 
-`GET /source_table/file_status` reads the external source file's own identity - modified time, size, and whether it still matches the recorded import - without importing anything, so the Source Data details panel can show the file's live modified time rather than the one captured when the copy was taken. It runs on the caller's machine rather than the ArcRho Server host on purpose: an import source is not project data, and the configured path may be a Client PC drive the server cannot see, which is the same reason `resolve_import_source_for_server` exists. An unreachable file answers `exists: false` instead of failing.
+`GET /source_table/file_status` reads the external source file's own identity - modified time, size, and whether it still matches the recorded import - without importing anything, so the Source Data details panel can show the file's live modified time rather than the one captured when the copy was taken. It runs on the caller's machine rather than the ArcRho Server host on purpose: an import source is not project data, and the configured path may be a Client PC drive the server cannot see, which is the same reason `resolve_import_source_for_server` exists. An unreachable file answers `exists: false` instead of failing. Only that stat stays on the client: the import record and the configured path come from the `source_table_settings` hosted read, the same one `GET /source_table` uses.
+
+`GET /source_table` and `GET /source_table/connections` read on the server host through the Gateway (the `source_table_settings` and `mssql_connections` hosted reads, Gateway-required; see [`workspace_reads`](workspace_reads.md)). `driver_available` in the `GET /source_table` answer is added on the client, because the SQL Server import runs there with the user's own Windows login.
 
 `POST /source_table/tables` lists the tables and views the caller can see in one database, so the Source Data picker never has to assemble a name itself. It validates only the server/database half of the profile, because choosing the table is exactly what it is for.
 
@@ -36,7 +38,7 @@ Server/database pairs that connect successfully are recorded in a **server-share
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/source_table` | `get_source_table` | `str` | - | `source_table_service.get_source_table_state` |
-| `GET` | `/source_table/connections` | `get_source_table_connections` | - | - | `source_table_service.load_mssql_connections` |
+| `GET` | `/source_table/connections` | `get_source_table_connections` | - | - | `workspace_read_client.run_workspace_read` |
 | `POST` | `/source_table/connections/forget` | `forget_source_table_connection` | `MssqlConnectionForgetRequest` | [`app_server/schemas/source_table.py`](../../../app_server/schemas/source_table.py) | `source_table_service.forget_mssql_connection` |
 | `GET` | `/source_table/file_status` | `get_source_table_file_status` | `str` | - | `source_table_service.get_source_file_status` |
 | `POST` | `/source_table/import` | `import_source_table` | `SourceTableImportRequest` | [`app_server/schemas/source_table.py`](../../../app_server/schemas/source_table.py) | `source_table_service.import_from_mssql` |

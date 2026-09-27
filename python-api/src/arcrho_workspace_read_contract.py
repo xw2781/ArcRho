@@ -325,6 +325,85 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         ("project_name",),
         ("limit",),
     ),
+    # Project Settings and the project pickers: each is one route's whole
+    # response, read where the configuration files are local disk. A Client
+    # PC never opens them over the share.
+    "project_settings_sources": WorkspaceReadKind(
+        "project_settings_service",
+        "list_project_settings_sources",
+        (),
+    ),
+    "project_folders": WorkspaceReadKind(
+        "project_settings_service",
+        "get_project_folders",
+        ("source",),
+    ),
+    "project_registry": WorkspaceReadKind(
+        "project_settings_service",
+        "get_project_settings",
+        ("source",),
+    ),
+    "project_names": WorkspaceReadKind(
+        "arcrho_runtime_service",
+        "arcrho_projects",
+        (),
+    ),
+    "general_settings": WorkspaceReadKind(
+        "project_settings_service",
+        "get_general_settings",
+        ("project_name",),
+    ),
+    # The grid's own shape of the dataset-type table (``project_dataset_types``
+    # above answers the Excel add-in's shape).
+    "dataset_types_table": WorkspaceReadKind(
+        "dataset_types_service",
+        "get_dataset_types_table",
+        ("project_name",),
+    ),
+    "field_mapping": WorkspaceReadKind(
+        "field_mapping_service",
+        "get_field_mapping",
+        ("project_name",),
+    ),
+    # The import record and master-table status. Whether this PC has a SQL
+    # Server driver, and the live stat of an external CSV, stay on the client:
+    # the SQL Server import runs there and the CSV may be on a drive only it has.
+    "source_table_settings": WorkspaceReadKind(
+        "source_table_service",
+        "read_source_table_settings",
+        ("project_name",),
+    ),
+    "mssql_connections": WorkspaceReadKind(
+        "source_table_service",
+        "load_mssql_connections",
+        (),
+    ),
+    "dataset_number_format_defaults": WorkspaceReadKind(
+        "dataset_number_format_service",
+        "get_preferences",
+        (),
+        ("dataset_type_name",),
+    ),
+    # The login comes from the signed request; the display name from the
+    # server's username index.
+    "user_identity": WorkspaceReadKind(
+        "user_identity_service",
+        "get_current_identity",
+        (),
+    ),
+    # Both read the master table and the vocabulary cache as they stand and
+    # write neither; the source refresh job owns those writes.
+    "data_processing_rules": WorkspaceReadKind(
+        "data_processing_rules_service",
+        "read_data_processing_rules",
+        ("project_name",),
+    ),
+    "data_processing_rules_validate": WorkspaceReadKind(
+        "data_processing_rules_service",
+        "check_data_processing_rules",
+        ("project_name",),
+        ("data",),
+    ),
 }
 
 HTTP_WORKSPACE_READ_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_READ_KINDS))

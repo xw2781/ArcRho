@@ -16,7 +16,8 @@ that class meets the same 423 hold it already understands.
 The job runs three stages:
 
 ``import``   the canonical ``source_table_service`` writes the master copy.
-``caches``   the table summary and reserving-class values are regenerated.
+``caches``   the table summary, reserving-class values and the data-processing
+             vocabulary cache are regenerated.
 ``classes``  every engine-generated dataset instance is regenerated through the
              canonical ``run_arcrho_tri`` path, then one dependent walk per
              reserving class updates the calculated datasets and the methods.
@@ -507,6 +508,7 @@ def execute_source_refresh(
 
     from app_server.services import (
         arcrho_runtime_service,
+        data_processing_values_service,
         source_table_service,
         table_summary_service,
         user_identity_service,
@@ -600,6 +602,16 @@ def execute_source_refresh(
         )
         if not result["row_count"]:
             result["row_count"] = int(summary.get("row_count") or 0)
+        # The Data Processing Rules page reads this cache and never writes it,
+        # so the job that changed the table rebuilds it.
+        try:
+            data_processing_values_service.get_data_processing_values(project_name)
+        except Exception as exc:
+            result["failures"].append(
+                "The data-processing value list could not be rebuilt: "
+                f"{_redact_machine_paths(exc)}"
+            )
+            _log(root, "data-processing values rebuild failed", exc=exc)
         # Origin and development header labels are derived from the table that
         # just changed, so their cache is no longer describing it. Datasets
         # regenerated below rebuild it from the new data on first use.

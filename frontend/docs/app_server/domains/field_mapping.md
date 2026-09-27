@@ -17,7 +17,7 @@ That granularity is the shape an Engine-generated dataset can be rebuilt at, wha
 <!-- AUTO-GEN:BEGIN app_server.field_mapping.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
-| `GET` | `/field_mapping` | `get_field_mapping` | `str` | - | - |
+| `GET` | `/field_mapping` | `get_field_mapping` | `str` | - | `field_mapping_service.get_field_mapping`, `workspace_read_client.run_workspace_read` |
 | `POST` | `/field_mapping` | `save_field_mapping` | `FieldMappingSaveRequest` | [`app_server/schemas/field_mapping.py`](../../../app_server/schemas/field_mapping.py) | `field_mapping_service.save_field_mapping` |
 <!-- AUTO-GEN:END -->
 
@@ -31,6 +31,7 @@ That granularity is the shape an Engine-generated dataset can be rebuilt at, wha
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
 - Used by project settings field mapping feature and by data-engine project source CSV lookup.
+- `GET /field_mapping` is the `field_mapping` hosted read (`field_mapping_service.get_field_mapping`), run on the server host through the Gateway; a Client PC answers `503` rather than reading the share.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

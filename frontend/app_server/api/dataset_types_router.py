@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import json
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException
@@ -14,6 +12,7 @@ from app_server.schemas.dataset_types import (
 from app_server.services import (
     dataset_types_change_service,
     dataset_types_service,
+    workspace_read_client,
 )
 from app_server.services.audit_service import safe_append_project_audit_log
 
@@ -24,32 +23,14 @@ router = APIRouter()
 def get_dataset_types(project_name: str) -> Dict[str, Any]:
     if not project_name or not project_name.strip():
         raise HTTPException(400, "Missing project_name parameter")
-
-    try:
-        filepath = config.get_dataset_types_path(project_name)
-    except ValueError as e:
-        raise HTTPException(404, str(e))
-
-    if not os.path.exists(filepath):
-        return {
-            "ok": True,
-            "exists": False,
-            "path": filepath,
-            "data": {
-                "columns": list(config.DATASET_TYPES_FILE_COLUMNS),
-                "rows": [],
-                "source_by_name": {},
-                "generated_by_name": {},
-            },
-        }
-
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-        data = dataset_types_service.normalize_dataset_types_data(raw)
-        return {"ok": True, "exists": True, "path": filepath, "data": data}
-    except Exception as e:
-        raise HTTPException(500, f"Failed to read dataset types: {str(e)}")
+    # Read on the server host through the Gateway; a Client PC never opens
+    # the table over the share.
+    return workspace_read_client.run_workspace_read(
+        "dataset_types_table",
+        {"project_name": project_name},
+        local=lambda: dataset_types_service.get_dataset_types_table(project_name),
+        gateway_required=True,
+    )
 
 
 @router.post("/dataset_types/import_local_file")

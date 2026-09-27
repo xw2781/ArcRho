@@ -725,19 +725,39 @@ def _master_status(
     }
 
 
-def get_source_table_state(project_name: str) -> Dict[str, Any]:
-    """Import record plus master-copy status, without importing anything."""
+def read_source_table_settings(project_name: str) -> Dict[str, Any]:
+    """Import record plus master-copy status, without importing anything.
+
+    Everything here is project data, so a Client PC asks the server host for
+    it through the Gateway (the ``source_table_settings`` read).
+    """
     name = _require_project_name(project_name)
     record = read_source_import(name)
     master_path = resolve_master_table_path(name)
     state = _master_status(name, master_path, record, refreshed=False)
     state["csv_path"] = _configured_csv_path(name)
-    state["driver_available"] = mssql_odbc.driver_available()
     state["supported_authentication"] = list(SUPPORTED_MSSQL_AUTH_MODES)
     return state
 
 
-def get_source_file_status(project_name: str) -> Dict[str, Any]:
+def get_source_table_state(
+    project_name: str,
+    settings: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """The settings plus whether this machine has a SQL Server driver.
+
+    The driver answer is this machine's own because the SQL Server import runs
+    here. *settings* is a ``read_source_table_settings`` answer already in hand.
+    """
+    state = dict(settings) if settings is not None else read_source_table_settings(project_name)
+    state["driver_available"] = mssql_odbc.driver_available()
+    return state
+
+
+def get_source_file_status(
+    project_name: str,
+    settings: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Live identity of the external source file, read without importing it.
 
     The import record only holds what the file's modified time was when the
@@ -745,15 +765,18 @@ def get_source_file_status(project_name: str) -> Dict[str, Any]:
     stat runs here rather than on the Arco Server host because an import
     source is not project data: the configured path may be a Client PC drive
     the server cannot see, which is the same reason
-    `resolve_import_source_for_server` exists.
+    `resolve_import_source_for_server` exists. The import record and the
+    configured path are project data; *settings* is a
+    ``read_source_table_settings`` answer already in hand, which a Client PC
+    gets through the Gateway.
 
     A SQL Server project has no file, and an unreachable one answers
     `exists: false` so the panel keeps showing the recorded time.
     """
     name = _require_project_name(project_name)
-    record = read_source_import(name)
+    record = settings if settings is not None else read_source_table_settings(name)
     source_type = normalize_source_type(record.get("source_type"))
-    csv_path = "" if source_type == SOURCE_TYPE_MSSQL else _configured_csv_path(name)
+    csv_path = "" if source_type == SOURCE_TYPE_MSSQL else str(record.get("csv_path") or "")
     status: Dict[str, Any] = {
         "project_name": name,
         "source_type": source_type,
@@ -813,6 +836,15 @@ def resolve_import_source_for_server(project_name: str) -> Dict[str, Any]:
             and import_source_path_is_shared(normalized)
         ),
     }
+
+
+def imported_master_table_path(project_name: str) -> str:
+    """Master copy path as it stands, or an empty string when there is none.
+
+    For a read that must not import: the source refresh job owns the copy.
+    """
+    master_path = resolve_master_table_path(project_name)
+    return master_path if os.path.isfile(master_path) else ""
 
 
 def resolve_source_table_for_read(project_name: str) -> str:

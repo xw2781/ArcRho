@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -17,6 +18,7 @@ if str(FRONTEND_ROOT) not in sys.path:
 from fastapi import HTTPException
 
 from app_server import config
+from arcrho_api import config as api_config
 from app_server.api.data_processing_rules_router import (
     get_data_processing_rules as get_data_processing_rules_route,
 )
@@ -25,6 +27,7 @@ from app_server.services import (
     data_processing_rules_service,
     data_processing_values_service,
     reserving_class_service,
+    source_table_service,
     user_identity_service,
 )
 
@@ -131,10 +134,19 @@ class DataProcessingRulesServiceTests(unittest.TestCase):
             str(self.projects_dir),
         )
         self.project_root_patch.start()
+        self._import_source()
 
     def tearDown(self) -> None:
         self.project_root_patch.stop()
         self.temp_dir.cleanup()
+
+    def _import_source(self) -> None:
+        """Copy the source into the master table, as the source refresh job does.
+
+        The rules GET and validate read the master table as it stands and never
+        import it themselves.
+        """
+        source_table_service.ensure_master_table(self.project_name, force=True)
 
     def _write_json(self, name: str, payload: dict) -> None:
         (self.project_dir / name).write_text(
@@ -200,11 +212,59 @@ class DataProcessingRulesServiceTests(unittest.TestCase):
             ["BI", "UMBI", "PD", "TOTAL PA"],
         )
 
+    def test_get_and_validate_never_import_or_write_the_value_list(self) -> None:
+        master_path = Path(source_table_service.resolve_master_table_path(self.project_name))
+        values_path = Path(config.get_data_processing_values_path(self.project_name))
+        imported = data_processing_rules_service.get_data_processing_rules(self.project_name)
+        self.assertFalse(values_path.exists())
+
+        # The source changes after the last import: a read keeps answering
+        # from the imported table and leaves both files alone.
+        master_before = master_path.read_bytes()
+        self.table_path.write_text(
+            "STATE_CD,IBNRCAT,Earned_Premium\nNJ,COL,5\n",
+            encoding="utf-8",
+        )
+        read = data_processing_rules_service.get_data_processing_rules(self.project_name)
+        checked = data_processing_rules_service.validate_data_processing_rules(
+            self.project_name, self._candidate()
+        )
+        self.assertEqual(master_path.read_bytes(), master_before)
+        self.assertFalse(values_path.exists())
+        self.assertEqual(read["options"], imported["options"])
+        self.assertEqual(checked["options"], imported["options"])
+
+        # With no import at all a read reports that rather than importing.
+        master_path.unlink()
+        empty = data_processing_rules_service.validate_data_processing_rules(
+            self.project_name, self._candidate()
+        )
+        self.assertFalse(master_path.exists())
+        self.assertFalse(values_path.exists())
+        self.assertIn("No source table has been imported for this project.", empty["errors"])
+
+    def test_a_read_serves_the_value_list_the_refresh_writes(self) -> None:
+        values_path = Path(config.get_data_processing_values_path(self.project_name))
+        built = data_processing_values_service.read_data_processing_values(self.project_name)
+        self.assertFalse(values_path.exists())
+
+        written = data_processing_values_service.get_data_processing_values(self.project_name)
+        self.assertTrue(values_path.exists())
+        ignore_time = lambda payload: {k: v for k, v in payload.items() if k != "updated_at"}
+        self.assertEqual(ignore_time(built), ignore_time(written))
+        with patch.object(
+            data_processing_values_service, "_build_cache_payload", side_effect=AssertionError("cache is current")
+        ):
+            self.assertEqual(
+                data_processing_values_service.read_data_processing_values(self.project_name), written
+            )
+
     def test_mapped_dataset_absence_is_a_warning_not_a_validation_error(self) -> None:
         self.table_path.write_text(
             "STATE_CD,IBNRCAT\nNJ,BI\n",
             encoding="utf-8",
         )
+        self._import_source()
 
         result = data_processing_rules_service.validate_data_processing_rules(
             self.project_name,
@@ -233,6 +293,7 @@ class DataProcessingRulesServiceTests(unittest.TestCase):
             "STATE_CD,IBNRCAT,Earned_Premium\nNJ,BI,100\n",
             encoding="utf-8",
         )
+        self._import_source()
 
         result = data_processing_rules_service.validate_data_processing_rules(
             self.project_name,
@@ -478,6 +539,7 @@ class DataProcessingRulesServiceTests(unittest.TestCase):
             "NJ,COL,40\n",
             encoding="utf-8",
         )
+        self._import_source()
         self._write_json(
             "reserving_class_values.json",
             {"fields": [{"field_name": "IBNRCAT", "level": 5,
@@ -531,7 +593,8 @@ class DataProcessingRulesServiceTests(unittest.TestCase):
             lock.release()
 
     def test_vocabulary_lock_contention_maps_to_http_423(self) -> None:
-        with patch.object(
+        # Run as a server process: on a Client PC the route asks the Gateway.
+        with patch.dict(os.environ, {api_config.RUNTIME_SERVER_ROOT_ENV: str(self.root)}), patch.object(
             data_processing_rules_service,
             "get_data_processing_rules",
             side_effect=data_processing_values_service.DataProcessingValuesLockedError(

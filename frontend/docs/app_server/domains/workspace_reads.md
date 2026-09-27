@@ -33,6 +33,21 @@ No new browser-facing route. These existing routes select the transport per requ
 | (no route; the ResQ import and sync macros call `run_workspace_read` directly through `arcrho_api.bridge_liveness.observe_bridge_liveness`) | `bridge_worker_liveness` | `bridge_liveness_service.get_bridge_worker_liveness` |
 | `GET /server/status` (only for a server folder that is not on a fixed disk of this PC) | `server_component_status` | `server_component_status_service.get_server_component_status` |
 | `GET /audit_log` | `project_audit_log` | `audit_service.read_audit_log` |
+| `GET /project_settings` | `project_settings_sources` | `project_settings_service.list_project_settings_sources` |
+| `GET /project_settings/{source}/folders` | `project_folders` | `project_settings_service.get_project_folders` |
+| `GET /project_settings/{source}` | `project_registry` | `project_settings_service.get_project_settings` |
+| `GET /arcrho/projects` | `project_names` | `arcrho_runtime_service.arcrho_projects` |
+| `GET /general_settings` | `general_settings` | `project_settings_service.get_general_settings` |
+| `GET /dataset_types` | `dataset_types_table` | `dataset_types_service.get_dataset_types_table` |
+| `GET /field_mapping` | `field_mapping` | `field_mapping_service.get_field_mapping` |
+| `GET /source_table`, `GET /source_table/file_status` | `source_table_settings` | `source_table_service.read_source_table_settings` (the client adds its own `driver_available` and stats the external CSV itself) |
+| `GET /source_table/connections` | `mssql_connections` | `source_table_service.load_mssql_connections` |
+| `GET /dataset/number-format-defaults` | `dataset_number_format_defaults` | `dataset_number_format_service.get_preferences` |
+| `GET /app/user-identity` | `user_identity` | `user_identity_service.get_current_identity` (under the signed user's acting identity) |
+| `GET /data_processing_rules` | `data_processing_rules` | `data_processing_rules_service.read_data_processing_rules` |
+| `POST /data_processing_rules/validate` | `data_processing_rules_validate` | `data_processing_rules_service.check_data_processing_rules` |
+
+The project configuration reads from `project_settings_sources` down were added by step 7 of [client_smb_retirement.md](../../../../docs/plans/client_smb_retirement.md). Each is called with `gateway_required=True`, so a Client PC answers `503` rather than reading the share, and each service returns the route's whole answer, refusals included, so the two transports answer alike.
 
 Gateway side: `POST /api/workspace-reads` on the Gateway (`arcrho_workspace_read_contract.WORKSPACE_READ_PATH`), authenticated with the same per-user HMAC headers as hosted saves. `GET /api/capabilities` advertises `workspace_read_kinds`.
 <!-- MANUAL:END -->

@@ -169,6 +169,39 @@ def load_dataset_types_data(
     return normalize_dataset_types_data(raw)
 
 
+def get_dataset_types_table(project_name: str) -> Dict[str, Any]:
+    """``GET /dataset_types``: the table as the Project Settings grid loads it."""
+
+    if not project_name or not project_name.strip():
+        raise HTTPException(400, "Missing project_name parameter")
+
+    try:
+        filepath = config.get_dataset_types_path(project_name)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+    if not os.path.exists(filepath):
+        return {
+            "ok": True,
+            "exists": False,
+            "path": filepath,
+            "data": {
+                "columns": list(config.DATASET_TYPES_FILE_COLUMNS),
+                "rows": [],
+                "source_by_name": {},
+                "generated_by_name": {},
+            },
+        }
+
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        data = normalize_dataset_types_data(raw)
+        return {"ok": True, "exists": True, "path": filepath, "data": data}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to read dataset types: {str(e)}")
+
+
 def _normalize_dataset_types_header_row(values: List[Any]) -> List[str]:
     out: List[str] = []
     for v in values:

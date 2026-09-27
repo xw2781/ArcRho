@@ -24,10 +24,23 @@ from app_server.services import (
 router = APIRouter()
 
 
+def _source_table_settings(project_name: str) -> Dict[str, Any]:
+    """The import record and master-table status, read on the server host."""
+    if not str(project_name or "").strip():
+        raise HTTPException(400, "project_name is required")
+    return workspace_read_client.run_workspace_read(
+        "source_table_settings",
+        {"project_name": project_name},
+        local=lambda: source_table_service.read_source_table_settings(project_name),
+        gateway_required=True,
+    )
+
+
 @router.get("/source_table")
 def get_source_table(project_name: str) -> Dict[str, Any]:
     try:
-        return {"ok": True, **source_table_service.get_source_table_state(project_name)}
+        settings = _source_table_settings(project_name)
+        return {"ok": True, **source_table_service.get_source_table_state(project_name, settings)}
     except HTTPException:
         raise
     except Exception as error:
@@ -36,9 +49,14 @@ def get_source_table(project_name: str) -> Dict[str, Any]:
 
 @router.get("/source_table/file_status")
 def get_source_table_file_status(project_name: str) -> Dict[str, Any]:
-    """Live modified time and size of the external source file."""
+    """Live modified time and size of the external source file.
+
+    The project's record comes from the server host; the stat of the external
+    file stays here, because its path may be a drive only this PC has.
+    """
     try:
-        return {"ok": True, **source_table_service.get_source_file_status(project_name)}
+        settings = _source_table_settings(project_name)
+        return {"ok": True, **source_table_service.get_source_file_status(project_name, settings)}
     except HTTPException:
         raise
     except Exception as error:
@@ -81,7 +99,12 @@ def test_source_table_connection(req: MssqlConnectionTestRequest) -> Dict[str, A
 def get_source_table_connections() -> Dict[str, Any]:
     """Server-shared list of previously used SQL Server server/database pairs."""
     try:
-        return source_table_service.load_mssql_connections()
+        return workspace_read_client.run_workspace_read(
+            "mssql_connections",
+            {},
+            local=source_table_service.load_mssql_connections,
+            gateway_required=True,
+        )
     except HTTPException:
         raise
     except Exception as error:

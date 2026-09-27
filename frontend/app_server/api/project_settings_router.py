@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, status
 
 from app_server.schemas.project_settings import (
     ProjectSettingsUpdateRequest,
@@ -17,19 +17,33 @@ from app_server.schemas.project_settings import (
     GeneratedDatasetCacheClearRequest,
     GeneralSettingsUpdateRequest,
 )
-from app_server.services import project_settings_service
+from app_server.services import project_settings_service, workspace_read_client
 
 router = APIRouter()
 
 
+# The GET routes read the project registry and General Settings on the server
+# host through the Gateway; a Client PC refuses rather than reading the share.
+
+
 @router.get("/project_settings")
 def list_project_settings_sources() -> Dict[str, Any]:
-    return project_settings_service.list_project_settings_sources()
+    return workspace_read_client.run_workspace_read(
+        "project_settings_sources",
+        {},
+        local=project_settings_service.list_project_settings_sources,
+        gateway_required=True,
+    )
 
 
 @router.get("/project_settings/{source}/folders")
 def get_project_folders(source: str) -> Dict[str, Any]:
-    return project_settings_service.get_project_folders(source)
+    return workspace_read_client.run_workspace_read(
+        "project_folders",
+        {"source": source},
+        local=lambda: project_settings_service.get_project_folders(source),
+        gateway_required=True,
+    )
 
 
 @router.post("/project_settings/{source}/rename_project_folder")
@@ -106,7 +120,12 @@ def clear_generated_dataset_csv_caches(source: str, req: GeneratedDatasetCacheCl
 
 @router.get("/project_settings/{source}")
 def get_project_settings(source: str) -> Dict[str, Any]:
-    return project_settings_service.get_project_settings(source)
+    return workspace_read_client.run_workspace_read(
+        "project_registry",
+        {"source": source},
+        local=lambda: project_settings_service.get_project_settings(source),
+        gateway_required=True,
+    )
 
 
 @router.post("/project_settings/{source}")
@@ -121,7 +140,14 @@ def update_project_settings(source: str, req: ProjectSettingsUpdateRequest) -> D
 
 @router.get("/general_settings")
 def get_general_settings(project_name: str) -> Dict[str, Any]:
-    return project_settings_service.get_general_settings(project_name)
+    if not str(project_name or "").strip():
+        raise HTTPException(400, "project_name is required")
+    return workspace_read_client.run_workspace_read(
+        "general_settings",
+        {"project_name": project_name},
+        local=lambda: project_settings_service.get_general_settings(project_name),
+        gateway_required=True,
+    )
 
 
 @router.post("/general_settings")

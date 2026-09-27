@@ -27,28 +27,22 @@ def _request_data_dict(data: Any) -> Dict[str, Any]:
     return data.dict(exclude_none=True) if hasattr(data, "dict") else dict(data or {})
 
 
+# The GET and validate read on the server host through the Gateway and write
+# nothing: they take the imported master table and the vocabulary cache as
+# they stand. The source refresh job (and a rules save) keep those current.
+
+
 @router.get("/data_processing_rules")
 def get_data_processing_rules(project_name: str) -> Dict[str, Any]:
     project_name_clean = str(project_name or "").strip()
     if not project_name_clean:
         raise HTTPException(400, "project_name is required")
-    try:
-        return data_processing_rules_service.get_data_processing_rules(project_name_clean)
-    except data_processing_rules_service.StoredRulesContractError as error:
-        raise HTTPException(422, str(error))
-    except data_processing_values_service.DataProcessingValuesLockedError as error:
-        raise HTTPException(423, str(error))
-    except ValueError as error:
-        message = str(error)
-        if "Project folder not found under projects:" in message:
-            raise HTTPException(404, message)
-        raise HTTPException(400, message)
-    except PermissionError:
-        raise HTTPException(423, "Data processing rules file is locked. Please retry.")
-    except HTTPException:
-        raise
-    except Exception as error:
-        raise HTTPException(500, f"Failed to read data processing rules: {str(error)}")
+    return workspace_read_client.run_workspace_read(
+        "data_processing_rules",
+        {"project_name": project_name_clean},
+        local=lambda: data_processing_rules_service.read_data_processing_rules(project_name_clean),
+        gateway_required=True,
+    )
 
 
 @router.post("/data_processing_rules/validate")
@@ -58,20 +52,13 @@ def validate_data_processing_rules(
     project_name = str(request.project_name or "").strip()
     if not project_name:
         raise HTTPException(400, "project_name is required")
-    try:
-        return data_processing_rules_service.validate_data_processing_rules(
-            project_name,
-            _request_data_dict(request.data),
-        )
-    except data_processing_values_service.DataProcessingValuesLockedError as error:
-        raise HTTPException(423, str(error))
-    except ValueError as error:
-        message = str(error)
-        if "Project folder not found under projects:" in message:
-            raise HTTPException(404, message)
-        raise HTTPException(400, message)
-    except Exception as error:
-        raise HTTPException(500, f"Failed to validate data processing rules: {str(error)}")
+    data = _request_data_dict(request.data)
+    return workspace_read_client.run_workspace_read(
+        "data_processing_rules_validate",
+        {"project_name": project_name, "data": data},
+        local=lambda: data_processing_rules_service.check_data_processing_rules(project_name, data),
+        gateway_required=True,
+    )
 
 
 @router.post("/data_processing_rules")

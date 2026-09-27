@@ -31,8 +31,14 @@ router = APIRouter()
 def get_dataset_number_format_defaults(
     dataset_type_name: str = "",
 ) -> Dict[str, Any]:
-    return dataset_number_format_service.get_preferences(
-        dataset_type_name=dataset_type_name,
+    # The workspace-wide number-format file, read on the server host.
+    return workspace_read_client.run_workspace_read(
+        "dataset_number_format_defaults",
+        {"dataset_type_name": dataset_type_name},
+        local=lambda: dataset_number_format_service.get_preferences(
+            dataset_type_name=dataset_type_name,
+        ),
+        gateway_required=True,
     )
 
 

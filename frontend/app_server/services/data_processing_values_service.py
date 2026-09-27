@@ -142,11 +142,20 @@ def _source_table_fingerprint(table_path: str) -> Dict[str, Any]:
     return fingerprint
 
 
-def _current_inputs(project_name: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def _current_inputs(
+    project_name: str,
+    *,
+    import_source: bool = True,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     mapping = _read_json_object(config.get_field_mapping_path(project_name))
     contract = _mapping_contract(mapping)
     # Values are always derived from the project-owned imported master table.
-    contract["table_path"] = source_table_service.resolve_source_table_for_read(project_name)
+    # A read takes it as it stands; only a writer refreshes it from the source.
+    contract["table_path"] = (
+        source_table_service.resolve_source_table_for_read(project_name)
+        if import_source
+        else source_table_service.imported_master_table_path(project_name)
+    )
     fingerprint = _source_table_fingerprint(contract["table_path"])
     return contract, fingerprint
 
@@ -390,6 +399,21 @@ def get_data_processing_values(project_name: str) -> Dict[str, Any]:
         return payload
     finally:
         lock.release()
+
+
+def read_data_processing_values(project_name: str) -> Dict[str, Any]:
+    """The vocabulary a read serves, writing nothing.
+
+    The stored cache when it still describes the imported master table and the
+    Field Mapping, otherwise the same payload built in memory. The file itself
+    is written by the source refresh job and by a rules save
+    (``get_data_processing_values``).
+    """
+    contract, fingerprint = _current_inputs(project_name, import_source=False)
+    existing = _read_json_object(config.get_data_processing_values_path(project_name))
+    if _cache_is_current(existing, contract, fingerprint):
+        return existing
+    return _build_cache_payload(contract, fingerprint)
 
 
 def source_vocabulary_options(payload: Dict[str, Any]) -> Dict[str, Any]:

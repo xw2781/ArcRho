@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import pandas as pd
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from arcrho_api.io import persisted_json_text
@@ -546,16 +547,29 @@ def _apply_dataset_vocabularies(
         source_field["significance"] = "Reserving Class"
 
 
-def _load_validation_context(project_name: str) -> Dict[str, Any]:
+def _load_validation_context(project_name: str, *, read_only: bool = False) -> Dict[str, Any]:
+    """Everything the rules are checked against.
+
+    A save refreshes the imported master table from its source and rewrites
+    the vocabulary cache when either is stale. A *read_only* caller (the
+    rules GET and validate) takes the master table as it stands and writes
+    nothing; the source refresh job keeps both files current.
+    """
     mapping_path = config.get_field_mapping_path(project_name)
     mapping = _safe_read_json(mapping_path)
     mapping_rows = [
         row for row in mapping.get("rows", [])
         if isinstance(row, dict)
     ] if isinstance(mapping.get("rows"), list) else []
-    table_path = source_table_service.resolve_source_table_for_read(project_name)
+    if read_only:
+        table_path = source_table_service.imported_master_table_path(project_name)
+    else:
+        table_path = source_table_service.resolve_source_table_for_read(project_name)
     source_fields, source_error = _source_table_options(table_path, mapping_rows)
-    vocabulary_cache = data_processing_values_service.get_data_processing_values(project_name)
+    if read_only:
+        vocabulary_cache = data_processing_values_service.read_data_processing_values(project_name)
+    else:
+        vocabulary_cache = data_processing_values_service.get_data_processing_values(project_name)
     source_vocabulary = data_processing_values_service.source_vocabulary_options(
         vocabulary_cache
     )
@@ -1158,8 +1172,11 @@ def _response_for_document(
     context: Optional[Dict[str, Any]] = None,
     changed: Optional[bool] = None,
     impact: Optional[Dict[str, Any]] = None,
+    read_only: bool = False,
 ) -> Dict[str, Any]:
-    validation_context = context if context is not None else _load_validation_context(project_name)
+    validation_context = (
+        context if context is not None else _load_validation_context(project_name, read_only=read_only)
+    )
     errors, warnings = _validate_rules(document, validation_context)
     response: Dict[str, Any] = {
         "ok": True,
@@ -1179,13 +1196,16 @@ def _response_for_document(
     if impact is not None:
         response["impact"] = impact
     try:
-        response["processing_config_hash"] = get_processing_config_hash(project_name)
+        response["processing_config_hash"] = get_processing_config_hash(
+            project_name, import_source=not read_only
+        )
     except Exception:
         response["processing_config_hash"] = ""
     return response
 
 
 def get_data_processing_rules(project_name: str) -> Dict[str, Any]:
+    """The stored rules with their options and validation; writes nothing."""
     path = config.get_data_processing_rules_path(project_name)
     exists = os.path.exists(path)
     document = _read_rules_document(path)
@@ -1194,7 +1214,39 @@ def get_data_processing_rules(project_name: str) -> Dict[str, Any]:
         path,
         document,
         exists=exists,
+        read_only=True,
     )
+
+
+def _not_found_or_bad_request(error: ValueError) -> HTTPException:
+    message = str(error)
+    if "Project folder not found under projects:" in message:
+        return HTTPException(404, message)
+    return HTTPException(400, message)
+
+
+def read_data_processing_rules(project_name: str) -> Dict[str, Any]:
+    """``GET /data_processing_rules``: the route's whole answer, refusals included.
+
+    A Client PC runs it on the server host through the Gateway.
+    """
+    project_name_clean = str(project_name or "").strip()
+    if not project_name_clean:
+        raise HTTPException(400, "project_name is required")
+    try:
+        return get_data_processing_rules(project_name_clean)
+    except StoredRulesContractError as error:
+        raise HTTPException(422, str(error))
+    except data_processing_values_service.DataProcessingValuesLockedError as error:
+        raise HTTPException(423, str(error))
+    except ValueError as error:
+        raise _not_found_or_bad_request(error)
+    except PermissionError:
+        raise HTTPException(423, "Data processing rules file is locked. Please retry.")
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(500, f"Failed to read data processing rules: {str(error)}")
 
 
 def validate_data_processing_rules(
@@ -1207,7 +1259,7 @@ def validate_data_processing_rules(
     candidate["revision"] = current["revision"]
     candidate["updated_at"] = current["updated_at"]
     candidate["updated_by"] = current["updated_by"]
-    context = _load_validation_context(project_name)
+    context = _load_validation_context(project_name, read_only=True)
     errors, warnings = _validate_rules(candidate, context)
     return {
         "ok": True,
@@ -1218,6 +1270,27 @@ def validate_data_processing_rules(
         "options": context.get("options", {}),
         "semantic_hash": semantic_rules_hash(candidate),
     }
+
+
+def check_data_processing_rules(
+    project_name: str,
+    data: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """``POST /data_processing_rules/validate``: the route's whole answer, refusals included.
+
+    A Client PC runs it on the server host through the Gateway.
+    """
+    project_name_clean = str(project_name or "").strip()
+    if not project_name_clean:
+        raise HTTPException(400, "project_name is required")
+    try:
+        return validate_data_processing_rules(project_name_clean, dict(data or {}))
+    except data_processing_values_service.DataProcessingValuesLockedError as error:
+        raise HTTPException(423, str(error))
+    except ValueError as error:
+        raise _not_found_or_bad_request(error)
+    except Exception as error:
+        raise HTTPException(500, f"Failed to validate data processing rules: {str(error)}")
 
 
 def _atomic_write_document(path: str, document: Dict[str, Any]) -> None:
@@ -1544,9 +1617,17 @@ def _strip_audit_metadata(value: Any) -> Any:
     return value
 
 
-def _normalized_source_table_signature(project_name: str) -> Dict[str, Any]:
+def _normalized_source_table_signature(
+    project_name: str,
+    *,
+    import_source: bool = True,
+) -> Dict[str, Any]:
     """Identity of the project-owned imported table this config was built from."""
-    table_path = source_table_service.resolve_source_table_for_read(project_name)
+    table_path = (
+        source_table_service.resolve_source_table_for_read(project_name)
+        if import_source
+        else source_table_service.imported_master_table_path(project_name)
+    )
     normalized_path = (
         os.path.normcase(os.path.normpath(os.path.abspath(table_path)))
         if table_path
@@ -1574,7 +1655,7 @@ def _normalized_source_table_signature(project_name: str) -> Dict[str, Any]:
     return signature
 
 
-def processing_config_payload(project_name: str) -> Dict[str, Any]:
+def processing_config_payload(project_name: str, *, import_source: bool = True) -> Dict[str, Any]:
     rules_path = config.get_data_processing_rules_path(project_name)
     rules_raw = _read_processing_config_json(rules_path)
     document = _parse_rules_data(rules_raw, stored=True) if rules_raw else _empty_document()
@@ -1592,12 +1673,17 @@ def processing_config_payload(project_name: str) -> Dict[str, Any]:
             _read_processing_config_json(config.get_general_settings_path(project_name))
         ),
         "data_processing_rules": _canonical_rules_for_hash(document),
-        "source_table": _normalized_source_table_signature(project_name),
+        "source_table": _normalized_source_table_signature(project_name, import_source=import_source),
     }
 
 
-def get_processing_config_hash(project_name: str) -> str:
-    return _hash_json(processing_config_payload(project_name))
+def get_processing_config_hash(project_name: str, *, import_source: bool = True) -> str:
+    """Hash of every input a generated dataset is built from.
+
+    *import_source* False takes the master table as it stands rather than
+    refreshing it from its source first, for a read that must write nothing.
+    """
+    return _hash_json(processing_config_payload(project_name, import_source=import_source))
 
 
 def get_processing_provenance(

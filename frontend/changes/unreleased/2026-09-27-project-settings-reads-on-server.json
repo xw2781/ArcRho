@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Project Settings, the project pickers and the name on the Home page now load from the server. Opening the Data Processing Rules page no longer re-copies the source table; use Import Data to pick up a changed source file."
+}

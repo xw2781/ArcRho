@@ -52,6 +52,12 @@ def _install_fake_app_server(modules: dict):
     """Register a minimal ``app_server`` package for the lazy service imports."""
 
     services = types.ModuleType("app_server.services")
+    modules = {
+        "data_processing_values_service": SimpleNamespace(
+            get_data_processing_values=lambda project: {}
+        ),
+        **modules,
+    }
     for name, module in modules.items():
         setattr(services, name, module)
     app_server = types.ModuleType("app_server")
@@ -344,6 +350,7 @@ class ScopedRefreshTests(unittest.TestCase):
         )
         refreshed = []
         self.recorded = []
+        self.values_rebuilt = []
 
         def refresh_one(root, project, reserving_class, result, *, on_dataset, dataset_types=None):
             refreshed.append((reserving_class, list(dataset_types or [])))
@@ -374,6 +381,9 @@ class ScopedRefreshTests(unittest.TestCase):
             {
                 "arcrho_runtime_service": runtime,
                 "calculated_dataset_service": calculated,
+                "data_processing_values_service": SimpleNamespace(
+                    get_data_processing_values=self.values_rebuilt.append
+                ),
                 "source_table_service": source_table,
                 "table_summary_service": summary,
                 "user_identity_service": _identity_stub([]),
@@ -397,6 +407,13 @@ class ScopedRefreshTests(unittest.TestCase):
         self.assertEqual(result["dataset_types_expanded"], [])
         # "Everything" is recorded too, so a later narrowing never lingers.
         self.assertEqual(self.recorded, [("Demo Project", [], [])])
+
+    def test_the_job_rebuilds_the_data_processing_value_list(self) -> None:
+        # The Data Processing Rules page only reads this cache; the refresh
+        # that changed the table is what writes it.
+        result, _refreshed = self._run()
+        self.assertEqual(self.values_rebuilt, ["Demo Project"])
+        self.assertEqual(result["failures"], [])
 
     def test_class_types_pick_the_classes_and_dataset_types_reach_each_one(self) -> None:
         result, refreshed = self._run(

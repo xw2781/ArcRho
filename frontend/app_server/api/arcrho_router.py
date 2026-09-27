@@ -13,7 +13,7 @@ from app_server.schemas.arcrho import (
 from arcrho_engine_calculation_contract import OPERATION_DATASET_PRECHECK, OPERATION_DATASET_RUN
 
 from app_server.helpers import set_data_path_like_vba
-from app_server.services import arcrho_runtime_service, engine_calculation_service
+from app_server.services import arcrho_runtime_service, engine_calculation_service, workspace_read_client
 
 router = APIRouter()
 
@@ -130,7 +130,13 @@ def clear_arcrho_headers_cache(req: ArcRhoHeadersCacheClearRequest) -> Dict[str,
 
 @router.get("/arcrho/projects")
 def arcrho_projects() -> Dict[str, Any]:
-    return arcrho_runtime_service.arcrho_projects()
+    # The project registry, read on the server host through the Gateway.
+    return workspace_read_client.run_workspace_read(
+        "project_names",
+        {},
+        local=arcrho_runtime_service.arcrho_projects,
+        gateway_required=True,
+    )
 
 
 @router.post("/arcrho/tri/precheck")
