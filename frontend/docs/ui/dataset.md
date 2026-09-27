@@ -12,10 +12,9 @@ Implementation details should stay in the generated entrypoint/key-file sections
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.dataset.entry_points -->
-- `ui/dataset_viewer/dataset_viewer.html`: external scripts `/ui/shared/services/color_theme.js?v=20260923c`, `/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d`; inline imports `/ui/dataset_viewer/dataset_viewer_main.js?v=20260923a`.
+- `ui/dataset_viewer/dataset_viewer.html`: external scripts `/ui/shared/services/color_theme.js?v=20260923c`, `/ui/shared/tabbed_page/initial_tab_paint.js?v=20260824d`; inline imports `/ui/dataset_viewer/dataset_viewer_main.js?v=20260926a`.
 
 Detected `fetch(...)` targets in key JS files:
-- `${config.API_BASE}/dataset/${dsId}/patch`
 - `${config.API_BASE}/dataset/${encodeURIComponent(dsId)}?${params.toString()}`
 - `${config.API_BASE}/dataset/cache/load`
 - `${config.API_BASE}/dataset/calculated/preview`

@@ -1126,9 +1126,14 @@ def save_propagation_roots(
     The two-step save plans the dependent closure before anything is written,
     and the roots must be derived exactly the way the save derives them. Save
     refuses to change a Bootstrap method's output identity (409), so the
-    incoming payload's identity is the identity the save will publish.
+    incoming payload's identity is the identity the save will publish. A
+    refresh request names the roots ``refresh_bootstrap_method`` walks from.
     """
 
+    refresh_name = _refresh_request_name(method)
+    if refresh_name:
+        stored = _read_json(_method_path(_clean(project_name), _clean(reserving_class), refresh_name))
+        return [(refresh_name, _clean(_details(stored).get("output_type")) or refresh_name)]
     incoming = _contract_call(
         normalize_bootstrap_method,
         method,
@@ -1346,6 +1351,29 @@ def refresh_bootstrap_method(
     response["index_ok"] = bool(response["propagation"].get("index_ok", True))
     response["index_error"] = _clean(response["propagation"].get("index_error"))
     return response
+
+
+# A refresh rewrites the method, its outputs and its dependents, so it runs as
+# a hosted save on Arco Engine under the reserving-class lease rather than from
+# the client process. The Engine calls it as (project, class, {"method_name"}):
+# the name travels in a mapping third so the save log names the method, and a
+# mapping without the method's ``details_tab`` is how ``save_propagation_roots``
+# tells a refresh from a save.
+
+
+def _refresh_request_name(request: Mapping[str, Any]) -> str:
+    if not isinstance(request, Mapping) or "details_tab" in request:
+        return ""
+    return _clean(request.get("method_name"))
+
+
+def refresh_bootstrap_method_save(
+    project_name: str,
+    reserving_class: str,
+    request: Mapping[str, Any],
+    **_ignored: Any,
+) -> Dict[str, Any]:
+    return refresh_bootstrap_method(project_name, reserving_class, _refresh_request_name(request))
 
 
 def refresh_output(

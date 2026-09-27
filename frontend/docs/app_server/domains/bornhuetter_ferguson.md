@@ -10,14 +10,13 @@ Own the self-contained BF v3 contract, aggregate two-file load, revision-aware t
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
 | `POST` | `/bornhuetter-ferguson/load` | `load_bornhuetter_ferguson` | `BornhuetterFergusonIdentityRequest` | [`app_server/schemas/bornhuetter_ferguson.py`](../../../app_server/schemas/bornhuetter_ferguson.py) | `bornhuetter_ferguson_service.load_bornhuetter_ferguson_method`, `workspace_read_client.run_workspace_read` |
-| `POST` | `/bornhuetter-ferguson/refresh` | `refresh_bornhuetter_ferguson` | `BornhuetterFergusonIdentityRequest` | [`app_server/schemas/bornhuetter_ferguson.py`](../../../app_server/schemas/bornhuetter_ferguson.py) | `bornhuetter_ferguson_service.refresh_bornhuetter_ferguson_method` |
 | `POST` | `/bornhuetter-ferguson/save` | `save_bornhuetter_ferguson` | `BornhuetterFergusonSaveRequest` | [`app_server/schemas/bornhuetter_ferguson.py`](../../../app_server/schemas/bornhuetter_ferguson.py) | `engine_hosted_save_service.run_hosted_save` |
 | `POST` | `/bornhuetter-ferguson/save/plan` | `plan_bornhuetter_ferguson_save` | `BornhuetterFergusonSaveRequest` | [`app_server/schemas/bornhuetter_ferguson.py`](../../../app_server/schemas/bornhuetter_ferguson.py) | `engine_hosted_save_service.run_hosted_save_plan` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files
 <!-- AUTO-GEN:BEGIN app_server.bornhuetter_ferguson.key_files -->
-- [`app_server/api/bornhuetter_ferguson_router.py`](../../../app_server/api/bornhuetter_ferguson_router.py) - Aggregate BF load/save/refresh routes.
+- [`app_server/api/bornhuetter_ferguson_router.py`](../../../app_server/api/bornhuetter_ferguson_router.py) - Aggregate BF load/save routes.
 - [`app_server/services/bornhuetter_ferguson_service.py`](../../../app_server/services/bornhuetter_ferguson_service.py) - V3 contract persistence, transactional publication, and eager dependency refresh.
 - [`app_server/schemas/bornhuetter_ferguson.py`](../../../app_server/schemas/bornhuetter_ferguson.py) - BF identity and revision-aware save request models.
 - [`ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js`](../../../ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js) - BF page state and aggregate persistence flow.

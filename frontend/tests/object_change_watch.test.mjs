@@ -614,7 +614,6 @@ test("Project Instance defers the dependency-source clear until the propagation 
 test("the shared data tab reports mutation boundaries and durable state through the port", async () => {
   const runController = await source("ui/shared/dataset/dataset_run_controller.js");
   assert.ok(runController.includes("notifyDataTabDurableDatasetState({ source: \"load\" })"));
-  assert.ok(runController.includes("notifyDataTabDatasetMutationStarted({ source: \"patch\" })"));
   assert.ok(runController.includes("notifyDataTabDatasetMutationStarted({ source: \"run\" })"));
   const persistence = await source("ui/shared/tabs/data/data_tab_persistence_controller.js");
   assert.ok(persistence.includes("withDataTabDatasetMutation({ source: \"sidecar-save\" }"));

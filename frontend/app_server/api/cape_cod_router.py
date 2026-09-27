@@ -71,12 +71,3 @@ def save_cape_cod(req: CapeCodSaveRequest) -> Dict[str, Any]:
         plan_fingerprint=req.plan_fingerprint,
         **_cape_cod_save_call(req),
     )
-
-
-@router.post("/cape-cod/refresh")
-def refresh_cape_cod(req: CapeCodIdentityRequest) -> Dict[str, Any]:
-    return cape_cod_service.refresh_cape_cod_method(
-        req.project_name,
-        req.reserving_class,
-        req.method_name,
-    )

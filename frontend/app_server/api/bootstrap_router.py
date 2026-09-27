@@ -112,8 +112,11 @@ def save_bootstrap(req: BootstrapSaveRequest) -> Dict[str, Any]:
 
 @router.post("/bootstrap/refresh")
 def refresh_bootstrap(req: BootstrapIdentityRequest) -> Dict[str, Any]:
-    return bootstrap_service.refresh_bootstrap_method(
+    # A refresh rewrites the method, its outputs and its dependents, so it is
+    # a hosted save like Save: it runs on Arco Engine, never here.
+    return engine_hosted_save_service.run_hosted_save(
+        "bootstrap_refresh",
         req.project_name,
         req.reserving_class,
-        req.method_name,
+        args=[req.project_name, req.reserving_class, {"method_name": req.method_name}],
     )

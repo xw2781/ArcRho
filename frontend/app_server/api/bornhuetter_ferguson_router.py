@@ -71,12 +71,3 @@ def save_bornhuetter_ferguson(req: BornhuetterFergusonSaveRequest) -> Dict[str, 
         plan_fingerprint=req.plan_fingerprint,
         **_bornhuetter_ferguson_save_call(req),
     )
-
-
-@router.post("/bornhuetter-ferguson/refresh")
-def refresh_bornhuetter_ferguson(req: BornhuetterFergusonIdentityRequest) -> Dict[str, Any]:
-    return bornhuetter_ferguson_service.refresh_bornhuetter_ferguson_method(
-        req.project_name,
-        req.reserving_class,
-        req.method_name,
-    )

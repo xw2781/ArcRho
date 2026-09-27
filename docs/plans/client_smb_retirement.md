@@ -1,7 +1,7 @@
 # Client SMB Retirement: Every Client PC Read and Write Through the Gateway
 
-Status: Audited 2026-09-26 and broken into 20 session-sized steps; the dead SMB code the audit found (workbook routes, the unused dataset list and diagonal routes, the unused Project Instance folder watcher) was removed the same day; the three decisions were settled the same day as recommended, and the Snowflake config path moved off the share; step 1 of 20 done 2026-09-26 (ResQ bridge apply is a hosted save; its Engine and Gateway deploy is step 6); step 2 in progress; production deploys wait for the user.
-Last updated: 2026-09-26
+Status: Audited 2026-09-26 and broken into 20 session-sized steps; the dead SMB code the audit found (workbook routes, the unused dataset list and diagonal routes, the unused Project Instance folder watcher) was removed the same day; the three decisions were settled the same day as recommended, and the Snowflake config path moved off the share; step 1 of 20 done 2026-09-26 (ResQ bridge apply is a hosted save); step 2 done 2026-09-27 (Bootstrap refresh, dataset notes and empty-dataset create are hosted saves; the unused BF and Cape Cod refresh routes and the hidden grid-patch save were removed); the Engine and Gateway deploy of both is step 6; production deploys wait for the user.
+Last updated: 2026-09-27
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finishes; its Phase 3 notifications and Phase 4 small writes are folded in here), [hosted_save_http_transport.md](hosted_save_http_transport.md) (its "Retiring the SMB transport" item is steps 18 and 19 here)
 
 **How this ships.** Most steps change both sides: a Gateway (and sometimes Engine) deploy that adds a registered kind, which is additive and cannot affect a user on the released app, then a frontend release that makes the client use it. Each deploy step deploys only additive server work. The steps that change behaviour for users — a Gateway outage stops the app instead of falling back to the share — reach users only with a frontend release (decision 1 allows it).
@@ -15,7 +15,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | # | Step | Done | Date | Est. | Actual | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | Applying a ResQ bridge change saves on the server like any other save | [x] | 2026-09-26 | 50 min | 8 min | "Update local from ResQ" in a DFM now saves on the server, under the same protection as the page's own Save. |
-| 2 | Bootstrap refresh, dataset notes and new empty datasets save on the server | [ ] | | 60 min | | In progress 2026-09-26 |
+| 2 | Bootstrap refresh, dataset notes and new empty datasets save on the server | [x] | 2026-09-27 | 60 min | 21 min | Refreshing a Bootstrap method, saving dataset notes and creating an empty dataset now save on the server, under the same protection as a page's own Save. |
 | 3 | Audit log entries from two PCs can no longer overwrite each other | [ ] | | 45 min | | |
 | 4 | ArcBot edits go through the normal save instead of writing files directly | [ ] | | 70 min | | |
 | 5 | Editing a method file by hand no longer writes around the save | [ ] | | 35 min | | |
@@ -35,7 +35,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 19 | Old shared-drive save path and leftover dead code removed | [ ] | | 55 min | | |
 | 20 | Signing up to the server no longer needs the shared drive | [ ] | | 90 min | | |
 
-Overall: 1 of 20 steps done. Estimated 1,125 min, actual so far 8 min.
+Overall: 2 of 20 steps done. Estimated 1,125 min, actual so far 29 min.
 
 ## How agents work this plan
 
@@ -127,15 +127,15 @@ Estimate: code edit 30 min, test/validation 20 min, total 50 min. Actual: code e
 **Read first.** [bootstrap_router.py](../../frontend/app_server/api/bootstrap_router.py) refresh route; [dataset_router.py](../../frontend/app_server/api/dataset_router.py) notes, create-empty and patch routes; [bornhuetter_ferguson_router.py](../../frontend/app_server/api/bornhuetter_ferguson_router.py) and [cape_cod_router.py](../../frontend/app_server/api/cape_cod_router.py) refresh routes; memory `adding-a-hosted-save-kind`.
 
 **Do.**
-- [ ] Confirm no caller of `POST /bornhuetter-ferguson/refresh` and `POST /cape-cod/refresh` (the 2026-09-26 audit found none) and delete both routes.
-- [ ] Make Bootstrap refresh, dataset notes save and create-empty dataset save kinds.
-- [ ] Check whether `POST /dataset/{ds_id}/patch` is reachable from a visible control (it is wired through `dataset_run_controller.js` and a hidden Save button). If not reachable, delete it with its client function; if reachable, record that in this step and add it to step 9 instead of guessing.
+- [x] Confirm no caller of `POST /bornhuetter-ferguson/refresh` and `POST /cape-cod/refresh` (the 2026-09-26 audit found none) and delete both routes. Done: no UI caller; the service refresh functions stay for `tools/restate_percentage_developed.py`.
+- [x] Make Bootstrap refresh, dataset notes save and create-empty dataset save kinds. Done as `bootstrap_refresh`, `dataset_notes` and `empty_dataset_create`; each route body travels as a mapping third, which is also how the module's one `save_propagation_roots` tells the kinds apart. The Bootstrap page's refresh client function has no caller today; the route stays because the step keeps it.
+- [x] Check whether `POST /dataset/{ds_id}/patch` is reachable from a visible control (it is wired through `dataset_run_controller.js` and a hidden Save button). If not reachable, delete it with its client function; if reachable, record that in this step and add it to step 9 instead of guessing. Done: not reachable (the only trigger is the `saveBtn` inside `#hiddenControls`, `display:none` in both the Dataset Viewer and the DFM page, and nothing clicks it), so the route, its schemas, its service functions and the whole client chain were deleted; step 9 has nothing to pick up.
 
 **Tests.** Hosted-save routing tests for each new kind; route tests that the deleted routes are gone.
 
 **Done when.** None of these routes writes a sidecar, CSV or method JSON from the client process.
 
-Estimate: code edit 40 min, test/validation 20 min, total 60 min.
+Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code edit 15 min, test/validation 6 min, total 21 min (the hosted-save recipe from step 1 carried it; checked end to end on the local root).
 
 ### Step 3 — Audit log append runs on the server
 

@@ -15,7 +15,6 @@ from app_server.schemas.dataset import (
     DatasetSidecarLoadRequest,
     DatasetSidecarSaveRequest,
     EmptyDatasetCacheCreateRequest,
-    PatchRequest,
 )
 from app_server.services import dataset_service, engine_hosted_save_service
 from app_server.services import calculated_dataset_service
@@ -124,16 +123,18 @@ def set_dataset_review_status(req: DatasetReviewStatusRequest) -> Dict[str, Any]
 
 @router.post("/datasets/cached/empty")
 def create_empty_cached_dataset(req: EmptyDatasetCacheCreateRequest) -> Dict[str, Any]:
-    return dataset_service.create_empty_cached_dataset(
+    # The create writes a CSV and a sidecar and walks their dependents, so it
+    # is a hosted save: it runs on Arco Engine, never here.
+    request = req.model_dump(exclude={"project_name", "reserving_class"})
+    return engine_hosted_save_service.run_hosted_save(
+        "empty_dataset_create",
         req.project_name,
         req.reserving_class,
-        req.dataset_type,
-        instance_name=req.instance_name,
-        data_format=req.data_format,
-        origin_length=req.origin_length,
-        development_length=req.development_length,
-        cumulative=req.cumulative,
-        calendar=req.calendar,
+        args=[
+            req.project_name,
+            req.reserving_class,
+            {"dataset_name": req.instance_name or req.dataset_type, **request},
+        ],
     )
 
 
@@ -182,16 +183,6 @@ def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, 
     return result
 
 
-@router.post("/dataset/{ds_id}/patch")
-def patch_dataset(ds_id: str, req: PatchRequest) -> Dict[str, Any]:
-    result = dataset_service.patch_dataset(ds_id, req.items, file_mtime=req.file_mtime)
-    if result is None:
-        raise HTTPException(404, f"Unknown dataset: {ds_id}")
-    if result.get("conflict"):
-        raise HTTPException(409, "File changed on disk. Reload and retry.")
-    return result
-
-
 @router.post("/dataset/sidecar/load")
 def load_dataset_sidecar(req: DatasetSidecarLoadRequest) -> Dict[str, Any]:
     return dataset_service.load_dataset_sidecar(
@@ -203,11 +194,17 @@ def load_dataset_sidecar(req: DatasetSidecarLoadRequest) -> Dict[str, Any]:
 
 @router.post("/dataset/notes/save")
 def save_dataset_notes(req: DatasetNotesSaveRequest) -> Dict[str, Any]:
-    return dataset_service.save_dataset_notes(
+    # Notes live in the sidecar, so saving them is a hosted save: it runs on
+    # Arco Engine under the reserving-class lease, never here.
+    return engine_hosted_save_service.run_hosted_save(
+        "dataset_notes",
         req.project_name,
         req.reserving_class,
-        req.dataset_name,
-        req.notes,
+        args=[
+            req.project_name,
+            req.reserving_class,
+            {"dataset_name": req.dataset_name, "notes": req.notes},
+        ],
     )
 
 

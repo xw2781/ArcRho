@@ -9,7 +9,6 @@ import {
   getDatasetNumberFormatDefaults,
   loadCachedDataset,
   loadDatasetSidecar,
-  patchDataset,
   previewCalculatedDatasetDependents,
   resolveDatasetInternalLinks,
   saveDatasetNotes,
@@ -41,9 +40,9 @@ import { wireDatasetGridInteractions } from "/ui/shared/tabs/data/dataset_grid_i
 import { mountDataTabNotes } from "/ui/shared/tabs/data/data_tab_notes_port.js";
 import { publishDataTabHostInputs } from "/ui/shared/tabs/data/data_tab_host_port.js";
 import { wireDatasetHostBridge } from "/ui/shared/integrations/dataset_host_bridge.js";
-import { createDatasetRunController } from "/ui/shared/dataset/dataset_run_controller.js?v=20260906c";
+import { createDatasetRunController } from "/ui/shared/dataset/dataset_run_controller.js?v=20260926a";
 import { hasResultSelectionUpdates } from "/ui/shared/dataset/result_selection_update_report.js?v=20260725b";
-import { wireDatasetInputController } from "/ui/shared/tabs/data/data_tab_controls.js?v=20260907a";
+import { wireDatasetInputController } from "/ui/shared/tabs/data/data_tab_controls.js?v=20260926a";
 import { readDatasetInputQueryValues } from "/ui/shared/tabs/data/data_tab_query_inputs.js";
 import {
   applyDecimalPlacesToDatasetNumberFormat,
@@ -90,12 +89,12 @@ import {
 } from "/ui/shell/browsing_history.js";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260715a";
 
-import { registerDataTabHostController } from "/ui/shared/tabs/data/data_tab_host_controller.js?v=20260906c";
+import { registerDataTabHostController } from "/ui/shared/tabs/data/data_tab_host_controller.js?v=20260926a";
 import { registerDataTabDetailsController } from "/ui/shared/tabs/data/data_tab_details_controller.js?v=20260824b";
 import { registerDataTabInputsController } from "/ui/shared/tabs/data/data_tab_inputs_controller.js?v=20260923a";
 import { registerDataTabPreferencesController } from "/ui/shared/tabs/data/data_tab_preferences_controller.js?v=20260916a";
-import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260907b";
-import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260919b";
+import { registerDataTabRequestController } from "/ui/shared/tabs/data/data_tab_request_controller.js?v=20260926a";
+import { registerDataTabPersistenceController } from "/ui/shared/tabs/data/data_tab_persistence_controller.js?v=20260926a";
 
 const LS_DS_KEY = "arcrho_last_ds_id";
 const LS_FORM_KEY = "arcrho_tri_inputs";
@@ -132,7 +131,6 @@ const runtime = {
   getDatasetNumberFormatDefaults,
   loadCachedDataset,
   loadDatasetSidecar,
-  patchDataset,
   previewCalculatedDatasetDependents,
   resolveDatasetInternalLinks,
   saveDatasetNotes,

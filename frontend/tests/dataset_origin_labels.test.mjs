@@ -281,7 +281,6 @@ test("Dataset Viewer paints backend labels without waiting for development heade
         },
       };
     },
-    patchDataset: async () => ({}),
     renderTable: () => {
       renderedDevelopmentLabels.push([...(state.model?.dev_labels || [])]);
     },
@@ -398,7 +397,6 @@ test("a stale deferred validation queues and publishes only the latest dataset r
     $: () => ({ textContent: "", replaceChildren() {} }),
     logLine: () => {},
     getDataset: async () => assert.fail("test response must stop before dataset loading"),
-    patchDataset: async () => ({}),
     renderTable: () => {},
     renderChart: () => {},
     notifyDatasetUpdated: () => {},
@@ -537,7 +535,6 @@ test("Dataset Viewer renders backend label errors and invalidates stale data", a
       assert.deepEqual(options, { projectName: "Example Project", originLength: 12 });
       return { ok: false, status: 422, data: { detail } };
     },
-    patchDataset: async () => ({}),
     renderTable: () => {},
     renderChart: () => { chartRenderCount += 1; },
     notifyDatasetUpdated: (options) => { updateOptions = options; },
@@ -615,7 +612,6 @@ test("an older dataset response cannot restore data after a newer load fails", a
       }
       return { ok: false, status: 422, data: { detail: "Origin Start Date is invalid." } };
     },
-    patchDataset: async () => ({}),
     renderTable: () => {},
     renderChart: () => {},
     notifyDatasetUpdated: () => { updateCount += 1; },
@@ -711,7 +707,6 @@ test("a stale notes sync cannot hide a newer origin-label failure", async () => 
       }
       return { ok: false, status: 422, data: { detail: "Origin Start Date is invalid." } };
     },
-    patchDataset: async () => ({}),
     renderTable: () => {},
     renderChart: () => {},
     notifyDatasetUpdated: () => {},
@@ -794,7 +789,6 @@ test("a blocked sidecar sync keeps its actionable status instead of reporting Re
         mask: [[true], [true]],
       },
     }),
-    patchDataset: async () => ({}),
     renderTable: () => {},
     renderChart: () => {},
     notifyDatasetUpdated: () => {},
@@ -916,7 +910,6 @@ test("a clear-cache run overlaps the rebuild request with both header refreshes"
         data: { id: "ds-1", mtime: 1, origin_labels: ["2020"], dev_labels: ["12"], values: [[1]], mask: [[true]] },
       };
     },
-    patchDataset: async () => ({}),
     renderTable: () => {},
     renderChart: () => {},
     notifyDatasetUpdated: () => {},

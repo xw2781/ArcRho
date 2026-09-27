@@ -73,7 +73,6 @@ function installFakeDom(overrides = {}) {
     devLenSelect: fakeElement("12"),
     cumulativeChk: fakeElement(),
     transposedChk: fakeElement(),
-    saveBtn: fakeElement(),
     datasetSaveBar: fakeElement(),
     datasetSaveBtn: fakeElement(),
     datasetCancelBtn: fakeElement(),

@@ -12,17 +12,6 @@ export async function getDataset(dsId = config.DS_ID, options = {}) {
   return { ok: resp.ok, status: resp.status, data };
 }
 
-export async function patchDataset(items, fileMtime, dsId = config.DS_ID) {
-  const resp = await fetch(`${config.API_BASE}/dataset/${dsId}/patch`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items, file_mtime: fileMtime }),
-  });
-
-  const data = await resp.json().catch(() => ({}));
-  return { ok: resp.ok, status: resp.status, data };
-}
-
 export async function saveDatasetNotes(payload) {
   const resp = await fetch(`${config.API_BASE}/dataset/notes/save`, {
     method: "POST",

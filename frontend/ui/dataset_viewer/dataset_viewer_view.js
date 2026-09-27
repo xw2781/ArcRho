@@ -309,7 +309,6 @@ export function mountDatasetViewer(container) {
 
   <div id="hiddenControls" style="display:none;">
     <div class="small" id="dsMeta"></div>
-    <button id="saveBtn">Save</button>
     <button id="toggleBlankBtn">Show blanks</button>
     <pre id="log"></pre>
   </div>

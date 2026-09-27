@@ -6,17 +6,6 @@ from pydantic import BaseModel, Field, field_validator
 from arcrho_api.dataset_index_contract import STATUS_REVIEW_NEEDED
 
 
-class PatchItem(BaseModel):
-    r: int = Field(..., ge=0)
-    c: int = Field(..., ge=0)
-    value: Optional[float] = None
-
-
-class PatchRequest(BaseModel):
-    items: List[PatchItem]
-    file_mtime: Optional[float] = None
-
-
 class DatasetNotesSaveRequest(BaseModel):
     project_name: str
     reserving_class: str

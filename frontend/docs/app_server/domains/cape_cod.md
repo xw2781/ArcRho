@@ -10,14 +10,13 @@ Own the self-contained Cape Cod v1 contract, aggregate two-file load (plus the d
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
 | `POST` | `/cape-cod/load` | `load_cape_cod` | `CapeCodIdentityRequest` | [`app_server/schemas/cape_cod.py`](../../../app_server/schemas/cape_cod.py) | `cape_cod_service.load_cape_cod_method`, `workspace_read_client.run_workspace_read` |
-| `POST` | `/cape-cod/refresh` | `refresh_cape_cod` | `CapeCodIdentityRequest` | [`app_server/schemas/cape_cod.py`](../../../app_server/schemas/cape_cod.py) | `cape_cod_service.refresh_cape_cod_method` |
 | `POST` | `/cape-cod/save` | `save_cape_cod` | `CapeCodSaveRequest` | [`app_server/schemas/cape_cod.py`](../../../app_server/schemas/cape_cod.py) | `engine_hosted_save_service.run_hosted_save` |
 | `POST` | `/cape-cod/save/plan` | `plan_cape_cod_save` | `CapeCodSaveRequest` | [`app_server/schemas/cape_cod.py`](../../../app_server/schemas/cape_cod.py) | `engine_hosted_save_service.run_hosted_save_plan` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files
 <!-- AUTO-GEN:BEGIN app_server.cape_cod.key_files -->
-- [`app_server/api/cape_cod_router.py`](../../../app_server/api/cape_cod_router.py) - Aggregate Cape Cod load/save/refresh routes.
+- [`app_server/api/cape_cod_router.py`](../../../app_server/api/cape_cod_router.py) - Aggregate Cape Cod load/save routes.
 - [`app_server/services/cape_cod_service.py`](../../../app_server/services/cape_cod_service.py) - V1 contract persistence, transactional publication, and eager dependency refresh.
 - [`app_server/schemas/cape_cod.py`](../../../app_server/schemas/cape_cod.py) - Cape Cod identity and revision-aware save request models.
 - [`ui/method_pages/cape_cod/cape_cod_main.js`](../../../ui/method_pages/cape_cod/cape_cod_main.js) - Cape Cod page state and aggregate persistence flow.

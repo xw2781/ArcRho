@@ -35,7 +35,6 @@ export function wireDatasetInputController(deps) {
     isRunInFlight,
     setStatus,
     runArcRhoTri,
-    savePatch,
     toggleBlanks,
     wireLenDropdowns,
     syncDetailDatasetTypeFromTopInput,
@@ -107,12 +106,6 @@ export function wireDatasetInputController(deps) {
     setStatus("Clearing cache and reloading dataset...");
     void runArcRhoTri({ clearCache: true, showValidationMessage: true });
   });
-  const saveBtn = $("saveBtn");
-  if (window.location.search.includes("readonly=1")) {
-    saveBtn.disabled = true;
-    saveBtn.title = "Generated datasets are read-only.";
-  }
-  saveBtn.addEventListener("click", savePatch);
   $("toggleBlankBtn").addEventListener("click", toggleBlanks);
 
   const pathInput = document.getElementById("pathInput");

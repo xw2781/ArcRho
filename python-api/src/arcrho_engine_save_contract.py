@@ -70,6 +70,14 @@ SAVE_JOB_KINDS: dict[str, tuple[str, str]] = {
         "save_berquist_sherman",
     ),
     "dataset_sidecar": ("dataset_service", "save_dataset_sidecar"),
+    # Re-runs a stored Bootstrap method against its current precedents and
+    # publishes the result, like its save.
+    "bootstrap_refresh": ("bootstrap_service", "refresh_bootstrap_method_save"),
+    # Rewrites only the notes in a dataset's sidecar; walks nothing.
+    "dataset_notes": ("dataset_service", "save_dataset_notes_request"),
+    # Writes a new empty input dataset (or computes a calculated one) and
+    # walks its dependents.
+    "empty_dataset_create": ("dataset_service", "create_empty_cached_dataset_request"),
     # Applies a ResQ bridge patch to the stored DFM and saves it; the RPC
     # bridge's other routes are workspace mutations because they write no
     # method.

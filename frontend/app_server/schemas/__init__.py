@@ -1,7 +1,6 @@
 from .workflow import WorkflowLoadRequest, WorkflowSaveAsRequest, WorkflowSaveRequest
 from .arcrho import ArcRhoTriRequest, ArcRhoHeadersRequest, ArcRhoHeadersCacheClearRequest
 from .excel import ExcelCellReadRequest, ExcelBatchReadRequest, ExcelOpenRequest
-from .dataset import PatchItem, PatchRequest
 from .project_settings import (
     ProjectSettingsUpdateRequest,
     RenameProjectFolderRequest,
@@ -46,7 +45,6 @@ __all__ = [
     "WorkflowSaveRequest", "WorkflowSaveAsRequest", "WorkflowLoadRequest",
     "ArcRhoTriRequest", "ArcRhoHeadersRequest", "ArcRhoHeadersCacheClearRequest",
     "ExcelCellReadRequest", "ExcelBatchReadRequest", "ExcelOpenRequest",
-    "PatchItem", "PatchRequest",
     "ProjectSettingsUpdateRequest",
     "RenameProjectFolderRequest", "DuplicateProjectFolderRequest",
     "DuplicateProjectFolderJobResponse", "ProjectDuplicationProgress",

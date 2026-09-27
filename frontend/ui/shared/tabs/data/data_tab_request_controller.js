@@ -921,10 +921,6 @@ export function registerDataTabRequestController(runtime) {
     return runtime.datasetRunController.loadDataset();
   }
 
-  function savePatch() {
-    return runtime.datasetRunController.savePatch();
-  }
-
   function toggleBlanks() {
     return runtime.datasetRunController.toggleBlanks();
   }
@@ -1070,7 +1066,6 @@ export function registerDataTabRequestController(runtime) {
     getDatasetRunDataFormat,
     getTriInputsForStorage,
     loadDataset,
-    savePatch,
     toggleBlanks,
     getValidDevelopmentLengthForOrigin,
     getValidOriginLengthForDevelopment,

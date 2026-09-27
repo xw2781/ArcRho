@@ -1106,11 +1106,6 @@ export function registerDataTabPersistenceController(runtime) {
     renderDatasetDependents(data.exists ? data.dependents : []);
     runtime.isSidecarReadOnlyDataset = !!data.exists && sourceKindIsReadOnly(runtime.currentDatasetSidecarSourceKind);
     updateNotesSaveUi();
-    const patchSaveBtn = document.getElementById("saveBtn");
-    if (patchSaveBtn && !isReadOnlyDatasetViewer) {
-      patchSaveBtn.disabled = runtime.isSidecarReadOnlyDataset;
-      patchSaveBtn.title = runtime.isSidecarReadOnlyDataset ? "Calculated datasets are read-only." : "";
-    }
     let settings;
     if (data.exists) {
       settings = normalizeDatasetSettings(data);

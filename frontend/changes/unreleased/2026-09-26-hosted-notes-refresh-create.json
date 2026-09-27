@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "Refreshing a Bootstrap method, saving dataset notes, and creating an empty dataset now save on the server under the same protection as a page's own Save."
+}

@@ -11,7 +11,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Any, Dict, Iterable, Iterator, List, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Mapping, Tuple
 
 import numpy as np
 import pandas as pd
@@ -1212,64 +1212,6 @@ def valuation_origin_row_count(project_name: str, origin_period_length: int) -> 
     except HTTPException:
         return None
     return int(mask[:, 0].sum())
-
-
-def _containing_project_name_for_dataset(path: str) -> str:
-    projects_root = str(config.PROJECT_SETTINGS_DIR or "").strip()
-    if not projects_root:
-        return ""
-    root_path = os.path.realpath(projects_root)
-    dataset_path = os.path.realpath(path)
-    try:
-        if os.path.commonpath((os.path.normcase(root_path), os.path.normcase(dataset_path))) != os.path.normcase(root_path):
-            return ""
-        relative = os.path.relpath(dataset_path, root_path)
-    except ValueError:
-        return ""
-    parts = os.path.normpath(relative).split(os.sep)
-    if len(parts) < 3 or parts[1].casefold() != str(config.PROJECT_DATA_DIR).casefold():
-        return ""
-    return str(parts[0]).strip()
-
-
-def _dataset_owning_project_name(path: str, payload: Dict[str, Any]) -> str:
-    """The project a cached dataset belongs to.
-
-    The folder holding the CSV decides it, and the name stored in the sidecar
-    is only a fallback for a cache outside the projects tree. Duplicating or
-    renaming a project copies that stored name verbatim, so in a duplicate it
-    still names the project the data came from.
-    """
-
-    return (
-        _containing_project_name_for_dataset(path)
-        or str(payload.get("project_name") or "").strip()
-    )
-
-
-def _dataset_patch_mask(path: str, n_origin: int, n_dev: int) -> np.ndarray:
-    try:
-        sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
-        payload = _read_dataset_sidecar(sidecar_path)
-        project_name = _dataset_owning_project_name(path, payload)
-        # Stored, not displayed: the mask covers the CSV at ``path``, whose
-        # blank cells are laid out at the shape that file holds.
-        stored_origin, stored_development = stored_lengths(payload)
-        origin_period_len = max(1, stored_origin)
-        dev_period_len = max(1, stored_development)
-        if project_name:
-            _, _, mask = _empty_dataset_geometry_from_general_settings(
-                project_name,
-                origin_period_len,
-                dev_period_len,
-            )
-            if isinstance(mask, np.ndarray) and mask.shape == (n_origin, n_dev):
-                return mask
-    except HTTPException:
-        raise
-    except Exception:
-        pass
-    return triangle_mask(n_origin, n_dev)
 
 
 def _create_empty_cached_dataset_impl(
@@ -2929,8 +2871,13 @@ def save_propagation_roots(
     its fallback to the existing sidecar's ``dataset_type`` and then to the
     instance name, and its silence when the save only reformats a dataset
     whose figures are produced elsewhere.
+
+    The notes save and the empty-dataset create share this module, so they
+    reach this function with their request mapping third instead of a name.
     """
 
+    if isinstance(dataset_name, Mapping):
+        return _request_save_propagation_roots(project_name, reserving_class, dataset_name)
     p, rc, ds = _require_dataset_fields(project_name, reserving_class, dataset_name)
     existing = _read_dataset_sidecar(_get_dataset_sidecar_path(p, rc, ds, csv_file=csv_file))
     dataset_type_value = str(dataset_type or existing.get("dataset_type") or ds)
@@ -2973,6 +2920,66 @@ def _save_dataset_notes_impl(project_name: str, reserving_class: str, dataset_na
 def save_dataset_notes(project_name: str, reserving_class: str, dataset_name: str, notes: str) -> Dict[str, Any]:
     with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
         return _save_dataset_notes_impl(project_name, reserving_class, dataset_name, notes)
+
+
+# A notes save and an empty-dataset create write a sidecar (and the create a
+# CSV and its dependents), so both run as hosted saves on Arco Engine under the
+# reserving-class lease rather than from the client process. The Engine calls
+# each as (project, class, request): the route's fields travel in a mapping
+# third so the save log names the dataset. The create's request carries
+# ``dataset_type``, which is how the roots below tell the two apart.
+
+
+def save_dataset_notes_request(
+    project_name: str,
+    reserving_class: str,
+    request: Mapping[str, Any],
+    **_ignored: Any,
+) -> Dict[str, Any]:
+    return save_dataset_notes(
+        project_name,
+        reserving_class,
+        str(request.get("dataset_name") or ""),
+        str(request.get("notes") or ""),
+    )
+
+
+def create_empty_cached_dataset_request(
+    project_name: str,
+    reserving_class: str,
+    request: Mapping[str, Any],
+    **_ignored: Any,
+) -> Dict[str, Any]:
+    fields = {key: value for key, value in request.items() if value is not None}
+    dataset_type = str(fields.pop("dataset_type", "") or "")
+    fields.pop("dataset_name", None)
+    return create_empty_cached_dataset(project_name, reserving_class, dataset_type, **fields)
+
+
+def _request_save_propagation_roots(
+    project_name: str,
+    reserving_class: str,
+    request: Mapping[str, Any],
+) -> List[Tuple[str, str]]:
+    if "dataset_type" not in request:
+        # Notes move no value, so a notes save walks nothing.
+        return []
+    # The create walks from the dataset type when the type is calculated
+    # (it computes the dataset instead of writing an empty one) and from the
+    # new instance otherwise, by the rule ``recalculate_dataset`` applies.
+    from app_server.services import calculated_dataset_service
+
+    dataset_type = str(request.get("dataset_type") or "")
+    calculated = {
+        _canon_dataset_name(row.get("name"))
+        for row in calculated_dataset_service._app_calculated_rows(
+            calculated_dataset_service._dataset_type_rows(project_name)
+        )
+    }
+    if _canon_dataset_name(dataset_type) in calculated:
+        return [(dataset_type, dataset_type)]
+    instance = str(request.get("instance_name") or dataset_type).strip()
+    return [(instance, dataset_type)]
 
 
 def _set_dataset_review_status_impl(
@@ -3059,140 +3066,3 @@ def set_dataset_review_status(
             dataset_names,
             status,
         )
-
-
-def _patch_dataset_impl(
-    ds_id: str, items: list, file_mtime: float | None = None
-) -> Dict[str, Any] | None:
-    path = config.DATASETS.get(ds_id)
-    if not path or not os.path.exists(path):
-        return None
-
-    st = os.stat(path)
-    if file_mtime is not None and abs(st.st_mtime - file_mtime) > 1e-6:
-        return {"conflict": True}
-
-    df = load_triangle_values(path)
-    n_origin, n_dev = df.shape
-    mask = _dataset_patch_mask(path, n_origin, n_dev)
-
-    applied = 0
-    rejected: List[Dict[str, Any]] = []
-
-    for it in items:
-        r, c = it.r, it.c
-        if r >= n_origin or c >= n_dev:
-            rejected.append({"r": r, "c": c, "reason": "out_of_range"})
-            continue
-        if not mask[r, c]:
-            rejected.append({"r": r, "c": c, "reason": "outside_triangle"})
-            continue
-
-        df.iat[r, c] = np.nan if it.value is None else float(it.value)
-        applied += 1
-
-    if applied == 0:
-        return {
-            "ok": True,
-            "applied": 0,
-            "rejected": rejected,
-            "mtime": st.st_mtime,
-            "calculated_updates": None,
-            "propagation_ok": True,
-        }
-
-    sidecar_path = ""
-    sidecar_payload: Dict[str, Any] = {}
-    if applied > 0:
-        sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
-        sidecar_payload = _read_dataset_sidecar(sidecar_path)
-        if sidecar_payload:
-            # Written back below, so a sidecar carried in by a duplication stops
-            # naming the project it was copied from once the grid is saved.
-            owning_project = _dataset_owning_project_name(path, sidecar_payload)
-            if owning_project:
-                sidecar_payload["project_name"] = owning_project
-            audit_at = _now_utc_iso()
-            user_name = _current_user_name()
-            sidecar_payload["updated_at"] = audit_at
-            sidecar_payload["modified_by"] = user_name
-            _append_dataset_audit_entry(sidecar_payload, "Update", event_date=audit_at, user_name=user_name)
-            dataset_name = str(sidecar_payload.get("dataset_name") or sidecar_payload.get("dataset_type") or "").strip()
-            if dataset_name:
-                dataset_sidecar_status_service.apply_status_fields(
-                    sidecar_payload,
-                    str(sidecar_payload.get("project_name") or ""),
-                    str(sidecar_payload.get("reserving_class") or ""),
-                    dataset_name,
-                    path=sidecar_path,
-                )
-    if sidecar_payload:
-        _write_dataset_csv_and_sidecar(df, path, sidecar_path, sidecar_payload)
-    else:
-        atomic_write_csv(df, path)
-    st2 = os.stat(path)
-    calculated_updates: Dict[str, Any] | None = None
-    if sidecar_payload:
-        project_value = str(sidecar_payload.get("project_name") or "").strip()
-        reserving_value = str(sidecar_payload.get("reserving_class") or "").strip()
-        dataset_value = str(
-            sidecar_payload.get("dataset_name")
-            or sidecar_payload.get("dataset_type")
-            or ""
-        ).strip()
-        if project_value and reserving_value and dataset_value:
-            calculated_updates = dependent_propagation_service.enqueue_save_propagation(
-                project_value,
-                reserving_value,
-                [
-                    dependent_propagation_service.changed_root(
-                        dataset_value,
-                        str(sidecar_payload.get("dataset_type") or ""),
-                    )
-                ],
-            )
-        else:
-            calculated_updates = {
-                "ok": False,
-                "skipped": True,
-                "reason": "missing_sidecar_context",
-            }
-    else:
-        calculated_updates = {
-            "ok": False,
-            "skipped": True,
-            "reason": "missing_sidecar_context",
-        }
-
-    return {
-        "ok": True,
-        "applied": applied,
-        "rejected": rejected,
-        "mtime": st2.st_mtime,
-        "calculated_updates": calculated_updates,
-        "propagation_ok": bool(calculated_updates and calculated_updates.get("ok")),
-    }
-
-
-def patch_dataset(
-    ds_id: str, items: list, file_mtime: float | None = None
-) -> Dict[str, Any] | None:
-    path = config.DATASETS.get(ds_id)
-    if not path or not os.path.exists(path):
-        return _patch_dataset_impl(ds_id, items, file_mtime)
-    sidecar_path = dataset_instance_index_service._dataset_sidecar_path_for_cached_csv(path)
-    sidecar = _read_dataset_sidecar(sidecar_path)
-    project_name = _dataset_owning_project_name(path, sidecar)
-    reserving_class = str(sidecar.get("reserving_class") or "").strip()
-    if not project_name or not reserving_class:
-        # Dependent propagation runs on Arco Engine; block the grid save
-        # before any write when no live Engine instance can pick the job up.
-        dependent_propagation_service.require_engine_available()
-        return _patch_dataset_impl(ds_id, items, file_mtime)
-    # Block the grid save before any write when no live Engine can pick the
-    # job up or another walk is still rewriting this reserving class.
-    dependent_propagation_service.require_reserving_class_writable(
-        project_name, reserving_class
-    )
-    with dataset_sidecar_status_service.reserving_class_io_lock(project_name, reserving_class):
-        return _patch_dataset_impl(ds_id, items, file_mtime)

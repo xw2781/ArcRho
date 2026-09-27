@@ -11,9 +11,7 @@ import {
   notifyDataTabDatasetMutationStarted,
   notifyDataTabDurableDatasetState,
 } from "/ui/shared/tabs/data/data_tab_change_watch_port.js?v=20260806a";
-import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260925a";
 import { createArcRhoProgressPopup } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260824a";
-import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 
 const DEFAULT_LOADING_POPUP_DELAY_MS = 300;
 
@@ -24,7 +22,6 @@ export function createDatasetRunController(deps) {
     $,
     logLine,
     getDataset,
-    patchDataset,
     renderTable,
     renderChart,
     notifyDatasetUpdated,
@@ -48,8 +45,6 @@ export function createDatasetRunController(deps) {
     stepId,
     suppressLoadingPopup = false,
     loadingPopupDelayMs = DEFAULT_LOADING_POPUP_DELAY_MS,
-    isDatasetReadOnly = () => false,
-    datasetReadOnlyMessage = () => "Generated datasets are read-only.",
     datasetCoarseDevelopmentNote = () => "",
   } = deps;
   const resolvedLoadingPopupDelayMs = Number.isFinite(Number(loadingPopupDelayMs))
@@ -553,68 +548,6 @@ export function createDatasetRunController(deps) {
     return { ok: true, status, data };
   }
 
-  async function savePatch() {
-    if (isDatasetReadOnly()) {
-      logLine("Generated dataset is read-only; patch save skipped.");
-      setStatus(datasetReadOnlyMessage());
-      return;
-    }
-    if (state.dirty.size === 0) {
-      logLine("No changes to save.");
-      return;
-    }
-    if (!state.model) {
-      logLine("Cannot save grid changes because the current dataset failed to load.");
-      setStatus("Reload the dataset successfully before saving grid changes.");
-      return;
-    }
-
-    const items = [];
-    for (const [key, value] of state.dirty.entries()) {
-      const [r, c] = key.split(",").map((x) => parseInt(x, 10));
-      items.push({ r, c, value });
-    }
-
-    notifyDataTabDatasetMutationStarted({ source: "patch" });
-    try {
-      const { status, data } = await patchDataset(items, state.fileMtime, config.DS_ID);
-
-      if (status === 409) {
-        logLine("Conflict: file changed on disk. Reload first.");
-        return;
-      }
-      if (status === 503) {
-        // Dependent propagation runs on ArcRho Engine; the save was refused
-        // before anything was written and unsaved edits stay in the grid.
-        const message = String(
-          data?.detail
-          || "The Arco Engine service is not available. Please try again later or contact the administrator.",
-        );
-        void showPageMessageBox({ title: "Arco Engine Unavailable", message, tone: "warn" });
-        setStatus(message);
-        logLine(`Save refused: ${message}`);
-        return;
-      }
-
-      logLine(`Saved patch: applied=${data.applied}, rejected=${(data.rejected || []).length}, new_mtime=${data.mtime}`);
-      const loadResult = await loadDataset();
-      if (!loadResult?.ok) return;
-      if (typeof onCalculatedUpdates === "function") {
-        onCalculatedUpdates(data?.calculated_updates, "Dataset grid save");
-      }
-      void trackSavePropagation(data?.calculated_updates, {
-        onStatus: (message) => setStatus(message),
-        onComplete: () => {
-          try {
-            window.parent?.postMessage({ type: "arcrho:project-instance-refresh-datasets" }, "*");
-          } catch {}
-        },
-      });
-    } finally {
-      notifyDataTabDatasetMutationEnded({ source: "patch" });
-    }
-  }
-
   function toggleBlanks() {
     state.showBlanks = !state.showBlanks;
     $("toggleBlankBtn").textContent = state.showBlanks ? "Hide blanks" : "Show blanks";
@@ -630,7 +563,6 @@ export function createDatasetRunController(deps) {
     isRunInFlight: () => runInFlight,
     loadDataset,
     runArcRhoTri,
-    savePatch,
     scheduleAutoRun,
     showDatasetLoadingPopup,
     toggleBlanks,

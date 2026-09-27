@@ -775,11 +775,11 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
     "dataset": {
         "doc": "docs/app_server/domains/dataset.md",
         "files": [
-            ("app_server/api/dataset_router.py", "Dataset query/patch routes."),
+            ("app_server/api/dataset_router.py", "Dataset query and save routes."),
             ("app_server/services/dataset_service.py", "Dataset in-memory operations."),
             ("app_server/services/class_folder_scan_cache.py", "Scandir-validated caches for reserving-class sidecar/CSV reads."),
             ("app_server/services/dataset_dependency_graph_service.py", "Whole reserving-class dependency graph: index rows as nodes, sidecar precedents as edges."),
-            ("app_server/schemas/dataset.py", "Dataset patch request model."),
+            ("app_server/schemas/dataset.py", "Dataset request models."),
             ("ui/shared/dataset/dataset_api.js", "Frontend client wrapper for dataset API."),
         ],
     },
@@ -795,7 +795,7 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
     "bornhuetter_ferguson": {
         "doc": "docs/app_server/domains/bornhuetter_ferguson.md",
         "files": [
-            ("app_server/api/bornhuetter_ferguson_router.py", "Aggregate BF load/save/refresh routes."),
+            ("app_server/api/bornhuetter_ferguson_router.py", "Aggregate BF load/save routes."),
             ("app_server/services/bornhuetter_ferguson_service.py", "V3 contract persistence, transactional publication, and eager dependency refresh."),
             ("app_server/schemas/bornhuetter_ferguson.py", "BF identity and revision-aware save request models."),
             ("ui/method_pages/bornhuetter_ferguson/bornhuetter_ferguson_main.js", "BF page state and aggregate persistence flow."),
@@ -806,7 +806,7 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
     "cape_cod": {
         "doc": "docs/app_server/domains/cape_cod.md",
         "files": [
-            ("app_server/api/cape_cod_router.py", "Aggregate Cape Cod load/save/refresh routes."),
+            ("app_server/api/cape_cod_router.py", "Aggregate Cape Cod load/save routes."),
             ("app_server/services/cape_cod_service.py", "V1 contract persistence, transactional publication, and eager dependency refresh."),
             ("app_server/schemas/cape_cod.py", "Cape Cod identity and revision-aware save request models."),
             ("ui/method_pages/cape_cod/cape_cod_main.js", "Cape Cod page state and aggregate persistence flow."),
