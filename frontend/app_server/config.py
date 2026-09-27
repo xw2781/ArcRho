@@ -19,7 +19,6 @@ from arcrho_api import config as api_config
 from arcrho_api.field_mapping_contract import DATE_ROLE_SIGNIFICANCES
 from arcrho_api.sidecar_audit_contract import PROJECT_AUDIT_LOG_MAX_ENTRIES
 from arcrho_hosted_save_http_contract import (
-    CLIENT_CONFIG_FILE_NAME as GATEWAY_CONFIG_FILE,
     HostedSaveHttpContractError,
     normalize_client_config,
 )
@@ -70,7 +69,6 @@ DATASET_NUMBER_FORMATS_FILE = "dataset_number_formats.json"
 DATASET_NUMBER_FORMATS_PATH_ENV = "ARCRHO_DATASET_NUMBER_FORMATS_PATH"
 CLIENT_SAVE_LATENCY_LOG_FILE = "client_save_latency.jsonl"
 CLIENT_READ_LATENCY_LOG_FILE = "client_read_latency.jsonl"
-GATEWAY_CONFIG_ENV = "ARCRHO_GATEWAY_CONFIG"
 
 
 def _is_arcode_mode() -> bool:
@@ -126,12 +124,9 @@ def get_client_read_latency_log_path() -> str:
 
 
 def get_gateway_config_path() -> str:
-    """Return the current user's machine-local gateway credential path."""
+    """Return the current user's machine-local Gateway credential for the active server."""
 
-    configured = str(os.environ.get(GATEWAY_CONFIG_ENV) or "").strip()
-    if configured:
-        return configured
-    return os.path.join(_get_user_appdata_dir(), GATEWAY_CONFIG_FILE)
+    return str(api_config.gateway_config_path(Path(WORKSPACE_PATHS_PATH)))
 
 
 def load_gateway_config() -> Dict[str, Any]:
@@ -173,63 +168,25 @@ def workspace_paths_file_exists() -> bool:
     return os.path.exists(WORKSPACE_PATHS_PATH)
 
 
-def _read_json_file(path: str) -> Dict[str, Any]:
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-    except Exception:
-        return {}
-
-    if not isinstance(raw, dict):
-        return {}
-    return raw
-
-
-def _clean_path_segment(value: Any, default: str) -> str:
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return default
+def load_workspace_config() -> Dict[str, Any]:
+    """The full workspace config, server profiles included, owned by ``arcrho_api.config``."""
+    return api_config.load_workspace_config(Path(WORKSPACE_PATHS_PATH))
 
 
 def load_workspace_paths() -> Dict[str, Any]:
     """Load runtime workspace path configuration."""
-    raw = _read_json_file(WORKSPACE_PATHS_PATH)
-
-    runtime_root = api_config.env_server_root()
-    if runtime_root:
-        workspace_root = runtime_root
-    else:
-        workspace_root = raw.get("workspace_root")
-        if not isinstance(workspace_root, str) or not workspace_root.strip():
-            workspace_root = DEFAULT_WORKSPACE_ROOT
-
-    paths = raw.get("paths")
-    if not isinstance(paths, dict):
-        paths = {}
-
-    projects_dir = _clean_path_segment(
-        paths.get("projects_dir"),
-        DEFAULT_WORKSPACE_PATHS["projects_dir"],
+    cfg = load_workspace_config()
+    workspace_root = (
+        api_config.env_server_root() or cfg["workspace_root"] or DEFAULT_WORKSPACE_ROOT
     )
-    requests_dir = _clean_path_segment(
-        paths.get("requests_dir"),
-        DEFAULT_WORKSPACE_PATHS["requests_dir"],
-    )
-
-    return {
-        "workspace_root": str(workspace_root).strip(),
-        "paths": {
-            "projects_dir": projects_dir,
-            "requests_dir": requests_dir,
-        },
-    }
+    return {"workspace_root": workspace_root, "paths": cfg["paths"]}
 
 
 def save_workspace_paths(cfg: Dict[str, Any]) -> None:
-    """Persist normalized workspace path configuration."""
-    os.makedirs(os.path.dirname(WORKSPACE_PATHS_PATH), exist_ok=True)
-    with open(WORKSPACE_PATHS_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2, ensure_ascii=False)
+    """Point the active server profile at ``cfg``'s root and paths."""
+    api_config.save_workspace_root(
+        cfg["workspace_root"], cfg.get("paths"), Path(WORKSPACE_PATHS_PATH)
+    )
 
 
 def get_root_path() -> str:

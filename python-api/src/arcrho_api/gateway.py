@@ -32,7 +32,6 @@ from arcrho_hosted_save_http_contract import (
     AUTH_SIGNATURE_HEADER,
     AUTH_TIMESTAMP_HEADER,
     AUTH_USER_HEADER,
-    CLIENT_CONFIG_FILE_NAME,
     HOSTED_SAVE_PATH,
     canonical_request_bytes,
     normalize_client_config,
@@ -49,7 +48,7 @@ from arcrho_workspace_read_contract import (
     build_workspace_read_request,
 )
 
-from .config import config_dir
+from .config import gateway_config_path as active_gateway_config_path
 from .exceptions import ArcRhoApiError
 
 # The Gateway lives on the internal network; a system proxy must never see it.
@@ -66,9 +65,9 @@ class GatewayError(ArcRhoApiError):
 
 
 def gateway_config_path():
-    """The current user's Gateway credential, written when Arco enrolled them."""
+    """The current user's Gateway credential for the active server, written when Arco enrolled them."""
 
-    return config_dir() / CLIENT_CONFIG_FILE_NAME
+    return active_gateway_config_path()
 
 
 class GatewayClient:

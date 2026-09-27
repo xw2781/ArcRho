@@ -21,8 +21,8 @@ class BridgeRuntimeImportTests(unittest.TestCase):
         with (
             patch.dict(os.environ, {config.RUNTIME_SERVER_ROOT_ENV: runtime_root}),
             patch.object(
-                config,
-                "_read_json_file",
+                config.api_config,
+                "_read_workspace_config",
                 return_value={
                     "workspace_root": r"C:\Users\tester\stale-workspace",
                     "paths": {"projects_dir": "projects", "requests_dir": "requests"},

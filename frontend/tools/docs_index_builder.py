@@ -736,6 +736,7 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
             ("app_server/api/workspace_paths_router.py", "Read/update workspace path config."),
             ("app_server/config.py", "Config loader and runtime path refresh."),
             ("app_server/schemas/workspace_paths.py", "Workspace path request models."),
+            ("app_server/services/server_profile_service.py", "Server profiles: list, add, activate, and what a switch does in this process."),
         ],
     },
     "app_control": {

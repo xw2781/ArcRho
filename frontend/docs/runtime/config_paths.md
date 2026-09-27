@@ -8,7 +8,6 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
 ## Entry Points
 <!-- AUTO-GEN:BEGIN runtime.config_paths.entry_points -->
 - Path/config helper functions in `app_server/config.py`:
-  - `_clean_path_segment`
   - `_find_existing_project_dir`
   - `_get_macro_dir`
   - `_get_macro_library_dir`
@@ -59,6 +58,9 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `save_workspace_paths`
   - `workspace_paths_file_exists`
 - Workspace path config routes:
+  - `GET` `/server_profiles` handled by `get_server_profiles`
+  - `POST` `/server_profiles` handled by `save_server_profile`
+  - `POST` `/server_profiles/activate` handled by `activate_server_profile`
   - `GET` `/workspace_paths` handled by `get_workspace_paths`
   - `POST` `/workspace_paths` handled by `update_workspace_paths`
 <!-- AUTO-GEN:END -->
@@ -84,7 +86,8 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- `%APPDATA%\ArcRho\workspace_paths.json` is the persistent user-local source-of-truth for workspace root/path mapping.
+- `%APPDATA%\ArcRho\workspace_paths.json` is the persistent user-local source-of-truth for workspace root/path mapping. It holds a list of server profiles (`profiles`, each `id`, `name`, `root`, optional `gateway_config`) and the `active_profile`; `workspace_root` mirrors the active profile's root. A file with no list reads as one `default` profile, built in memory and never written back. `arcrho_api.config` owns the file and its shape.
+- Each server profile has its own Gateway credential: `%APPDATA%\ArcRho\arcrho_gateway.json` for the `default` profile, `arcrho_gateway.<id>.json` for any other, unless the profile names a file. `ARCRHO_GATEWAY_CONFIG` outranks the active profile, as `ARCRHO_SERVER_ROOT` outranks its root. The Excel add-in's credential helper always uses `arcrho_gateway.json`.
 - `%APPDATA%\ArcRho\arcrho_gateway.json` is an authoritative per-user, per-PC pilot credential. Existing files are never replaced automatically, so `enabled: false` remains an explicit opt-out. `<workspace_root>/config/arcrho_gateway.json` owns the shared `client_url` and HMAC user registry, and no save-kind allowlist — the supported kinds are derived from `SAVE_JOB_KINDS`; lock-protected atomic enrollment prevents concurrent first launches from losing users.
 - `ARCRHO_RUNTIME_SERVER_ROOT`, when set by a trusted worker, supersedes the persisted root only for that process. It is not a user preference and must not be written back to `%APPDATA%`. The workspace-read client also treats its presence as "this is a server process" and never routes a read to the gateway from such a process.
 - `%LOCALAPPDATA%\ArcRho\logs\client_save_latency.jsonl` and `client_read_latency.jsonl` (`get_client_save_latency_log_path`, `get_client_read_latency_log_path`) hold the per-operation transport diagnostics for hosted saves and Server-hosted workspace reads; both rotate at 5 MB with three backups and never contain project data.

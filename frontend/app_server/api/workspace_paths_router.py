@@ -5,8 +5,12 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException
 
 from app_server import config
-from app_server.schemas.workspace_paths import WorkspacePathsUpdateRequest
-from app_server.services import hosted_save_enrollment_service
+from app_server.schemas.workspace_paths import (
+    ServerProfileActivateRequest,
+    ServerProfileSaveRequest,
+    WorkspacePathsUpdateRequest,
+)
+from app_server.services import hosted_save_enrollment_service, server_profile_service
 
 router = APIRouter()
 
@@ -18,21 +22,8 @@ def _with_path_overrides(cfg: Dict[str, Any], req: WorkspacePathsUpdateRequest) 
 
     paths = dict(cfg.get("paths") or {})
     if req.paths:
-        updates = req.paths.dict(exclude_none=True)
-        paths.update(updates)
-    return {
-        "workspace_root": workspace_root,
-        "paths": {
-            "projects_dir": config._clean_path_segment(
-                paths.get("projects_dir"),
-                config.DEFAULT_WORKSPACE_PATHS["projects_dir"],
-            ),
-            "requests_dir": config._clean_path_segment(
-                paths.get("requests_dir"),
-                config.DEFAULT_WORKSPACE_PATHS["requests_dir"],
-            ),
-        },
-    }
+        paths.update(req.paths.dict(exclude_none=True))
+    return {"workspace_root": workspace_root, "paths": paths}
 
 
 def _persist_workspace_paths(cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -64,3 +55,23 @@ def update_workspace_paths(req: WorkspacePathsUpdateRequest) -> Dict[str, Any]:
     response = _persist_workspace_paths(cfg)
     hosted_save_enrollment_service.auto_enroll_current_user()
     return response
+
+
+@router.get("/server_profiles")
+def get_server_profiles() -> Dict[str, Any]:
+    return server_profile_service.list_server_profiles()
+
+
+@router.post("/server_profiles")
+def save_server_profile(req: ServerProfileSaveRequest) -> Dict[str, Any]:
+    return server_profile_service.save_server_profile(
+        name=req.name,
+        root=req.root,
+        profile_id=req.id or "",
+        gateway_config=req.gateway_config or "",
+    )
+
+
+@router.post("/server_profiles/activate")
+def activate_server_profile(req: ServerProfileActivateRequest) -> Dict[str, Any]:
+    return server_profile_service.activate_server_profile(req.id)

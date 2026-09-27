@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 from .exceptions import InvalidArcRhoServerError
@@ -27,6 +28,14 @@ DEFAULT_WORKSPACE_PATHS = {
 SERVER_ROOT_ENV = "ARCRHO_SERVER_ROOT"
 RUNTIME_SERVER_ROOT_ENV = "ARCRHO_RUNTIME_SERVER_ROOT"
 SERVER_ROOT_ENV_VARS = (SERVER_ROOT_ENV, RUNTIME_SERVER_ROOT_ENV)
+# A launch that names its own Gateway credential outranks the active profile's.
+GATEWAY_CONFIG_ENV = "ARCRHO_GATEWAY_CONFIG"
+# ``workspace_paths.json`` keeps a list of server profiles, one of them active.
+# A file with no list reads as one profile under this id; its credential keeps
+# the original file name.
+DEFAULT_PROFILE_ID = "default"
+DEFAULT_PROFILE_NAME = "Production"
+PROFILE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 # A running desktop app already knows its workspace root; asking it is the last
 # resort before the packaged default, so keep the probe short enough that a
 # stopped app never stalls a macro.
@@ -79,8 +88,8 @@ def _validate_server_root(path_like: str | Path) -> Path:
     return root
 
 
-def _read_workspace_config() -> dict:
-    path = get_config_path()
+def _read_workspace_config(path: Path | None = None) -> dict:
+    path = path or get_config_path()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -88,26 +97,157 @@ def _read_workspace_config() -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _load_host_server_root() -> Path | None:
-    raw = str(_read_workspace_config().get("workspace_root") or "").strip()
-    return _normalize_path(raw) if raw else None
+def _text(value: object, default: str = "") -> str:
+    return value.strip() if isinstance(value, str) and value.strip() else default
 
 
-def _save_host_server_root(root: Path) -> None:
-    config_path = get_config_path()
+def normalize_workspace_config(raw: dict) -> dict:
+    """Return the canonical workspace config: server profiles, the active one, and paths.
+
+    A file written before profiles existed holds only ``workspace_root``; it
+    reads as one ``default`` profile for that root, built in memory. An empty
+    root means none is configured, so callers fall back as they always have.
+    ``workspace_root`` always mirrors the active profile, because the installer,
+    ArcBot and the running-app probe read that field.
+    """
+
+    paths = raw.get("paths") if isinstance(raw.get("paths"), dict) else {}
+    profiles: list[dict] = []
+    for item in raw.get("profiles") if isinstance(raw.get("profiles"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        profile_id = _text(item.get("id")).lower()
+        root = _text(item.get("root"))
+        if not profile_id or not root or any(p["id"] == profile_id for p in profiles):
+            continue
+        profile = {"id": profile_id, "name": _text(item.get("name"), profile_id), "root": root}
+        if _text(item.get("gateway_config")):
+            profile["gateway_config"] = _text(item.get("gateway_config"))
+        profiles.append(profile)
+    if not profiles:
+        profiles = [{
+            "id": DEFAULT_PROFILE_ID,
+            "name": DEFAULT_PROFILE_NAME,
+            "root": _text(raw.get("workspace_root")),
+        }]
+    active = _text(raw.get("active_profile")).lower()
+    if not any(p["id"] == active for p in profiles):
+        active = profiles[0]["id"]
+    return {
+        "workspace_root": next(p["root"] for p in profiles if p["id"] == active),
+        "paths": {
+            key: _text(paths.get(key), default) for key, default in DEFAULT_WORKSPACE_PATHS.items()
+        },
+        "profiles": profiles,
+        "active_profile": active,
+    }
+
+
+def load_workspace_config(path: Path | None = None) -> dict:
+    """Read the host workspace config file; a missing file reads as the in-memory default."""
+
+    return normalize_workspace_config(_read_workspace_config(path))
+
+
+def save_workspace_config(payload: dict, path: Path | None = None) -> dict:
+    """Write the host workspace config atomically and return what was written."""
+
+    config_path = path or get_config_path()
+    cfg = normalize_workspace_config(payload)
+    for profile in cfg["profiles"]:
+        profile["root"] = profile["root"] or DEFAULT_WORKSPACE_ROOT
+    cfg["workspace_root"] = active_server_profile(cfg)["root"]
     config_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = config_path.with_suffix(f"{config_path.suffix}.tmp")
-    payload = _read_workspace_config()
-    paths = payload.get("paths")
-    if not isinstance(paths, dict):
-        paths = {}
-    payload["workspace_root"] = str(root)
-    payload["paths"] = {
-        "projects_dir": str(paths.get("projects_dir") or DEFAULT_WORKSPACE_PATHS["projects_dir"]),
-        "requests_dir": str(paths.get("requests_dir") or DEFAULT_WORKSPACE_PATHS["requests_dir"]),
-    }
-    tmp_path.write_text(persisted_json_text(payload), encoding="utf-8")
+    tmp_path.write_text(persisted_json_text(cfg), encoding="utf-8")
     os.replace(tmp_path, config_path)
+    return cfg
+
+
+def save_workspace_root(root: str | Path, paths: dict | None = None, path: Path | None = None) -> dict:
+    """Point the active server profile at ``root`` (the Server Connection save)."""
+
+    cfg = load_workspace_config(path)
+    active_server_profile(cfg)["root"] = str(root).strip()
+    cfg["paths"].update(paths or {})
+    return save_workspace_config(cfg, path)
+
+
+def active_server_profile(cfg: dict) -> dict:
+    return next(p for p in cfg["profiles"] if p["id"] == cfg["active_profile"])
+
+
+def profile_gateway_config_path(profile: dict, folder: Path) -> Path:
+    """The Gateway credential for one server profile.
+
+    A profile may name its own file; otherwise the default profile keeps the
+    original credential name and every other profile ``arcrho_gateway.<id>.json``
+    beside it, so each server has its own sign-in.
+    """
+
+    if profile.get("gateway_config"):
+        return Path(profile["gateway_config"]).expanduser()
+    from arcrho_hosted_save_http_contract import CLIENT_CONFIG_FILE_NAME
+
+    if profile["id"] == DEFAULT_PROFILE_ID:
+        return folder / CLIENT_CONFIG_FILE_NAME
+    name = Path(CLIENT_CONFIG_FILE_NAME)
+    return folder / f"{name.stem}.{profile['id']}{name.suffix}"
+
+
+def env_gateway_config_path() -> str:
+    """Return the Gateway credential set by environment override, if any."""
+
+    return str(os.environ.get(GATEWAY_CONFIG_ENV) or "").strip()
+
+
+def gateway_config_path(path: Path | None = None) -> Path:
+    """The current user's Gateway credential: the launch override, then the active profile's."""
+
+    configured = env_gateway_config_path()
+    if configured:
+        return Path(configured)
+    config_path = path or get_config_path()
+    return profile_gateway_config_path(
+        active_server_profile(load_workspace_config(config_path)), config_path.parent
+    )
+
+
+def profile_id_for(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(name or "").lower()).strip("_")
+
+
+def upsert_server_profile(
+    *, name: str, root: str, profile_id: str = "", gateway_config: str = "", path: Path | None = None,
+) -> dict:
+    """Add a server profile, or replace the one with the same id, and save."""
+
+    profile_id = (profile_id.strip() or profile_id_for(name)).lower()
+    if not PROFILE_ID_PATTERN.match(profile_id):
+        raise ValueError("A server profile id uses letters, digits, '_' or '-' only.")
+    _validate_server_root(root)
+    profile = {"id": profile_id, "name": name.strip() or profile_id, "root": root.strip()}
+    if gateway_config.strip():
+        profile["gateway_config"] = gateway_config.strip()
+    cfg = load_workspace_config(path)
+    cfg["profiles"] = [p for p in cfg["profiles"] if p["id"] != profile_id] + [profile]
+    return save_workspace_config(cfg, path)
+
+
+def activate_server_profile(profile_id: str, path: Path | None = None) -> dict:
+    """Make one saved profile the active server and save."""
+
+    profile_id = profile_id.strip().lower()
+    cfg = load_workspace_config(path)
+    if not any(p["id"] == profile_id for p in cfg["profiles"]):
+        raise ValueError(f"No server profile named {profile_id!r}.")
+    cfg["active_profile"] = profile_id
+    return save_workspace_config(cfg, path)
+
+
+def _load_host_server_root() -> Path | None:
+    raw = load_workspace_config()["workspace_root"]
+    return _normalize_path(raw) if raw else None
 
 
 def _load_env_server_root() -> Path | None:
@@ -219,7 +359,7 @@ def set_server_root(server_root: str | Path, *, persist: bool = True, validate: 
     _server_root = root
     _discovery_attempted = False
     if persist:
-        _save_host_server_root(root)
+        save_workspace_root(root)
     return root
 
 

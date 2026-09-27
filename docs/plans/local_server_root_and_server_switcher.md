@@ -1,6 +1,6 @@
 # Local Server Root and Server Switcher
 
-Status: Step 1 done 2026-09-26 — a private test server runs on the developer PC at `C:\Arco Server` beside production, with its own Gateway, credential and app profile, built from the working tree by `tools/local_server.py`. Steps 2-8 (server profiles, server identity, the Server tab opened from Home with its switcher and component monitor, starting and stopping a server on this PC, the active-server badge, the release) are planned and not started; the Server tab was added 2026-09-26 at the user's request; offline use for every user is recorded as a direction with open decisions, not yet broken into steps.
+Status: Steps 1-2 done 2026-09-26 — a private test server runs on the developer PC at `C:\Arco Server` beside production, with its own Gateway, credential and app profile, built from the working tree by `tools/local_server.py`; the app keeps a list of servers, one active, each with its own credential, behind three new app-server routes. Steps 3-8 (server identity, the Server tab opened from Home with its switcher and component monitor, starting and stopping a server on this PC, the active-server badge, the release) are planned and not started; the Server tab was added 2026-09-26 at the user's request; offline use for every user is recorded as a direction with open decisions, not yet broken into steps.
 Last updated: 2026-09-26
 Related: [client_smb_retirement.md](client_smb_retirement.md) (the first work tested this way), [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md)
 
@@ -13,7 +13,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | # | Step | Done | Date | Est. | Actual | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | A private test server runs on the developer's PC beside production | [x] | 2026-09-26 | 90 min | not clocked | The developer can build, deploy and try server changes on their own PC; nobody else sees them. |
-| 2 | The app remembers more than one server, each with its own sign-in | [ ] | | 70 min | | |
+| 2 | The app remembers more than one server, each with its own sign-in | [x] | 2026-09-26 | 70 min | 15 min | The app can hold several servers and switch the active one, and each server signs in with its own credential; there is no screen for it yet. |
 | 3 | The app refuses a server whose address and data folder do not belong together | [ ] | | 55 min | | |
 | 4 | A Server tab opened from Home lists servers by name and address and switches between them | [ ] | | 90 min | | |
 | 5 | The window shows which server it is using whenever it is not production | [ ] | | 30 min | | |
@@ -21,7 +21,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 7 | The Server tab shows which server components are running and how long since each was last heard from | [ ] | | 60 min | | |
 | 8 | A server on this PC can be started and stopped from the Server tab | [ ] | | 45 min | | |
 
-Overall: 1 of 8 steps done. Estimated 470 min; step 1 was not clocked. Order: 2, 3, 4, 7, 8, 5, then 6.
+Overall: 2 of 8 steps done. Estimated 470 min; actual so far 15 min (step 1 was not clocked). Order: 2, 3, 4, 7, 8, 5, then 6.
 
 ## How agents work this plan
 
@@ -61,7 +61,7 @@ Known limits, none of which writes to production:
 - A copied project still names the production share as its **import source** (`field_mapping.json`, `source/source_import.json`), so a source refresh on the local root reads production's source files. It never writes there.
 - Five project-level caches store absolute `E:\ArcRho Server` paths; on the local root they miss and rebuild the first time they are read.
 - `%APPDATA%\ArcRho\prefs`, `app_endpoint.json` and the logs under `%LOCALAPPDATA%\ArcRho\logs` are shared by every app on the PC. A macro or notebook run outside the app finds "the running app" through `app_endpoint.json`, whichever app wrote it last.
-- `arcrho_api.gateway` (scripts and notebooks) always signs with the production credential; it ignores `ARCRHO_GATEWAY_CONFIG` until step 2.
+- `arcrho_api.gateway` (scripts and notebooks) signs with `ARCRHO_GATEWAY_CONFIG` when set, otherwise the active server profile's credential (step 2). A notebook started outside a `launch-app` session therefore uses the production credential unless the local profile is active.
 - Ports are per machine, so one local root runs at a time.
 - There is no Build Listener for the local root; `deploy` runs the build scripts directly, which is fast on a local disk.
 - Never save the Server Connection page in a `launch-app` session. It writes the per-machine `workspace_paths.json` that the production app also reads.
@@ -131,7 +131,7 @@ Estimate: code edit 55 min, test/validation 35 min, total 90 min. Actual: not cl
 
 **Done when.** Two profiles can be stored and activated from the API, and each activation uses its own credential.
 
-Estimate: code edit 50 min, test/validation 20 min, total 70 min.
+Estimate: code edit 50 min, test/validation 20 min, total 70 min. Actual: code edit 10 min, test/validation 5 min, total 15 min; under a quarter of the estimate because enrollment already followed the credential path and root, so only the path helper had to change.
 
 ### Step 3 — Server identity
 

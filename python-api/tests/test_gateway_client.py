@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -25,6 +26,9 @@ from arcrho_hosted_save_http_contract import (  # noqa: E402
 )
 from arcrho_workspace_mutation_contract import WORKSPACE_MUTATION_PATH, validate_workspace_mutation_request  # noqa: E402
 from arcrho_workspace_read_contract import WORKSPACE_READ_PATH, validate_workspace_read_request  # noqa: E402
+
+TEST_TEMP_ROOT = Path(__file__).resolve().parents[2] / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 
 CONFIG = {
     "enabled": True,
@@ -114,9 +118,24 @@ class GatewayClientTests(unittest.TestCase):
         self.assertEqual((caught.exception.status, caught.exception.detail), (423, "busy"))
 
     def test_missing_credential_names_the_file(self):
-        with tempfile.TemporaryDirectory() as folder, patch.object(gateway, "config_dir", return_value=Path(folder)):
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as folder, patch.dict(
+            os.environ, {"APPDATA": folder, "ARCRHO_GATEWAY_CONFIG": ""}
+        ):
             with self.assertRaisesRegex(ArcRhoApiError, "No Arco Gateway credential"):
                 gateway.GatewayClient()
+
+    def test_credential_follows_the_active_server_profile(self):
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as folder, patch.dict(
+            os.environ, {"APPDATA": folder, "ARCRHO_GATEWAY_CONFIG": ""}
+        ):
+            settings = Path(folder) / "ArcRho"
+            settings.mkdir()
+            (settings / "workspace_paths.json").write_text(json.dumps({
+                "profiles": [{"id": "local", "name": "Local test", "root": folder}],
+                "active_profile": "local",
+            }), encoding="utf-8")
+            (settings / "arcrho_gateway.local.json").write_text(json.dumps(CONFIG), encoding="utf-8")
+            self.assertEqual(gateway.GatewayClient().url, CONFIG["url"])
 
 
 if __name__ == "__main__":
