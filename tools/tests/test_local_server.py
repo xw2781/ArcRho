@@ -108,6 +108,11 @@ class LocalServerTests(unittest.TestCase):
         self.assertNotIn("ARCRHO_SERVER_ROOT", env)
         self.assertNotIn("ARCRHO_RUNTIME_SERVER_ROOT", env)
 
+    def test_deploy_with_no_components_builds_engine_and_gateway(self) -> None:
+        with patch.object(local_server, "deploy") as deploy:
+            local_server.main(["--root", str(self.root), "--production-root", str(self.production), "deploy"])
+        self.assertEqual(deploy.call_args.args[1], ["engine", "gateway"])
+
 
 if __name__ == "__main__":
     unittest.main()

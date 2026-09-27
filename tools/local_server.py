@@ -302,7 +302,9 @@ def _parser() -> argparse.ArgumentParser:
     copy.add_argument("name", nargs="?", default=DEFAULT_PROJECT)
     copy.add_argument("--overwrite", action="store_true")
     build = commands.add_parser("deploy", help="build components from this tree into the local root")
-    build.add_argument("components", nargs="*", choices=BUILDABLE, default=["engine", "gateway"])
+    # Python 3.10's argparse checks an omitted "*" positional against choices as
+    # one list value and refuses it, so main() checks the names instead.
+    build.add_argument("components", nargs="*", metavar="{" + ",".join(BUILDABLE) + "}")
     commands.add_parser("start", help="start the local Orchestrator, which starts Engine and Gateway")
     commands.add_parser("stop", help="stop every component of the local root")
     commands.add_parser("status", help="show heartbeats and Gateway health")
@@ -311,7 +313,11 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
+    unknown = [name for name in getattr(args, "components", []) if name not in BUILDABLE]
+    if unknown:
+        parser.error(f"unknown component(s): {', '.join(unknown)} (choose from {', '.join(BUILDABLE)})")
     production_root = Path(args.production_root)
     try:
         root = require_local_root(Path(args.root), production_root)
@@ -326,7 +332,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "copy-project":
             print(f"Copied to {copy_project(root, production_root=production_root, name=args.name, overwrite=args.overwrite)}")
         elif args.command == "deploy":
-            deploy(root, args.components)
+            deploy(root, args.components or ["engine", "gateway"])
         elif args.command == "start":
             start(root)
         elif args.command == "stop":
