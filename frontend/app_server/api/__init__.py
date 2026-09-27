@@ -3,7 +3,6 @@ from .app_control_router import router as app_control_router
 from .workspace_paths_router import router as workspace_paths_router
 from .audit_log_router import router as audit_log_router
 from .dataset_router import router as dataset_router
-from .book_router import router as book_router
 from .excel_router import router as excel_router
 from .excel_link_router import router as excel_link_router
 from .arcrho_router import router as arcrho_router
@@ -39,7 +38,6 @@ __all__ = [
     "workspace_paths_router",
     "audit_log_router",
     "dataset_router",
-    "book_router",
     "excel_router",
     "excel_link_router",
     "arcrho_router",

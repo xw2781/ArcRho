@@ -379,17 +379,6 @@ class DatasetPublicReadTests(unittest.TestCase):
         self.assertEqual(result["values"], [[1.0, 2.0], [3.0, None]])
         resolver.assert_called_once_with("dataset-6", "dataset.csv", "Example Project", 12, 2)
 
-    def test_get_diagonal_uses_resolved_labels(self) -> None:
-        frame = dataset_service.pd.DataFrame([[1.0, 2.0], [3.0, float("nan")]])
-        with (
-            patch.dict(dataset_service.config.DATASETS, {"dataset-7": "dataset.csv"}, clear=True),
-            patch.object(dataset_service.os.path, "exists", return_value=True),
-            patch.object(dataset_service, "load_triangle_values", return_value=frame),
-            patch.object(dataset_service, "_resolve_origin_labels", return_value=["2020", "2021"]),
-        ):
-            result = dataset_service.get_diagonal("dataset-7", "Example Project", 12)
-        self.assertEqual([item["origin"] for item in result["items"]], ["2020", "2021"])
-
 
 if __name__ == "__main__":
     unittest.main()

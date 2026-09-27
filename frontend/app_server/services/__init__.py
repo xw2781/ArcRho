@@ -14,7 +14,6 @@ from typing import Any
 __all__ = [
     "workflow_service",
     "audit_service",
-    "book_service",
     "dataset_instance_index_service",
     "dataset_number_format_service",
     "dataset_sidecar_status_service",

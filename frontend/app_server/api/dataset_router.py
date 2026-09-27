@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 
@@ -44,11 +44,6 @@ def save_dataset_number_format_defaults(req: DatasetNumberFormatsSaveRequest) ->
         default_number_format=req.default_number_format,
         overrides=[item.model_dump() for item in req.overrides],
     )
-
-
-@router.get("/datasets")
-def list_datasets() -> List[Dict[str, Any]]:
-    return dataset_service.list_datasets()
 
 
 @router.get("/datasets/cached")
@@ -182,19 +177,6 @@ def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, 
     )
     if isinstance(result, dict) and result.get("id") is None:
         result = load_locally()
-    if result is None:
-        raise HTTPException(404, f"Unknown dataset: {ds_id}")
-    return result
-
-
-@router.get("/dataset/{ds_id}/diagonal")
-def get_diagonal(ds_id: str, project_name: str, origin_length: int, k: int = 0) -> Dict[str, Any]:
-    result = dataset_service.get_diagonal(
-        ds_id,
-        project_name=project_name,
-        origin_length=origin_length,
-        k=k,
-    )
     if result is None:
         raise HTTPException(404, f"Unknown dataset: {ds_id}")
     return result

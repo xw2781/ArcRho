@@ -11,7 +11,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Any, Dict, Iterable, Iterator, List, Tuple, cast
+from typing import Any, Dict, Iterable, Iterator, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -345,32 +345,6 @@ def triangle_mask(n_origin: int, n_dev: int) -> np.ndarray:
     r = np.arange(n_origin)[:, None]
     c = np.arange(n_dev)[None, :]
     return (r + c < n_dev)
-
-
-def diagonal_indices(n_origin: int, n_dev: int, k: int = 0) -> List[Tuple[int, int]]:
-    mask = triangle_mask(n_origin, n_dev)
-    out = []
-    for r in range(n_origin):
-        c = n_dev - 1 - r - k
-        if 0 <= c < n_dev and mask[r, c]:
-            out.append((r, c))
-    return out
-
-
-def list_datasets() -> List[Dict[str, Any]]:
-    out = []
-    for ds_id, path in config.DATASETS.items():
-        if not os.path.exists(path):
-            continue
-        n_origin, n_dev = infer_shape(path)
-        st = os.stat(path)
-        out.append({
-            "id": ds_id,
-            "path": path,
-            "shape": {"n_origin": n_origin, "n_dev": n_dev},
-            "mtime": st.st_mtime,
-        })
-    return out
 
 
 def list_cached_dataset_names(project_name: str, reserving_class: str, refresh: bool = False) -> Dict[str, Any]:
@@ -1547,47 +1521,13 @@ def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, 
     }
 
 
-def get_diagonal(
-    ds_id: str, project_name: str, origin_length: int, k: int = 0
-) -> Dict[str, Any] | None:
-    path = config.DATASETS.get(ds_id)
-    if not path:
-        return None
-    rolled_up = _rolled_up_dataset(ds_id)
-    if rolled_up is None:
-        if not os.path.exists(path):
-            return None
-        df = load_triangle_values(path)
-    else:
-        df = rolled_up[0]
-    n_origin, n_dev = df.shape
-    origin_labels = _resolve_origin_labels(ds_id, path, project_name, origin_length, n_origin)
-    dev_labels = [str(12 * (j + 1)) for j in range(n_dev)]
-
-    idx = diagonal_indices(n_origin, n_dev, k=k)
-    items = []
-    for r, c in idx:
-        # A cell reads back as a pandas scalar, which the stubs allow to be a
-        # complex number; a triangle only ever holds real numbers or a blank.
-        v = cast(Any, df.iat[r, c])
-        items.append({
-            "r": r,
-            "c": c,
-            "origin": origin_labels[r],
-            "dev": dev_labels[c],
-            "value": None if pd.isna(v) else float(v),
-        })
-
-    return {"id": ds_id, "k": k, "items": items}
-
-
 def register_dataset_handle(dataset_id: str, csv_path: str) -> None:
     """Bind a dataset id to its cached CSV for the id-addressed grid routes.
 
     The registry is per process. A cached-dataset load that ran on the ArcRho
     Server host must register its handle here on the client, using the CSV
-    path already rebased onto this PC's workspace root, or the grid patch and
-    diagonal routes for that id would find nothing.
+    path already rebased onto this PC's workspace root, or the grid read and
+    patch routes for that id would find nothing.
     """
 
     ds_id = str(dataset_id or "").strip()

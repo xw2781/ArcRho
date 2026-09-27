@@ -814,14 +814,6 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
             ("app_server/schemas/stochastic_consolidation.py", "Stochastic Consolidation identity, run, picker and revision-aware save request models."),
         ],
     },
-    "book": {
-        "doc": "docs/app_server/domains/book.md",
-        "files": [
-            ("app_server/api/book_router.py", "Workbook sheet/meta/patch routes."),
-            ("app_server/services/book_service.py", "Workbook data read/write helpers."),
-            ("app_server/schemas/book.py", "Workbook request schemas."),
-        ],
-    },
     "excel": {
         "doc": "docs/app_server/domains/excel.md",
         "files": [
@@ -1320,13 +1312,6 @@ def module_specs() -> Dict[str, ModuleDocSpec]:
             "- Persists the method JSON, native/coarser output vector CSVs, and an output sidecar whose precedents name each segment's class. Simulations are never persisted.",
             "1. Change the payload only in `arcrho_api/stochastic_consolidation_contract.py` and its parity tests.\n2. Keep every segment read addressed by the segment's own reserving class.",
             "- Cross-class propagation is deferred; a changed segment is reported on open, not refreshed.",
-        ),
-        "book": (
-            "Workbook metadata/sheet/patch domain.",
-            "- Shared by dataset-related frontend flows.",
-            "- Reads/writes workbook content via service helpers.",
-            "1. Add sheet operation: update router contract and service implementation.",
-            "- Workbook file locking and formula behavior can vary by environment.",
         ),
         "excel": (
             "Excel automation domain (selection reads and workbook operations).",
