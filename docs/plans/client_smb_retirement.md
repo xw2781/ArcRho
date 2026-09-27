@@ -81,7 +81,7 @@ Removed with no behaviour change: the `/book/*` workbook routes and their servic
 
 ## Decisions
 
-All three were decided by the user on 2026-09-26, each as recommended.
+Decisions 1-3 were taken by the user on 2026-09-26 and 4-6 on 2026-09-27, each as recommended.
 
 1. **The app may stop working while the Gateway is down.** Step 18 retires the fallback without waiting for TLS. The fallback does not protect confidentiality — the same data already crosses the LAN in cleartext whenever the Gateway is up — while it hides credential failures and serves stale answers. TLS stays its own item in [hosted_save_http_transport.md](hosted_save_http_transport.md).
 2. **ArcBot's edits go through the page's save.** Step 4: ArcBot hands the edited JSON to the open page, which applies it as unsaved changes and saves through its normal hosted save, so ArcBot never writes a project file. Its backup and revert work on the page's undo instead of files on the share. No "replace this method JSON" save kind is added.
@@ -89,10 +89,13 @@ All three were decided by the user on 2026-09-26, each as recommended.
 
 Two smaller questions: "Open DFM JSON" becomes read-only (step 5; the recommended read-only answer was taken on 2026-09-27). The developer's fixed Snowflake config path under `E:\XWSpace` moved to the user's own settings folder on 2026-09-26 (done ahead of step 19).
 
+4. **The Dataset Viewer's reserving-class value list reads the data's own class paths** (found by step 8; decided by the user on 2026-09-27, as recommended). The path-tree cache file that only ever held the paths someone had expanded is retired; step 19 makes the change.
+5. **An uploaded source table is checked by counts, not a checksum** (found by step 15; decided by the user on 2026-09-27, as recommended). Step 22 checks that every chunk arrived, that the byte total matches what the client read and that the row count matches the client's count, and the atomic swap refuses anything short. No hash.
+6. **An ArcBot edit to an Arcode notebook or JSON file stays unsaved until the user saves it** (found by step 4; confirmed by the user on 2026-09-27). Only a DFM saves ArcBot's edit through its own save straight away.
+
 ## Open decisions
 
-1. **Who writes the reserving-class path-tree file** (found by step 8; it blocks no step). The children read was its only writer and no longer writes. Its one reader is the Dataset Viewer's reserving-class value list, which only ever showed the paths someone had happened to expand (27 for the Fake project). Either the source refresh job writes it in full (about 29,000 paths for the Fake project) or the list reads the data's own class paths instead. Recommended: the list reads the data's own class paths, and the file is retired.
-2. **How an uploaded source table is checked before it replaces the master table** (found by step 15; it blocks step 22 only if the answer is a checksum). The chunks already travel under the per-user signed request, so the server can check that every chunk arrived, that the byte total matches what the client read and that the row count matches the client's count, without any hash. A whole-file SHA-256 would catch a chunk corrupted in a way the signature does not, but the repository's rules require the user's approval for any hash validation. Recommended: no hash; chunk count, byte total and row count, with the atomic swap refusing anything short.
+None.
 
 ## Rough size
 
@@ -414,6 +417,7 @@ Estimate: code edit 50 min, test/validation 25 min, total 75 min.
 - [ ] Delete the DFM method-file watcher and its external-change highlight helper, bumping module stamps.
 - [x] Move the Snowflake config path to local settings (done 2026-09-26: it is `snowflake_config.txt` in the per-user settings folder).
 - [ ] Delete client-only SMB softeners that nothing uses any more (check `class_folder_scan_cache` and `file_read_cache` callers first; server processes still use them).
+- [ ] Decision 4: the Dataset Viewer's reserving-class value list reads the data's own class paths through a server read, and the path-tree cache file and its reader are deleted.
 - [ ] ArcBot's AI process (the Codex run ArcBot starts) is still granted read access to the project folder on the share (found by step 16). Move what it reads onto the server reads, or record why it stays; if it needs a design decision, record it under Open decisions instead of guessing.
 
 **Tests.** The suites that covered the deleted code, rewritten or removed.
