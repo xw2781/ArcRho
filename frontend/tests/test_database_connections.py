@@ -49,7 +49,7 @@ class SnowflakeProfileStoreTests(unittest.TestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
-        # The seeded example profile is a machine-specific import path.
+        # The seeded example profile reads a file in the real user's settings folder.
         import_patcher = mock.patch.object(
             snowflake_service, "SNOWFLAKE_CONFIG_IMPORT_PATH", str(Path(self._temp.name) / "absent.txt")
         )

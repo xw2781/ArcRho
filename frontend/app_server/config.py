@@ -159,6 +159,9 @@ WORKSPACE_PATHS_PATH = os.path.join(
     _get_user_appdata_dir(), api_config.WORKSPACE_PATHS_FILE_NAME
 )
 SNOWFLAKE_CONNECTIONS_PATH = os.path.join(_get_user_appdata_dir(), "snowflake_connections.json")
+# Optional Snowflake connections.toml-style file in the same per-user folder;
+# its `[connections.my_example_connection]` block seeds the profile store once.
+SNOWFLAKE_CONFIG_IMPORT_PATH = os.path.join(_get_user_appdata_dir(), "snowflake_config.txt")
 # Per-user Arcode SQL Server console profiles. This is not the Arco Server's
 # shared server/database history behind `get_mssql_connections_path()`: that one
 # records pairs Project Settings has reached, this one holds the named

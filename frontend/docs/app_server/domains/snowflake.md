@@ -40,7 +40,7 @@ Runs Arcode Snowflake SQL queries through the app server so connection profiles 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - Connection profiles are stored in `%APPDATA%\Arcode\snowflake_connections.json` when Arcode mode is active.
-- If the local JSON file is missing, the service can seed `my_example_connection` from `E:\XWSpace\Snowflake Config.txt`.
+- If the local JSON file is missing, the service can seed `my_example_connection` from `snowflake_config.txt` in the same per-user folder (a Snowflake `connections.toml`-style `[connections.my_example_connection]` block). It never reads a shared drive.
 - Passwords are not stored; the initial supported authentication mode is Snowflake `externalbrowser`.
 - The app server keeps an in-process Snowflake session cache per named connection so repeated Run/Test actions can reuse external-browser authentication. Saving, deleting, or resetting a connection profile closes that cached session.
 <!-- MANUAL:END -->

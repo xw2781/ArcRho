@@ -14,7 +14,7 @@ from app_server.services.sql_console_results import clamp_row_limit, json_safe_c
 
 
 DEFAULT_CONNECTION_NAME = "my_example_connection"
-SNOWFLAKE_CONFIG_IMPORT_PATH = r"E:\XWSpace\Snowflake Config.txt"
+SNOWFLAKE_CONFIG_IMPORT_PATH = config.SNOWFLAKE_CONFIG_IMPORT_PATH
 _CONNECTOR_IMPORT_ERROR = ""
 _CONNECTION_CACHE: Dict[str, Dict[str, Any]] = {}
 _CONNECTION_CACHE_LOCK = threading.Lock()
