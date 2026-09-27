@@ -24,11 +24,12 @@ import time
 import uuid
 from typing import Any, Callable, Dict, Mapping
 from urllib.error import HTTPError, URLError
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.request import Request
 
 from fastapi import HTTPException
 
 from arcrho_api import config as api_config
+from arcrho_api.gateway_test_guard import gateway_opener
 from arcrho_hosted_save_http_contract import (
     AUTH_SIGNATURE_HEADER,
     AUTH_TIMESTAMP_HEADER,
@@ -63,8 +64,7 @@ CAPABILITY_FAILURE_CACHE_SECONDS = 10.0
 
 _CAPABILITY_LOCK = threading.Lock()
 _CAPABILITY_CACHE: Dict[str, tuple[float, Dict[str, Any] | None]] = {}
-# The gateway lives on the internal network; a system proxy must never see it.
-_DIRECT_HTTP_OPENER = build_opener(ProxyHandler({}))
+_DIRECT_HTTP_OPENER = gateway_opener()
 
 
 def _error_detail(error: HTTPError) -> Any:

@@ -46,6 +46,7 @@ from arcrho_workspace_read_contract import (
     build_workspace_read_request,
     validate_workspace_read_request,
 )
+from arcrho_api.gateway_test_guard import allow_test_gateway
 from arcrho_gateway import main as gateway_main
 from arcrho_gateway import workspace_reads
 from app_server import config as app_config
@@ -244,6 +245,7 @@ class WorkspaceReadHttpRoundTripTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.url = f"http://127.0.0.1:{self.server.server_port}"
+        self.addCleanup(allow_test_gateway(self.url))
         self.client_config = {
             "enabled": True,
             "url": self.url,
@@ -364,6 +366,7 @@ class WorkspaceReadHttpRoundTripTests(unittest.TestCase):
 
     def test_unreachable_gateway_runs_locally(self) -> None:
         unreachable = dict(self.client_config, url="http://127.0.0.1:9")
+        self.addCleanup(allow_test_gateway(unreachable["url"]))
         with patch.object(app_config, "load_gateway_config", return_value=unreachable):
             response = workspace_read_client.run_workspace_read(
                 "table_summary",

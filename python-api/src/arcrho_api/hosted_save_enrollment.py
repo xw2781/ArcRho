@@ -17,7 +17,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Iterator
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.request import Request
 
 from arcrho_hosted_save_http_contract import (
     CAPABILITIES_PATH,
@@ -30,14 +30,14 @@ from arcrho_hosted_save_http_contract import (
     server_config_path,
 )
 
+from .gateway_test_guard import gateway_opener
 from .io import write_json_atomic
 
 
 LOCK_TIMEOUT_SECONDS = 10.0
 LOCK_RETRY_SECONDS = 0.05
 PROBE_TIMEOUT_SECONDS = 2.0
-# A workstation proxy must not be consulted for the server's own address.
-_DIRECT_HTTP_OPENER = build_opener(ProxyHandler({}))
+_DIRECT_HTTP_OPENER = gateway_opener()
 
 
 def _read_object(path: Path, *, missing: dict[str, Any] | None = None) -> dict[str, Any]:

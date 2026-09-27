@@ -9,6 +9,8 @@ from unittest.mock import patch
 
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
+TEST_TEMP_ROOT = FRONTEND_ROOT.parent / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
 
@@ -31,7 +33,7 @@ class DataProcessingRulesServiceTests(unittest.TestCase):
     project_name = "Example Project"
 
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
         self.root = Path(self.temp_dir.name)
         self.projects_dir = self.root / "projects"
         self.project_dir = self.projects_dir / self.project_name
@@ -129,13 +131,8 @@ class DataProcessingRulesServiceTests(unittest.TestCase):
             str(self.projects_dir),
         )
         self.project_root_patch.start()
-        # A Client PC appends the audit entry through the Gateway; keep the
-        # test off whichever Gateway this machine is enrolled with.
-        self.audit_patch = patch.object(data_processing_rules_service, "safe_append_project_audit_log")
-        self.audit_patch.start()
 
     def tearDown(self) -> None:
-        self.audit_patch.stop()
         self.project_root_patch.stop()
         self.temp_dir.cleanup()
 
@@ -816,7 +813,7 @@ class ReservingClassEexRemovalTests(unittest.TestCase):
         )
 
     def test_legacy_eex_xlsx_import_error_is_explicit(self) -> None:
-        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT)) as temp_dir:
             path = Path(temp_dir) / "legacy.xlsx"
             workbook = reserving_class_service.openpyxl.Workbook()
             worksheet = workbook.active

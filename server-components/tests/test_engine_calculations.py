@@ -52,6 +52,7 @@ from arcrho_hosted_save_http_contract import (
     sign_request,
 )
 from arcrho_workspace_read_contract import WORKSPACE_ROOT_HEADER
+from arcrho_api.gateway_test_guard import allow_test_gateway
 from arcrho_gateway import engine_calculations, main as gateway_main
 from app_server import config as app_config
 from app_server.services import (
@@ -480,6 +481,7 @@ class EngineCalculationHttpRoundTripTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.url = f"http://127.0.0.1:{self.server.server_port}"
+        self.addCleanup(allow_test_gateway(self.url))
         self.client_config = {
             "enabled": True,
             "url": self.url,
@@ -686,6 +688,7 @@ class EngineCalculationHttpRoundTripTests(unittest.TestCase):
 
     def test_unreachable_gateway_publishes_locally(self) -> None:
         unreachable = dict(self.client_config, url="http://127.0.0.1:9")
+        self.addCleanup(allow_test_gateway(unreachable["url"]))
         with patch.object(app_config, "load_gateway_config", return_value=unreachable):
             outcome = engine_calculation_service.run_engine_calculation(
                 TRI_PAIRS, self.client_csv, 15.0

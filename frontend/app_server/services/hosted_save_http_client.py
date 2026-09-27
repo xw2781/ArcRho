@@ -7,11 +7,12 @@ import os
 import time
 from typing import Any, Mapping
 from urllib.error import HTTPError, URLError
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.request import Request
 
 from fastapi import HTTPException
 
 from arcrho_api import config as api_config
+from arcrho_api.gateway_test_guard import gateway_opener
 from arcrho_hosted_save_http_contract import (
     AUTH_SIGNATURE_HEADER,
     AUTH_TIMESTAMP_HEADER,
@@ -30,7 +31,7 @@ from app_server import config
 GATEWAY_HEALTH_TIMEOUT_SECONDS = 2.0
 GATEWAY_PROGRESS_TIMEOUT_SECONDS = 2.0
 GATEWAY_RETRY_DELAY_SECONDS = 0.5
-_DIRECT_HTTP_OPENER = build_opener(ProxyHandler({}))
+_DIRECT_HTTP_OPENER = gateway_opener()
 # A root's server id is written once, so a found id is kept for the process;
 # a root without one is asked again after this long.
 ROOT_SERVER_ID_RETRY_SECONDS = 30.0

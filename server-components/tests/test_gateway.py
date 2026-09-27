@@ -40,6 +40,7 @@ from arcrho_hosted_save_http_contract import (
     sign_request,
     verify_request_signature,
 )
+from arcrho_api.gateway_test_guard import allow_test_gateway
 from arcrho_gateway import main as gateway_main
 from arcrho_gateway import configure_pilot
 from app_server.services import hosted_save_http_client
@@ -383,12 +384,14 @@ class GatewayTests(unittest.TestCase):
         server = gateway_main.GatewayServer(("127.0.0.1", 0), self.gateway)
         server_thread = threading.Thread(target=server.serve_forever, daemon=True)
         server_thread.start()
+        url = f"http://127.0.0.1:{server.server_port}"
+        self.addCleanup(allow_test_gateway(url))
         seen: list[dict] = []
         engine_thread = self._engine_stub(seen)
         try:
             result, timings = hosted_save_http_client.submit_hosted_save(
                 {
-                    "url": f"http://127.0.0.1:{server.server_port}",
+                    "url": url,
                     "user": "alice",
                     "secret": "alice-secret",
                 },

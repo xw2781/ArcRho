@@ -25,7 +25,7 @@ for import_root in (MIGRATION_ROOT, PYTHON_API_SRC, FRONTEND_ROOT):
 from fastapi import HTTPException
 
 from app_server import config
-from app_server.services import dataset_instance_index_service
+from app_server.services import dataset_instance_index_service, dependent_propagation_service
 from arcrho_api import ArcRhoClient
 from arcrho_api import dataset_index_contract
 from arcrho_api.dataset_index_contract import (
@@ -345,6 +345,11 @@ class DatasetIndexCrossComponentContractTests(unittest.TestCase):
         with (
             mock.patch.object(config, "PROJECT_SETTINGS_DIR", str(self.projects_dir)),
             mock.patch.object(config, "get_root_path", return_value=str(self.server_root)),
+            # A test run has no Gateway to ask whether the class is busy
+            # (arcrho_api.gateway_test_guard); nothing holds this one.
+            mock.patch.object(
+                dependent_propagation_service, "get_reserving_class_busy", return_value={"ok": True, "busy": False}
+            ),
         ):
             yield
 

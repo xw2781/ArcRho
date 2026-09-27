@@ -88,6 +88,8 @@ class ServerDeploymentTests(unittest.TestCase):
         stack.enter_context(patch.object(deployer, "_remove_shortcuts"))
         stack.enter_context(patch.object(deployer, "_start_launcher"))
         stack.enter_context(patch.object(deployer, "_wait_for_startup"))
+        # A rollback asks the Admin Control on this PC to shut down; never the real one.
+        stack.enter_context(patch.object(deployer, "_request_admin_shutdown"))
         stack.enter_context(patch.dict(os.environ, {"APPDATA": str(self.appdata)}))
         return stack
 

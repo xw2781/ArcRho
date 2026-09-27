@@ -34,6 +34,7 @@ from arcrho_workspace_mutation_contract import (
     build_workspace_mutation_request,
     validate_workspace_mutation_request,
 )
+from arcrho_api.gateway_test_guard import allow_test_gateway
 from arcrho_gateway import main as gateway_main
 from arcrho_gateway import workspace_mutations, workspace_reads
 from app_server import config as app_config
@@ -255,6 +256,7 @@ class WorkspaceMutationHttpRoundTripTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.url = f"http://127.0.0.1:{self.server.server_port}"
+        self.addCleanup(allow_test_gateway(self.url))
         self.client_config = {
             "enabled": True,
             "url": self.url,

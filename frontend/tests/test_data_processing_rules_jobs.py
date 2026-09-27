@@ -17,6 +17,8 @@ FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = FRONTEND_ROOT.parent
 SERVER_COMPONENTS_SRC = REPOSITORY_ROOT / "server-components" / "src"
 PYTHON_API_SRC = REPOSITORY_ROOT / "python-api" / "src"
+TEST_TEMP_ROOT = REPOSITORY_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 for path in (FRONTEND_ROOT, SERVER_COMPONENTS_SRC, PYTHON_API_SRC):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
@@ -115,7 +117,7 @@ class DataProcessingRulesJobServiceTests(unittest.TestCase):
     REQUEST_ID = "abcdef0123456789abcdef0123456789"
 
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
         self.root = Path(self.temp_dir.name)
         (self.root / "projects" / PROJECT).mkdir(parents=True)
         self.instances_dir = self.root / "runtime" / "instances" / "arcrho_engine"
@@ -133,6 +135,14 @@ class DataProcessingRulesJobServiceTests(unittest.TestCase):
                 data_processing_rules_job_service.user_identity_service,
                 "get_windows_login_name",
                 return_value="Test User",
+            ),
+            # A test run has no Gateway (arcrho_api.gateway_test_guard), so the
+            # propagation checks run here as the Gateway runs them on the
+            # server: against this temporary root.
+            patch.object(
+                dependent_propagation_service.propagation_gateway_client,
+                "is_server_process",
+                return_value=True,
             ),
         ]
         for item in self.patches:

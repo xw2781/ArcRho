@@ -10,12 +10,18 @@ from unittest.mock import patch
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 MIGRATION_ROOT = FRONTEND_ROOT.parent / "python-api" / "migration"
+TEST_TEMP_ROOT = FRONTEND_ROOT.parent / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
 if str(MIGRATION_ROOT) not in sys.path:
     sys.path.insert(0, str(MIGRATION_ROOT))
 
-from app_server.services import dataset_instance_index_service, dataset_sidecar_status_service
+from app_server.services import (
+    dataset_instance_index_service,
+    dataset_sidecar_status_service,
+    dependent_propagation_service,
+)
 from arcrho_api.dataset_index_contract import canonicalize_index_row
 from resq_migration.core import DATASET_INDEX_VERSION
 
@@ -88,7 +94,7 @@ class BerquistShermanIndexContractTests(unittest.TestCase):
         )
 
     def test_cached_delete_removes_the_b_and_s_csv_sidecar_and_method_json(self) -> None:
-        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT)) as temp_dir:
             root = Path(temp_dir)
             dataset_dir = root / "datasets"
             sidecar_dir = root / "sidecars"
@@ -138,6 +144,11 @@ class BerquistShermanIndexContractTests(unittest.TestCase):
             with (
                 patch.object(dataset_instance_index_service, "_folder_paths", return_value=folder_paths),
                 patch.object(dataset_instance_index_service, "rebuild_index", return_value={"ok": True}),
+                # A test run has no Gateway to ask whether the class is busy
+                # (arcrho_api.gateway_test_guard); nothing holds this one.
+                patch.object(
+                    dependent_propagation_service, "get_reserving_class_busy", return_value={"ok": True, "busy": False}
+                ),
             ):
                 result = dataset_instance_index_service.delete_cached_datasets(
                     "Example",

@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 
 from .exceptions import InvalidArcRhoServerError
+from .gateway_test_guard import isolate_test_run
 from .io import persisted_json_text
 
 WORKSPACE_PATHS_FILE_NAME = "workspace_paths.json"
@@ -30,6 +31,8 @@ RUNTIME_SERVER_ROOT_ENV = "ARCRHO_RUNTIME_SERVER_ROOT"
 SERVER_ROOT_ENV_VARS = (SERVER_ROOT_ENV, RUNTIME_SERVER_ROOT_ENV)
 # A launch that names its own Gateway credential outranks the active profile's.
 GATEWAY_CONFIG_ENV = "ARCRHO_GATEWAY_CONFIG"
+# A test run never finds this PC's credential (see ``gateway_test_guard``).
+isolate_test_run(GATEWAY_CONFIG_ENV)
 # ``workspace_paths.json`` keeps a list of server profiles, one of them active.
 # A file with no list reads as one profile under this id; its credential keeps
 # the original file name.

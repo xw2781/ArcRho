@@ -25,7 +25,7 @@ import time
 import uuid
 from typing import Any, Mapping
 from urllib.error import HTTPError, URLError
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.request import Request
 
 from arcrho_engine_save_contract import SAVE_JOB_PROCESSING_TIMEOUT_SECONDS, build_save_job_request
 from arcrho_hosted_save_http_contract import (
@@ -50,9 +50,9 @@ from arcrho_workspace_read_contract import (
 
 from .config import gateway_config_path as active_gateway_config_path
 from .exceptions import ArcRhoApiError
+from .gateway_test_guard import gateway_opener
 
-# The Gateway lives on the internal network; a system proxy must never see it.
-_OPENER = build_opener(ProxyHandler({}))
+_OPENER = gateway_opener()
 
 
 class GatewayError(ArcRhoApiError):

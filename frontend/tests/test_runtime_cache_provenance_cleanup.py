@@ -12,10 +12,13 @@ from unittest.mock import patch
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
+TEST_TEMP_ROOT = FRONTEND_ROOT.parent / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 
 from app_server import config
 from app_server.services import (
     dataset_instance_index_service,
+    dependent_propagation_service,
     project_settings_service,
     runtime_cache_provenance_service,
 )
@@ -23,7 +26,7 @@ from app_server.services import (
 
 class RuntimeCacheProvenanceCleanupTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
         self.root = Path(self.temp_dir.name)
         self.rc_dir = self.root / "Example RC"
         self.csv_path = self.rc_dir / config.DATASET_CACHE_DIR / "Paid@12@12@cum@dev.csv"
@@ -51,6 +54,11 @@ class RuntimeCacheProvenanceCleanupTests(unittest.TestCase):
                 },
             ),
             patch.object(dataset_instance_index_service, "rebuild_index", return_value={}),
+            # A test run has no Gateway to ask whether the class is busy
+            # (arcrho_api.gateway_test_guard); nothing holds this one.
+            patch.object(
+                dependent_propagation_service, "get_reserving_class_busy", return_value={"ok": True, "busy": False}
+            ),
         ):
             result = dataset_instance_index_service.delete_cached_datasets(
                 "Example Project",
