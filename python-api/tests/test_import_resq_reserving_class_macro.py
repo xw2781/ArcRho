@@ -144,6 +144,31 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
         self.api_module = types.ModuleType("arcrho_api")
         self.api_module.ArcRhoUI = lambda: self.ui
         self.api_module.get_server_root = lambda **_kwargs: self.server_root
+        self.published = []
+        self.publish_error = None
+
+    def _app_server_modules(self) -> dict:
+        """The app server's hosted mutation, standing in for the Gateway.
+
+        It records what the macro sent and writes the request where the server
+        would, so the rest of the macro sees the queue it expects.
+        """
+
+        def run_workspace_mutation(kind, kwargs, *, local, gateway_required=False):
+            self.published.append({"kind": kind, "kwargs": kwargs, "gateway_required": gateway_required})
+            if self.publish_error is not None:
+                raise self.publish_error
+            request_path, _ = self.module._request_paths(self.server_root, kwargs["request_id"])
+            request_path.parent.mkdir(parents=True, exist_ok=True)
+            request_path.write_text(json.dumps(kwargs["request"]), encoding="utf-8")
+            return {"ok": True, "request_id": kwargs["request_id"], "resumed": False}
+
+        services = types.ModuleType("app_server.services")
+        services.workspace_mutation_client = types.SimpleNamespace(run_workspace_mutation=run_workspace_mutation)
+        services.resq_import_queue_service = types.SimpleNamespace(publish_resq_import_request=None)
+        package = types.ModuleType("app_server")
+        package.services = services
+        return {"app_server": package, "app_server.services": services}
 
     def _write_worker(
         self,
@@ -180,7 +205,7 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
             return dict(self.review)
 
         stack = contextlib.ExitStack()
-        stack.enter_context(patch.dict(sys.modules, {"arcrho_api": self.api_module}))
+        stack.enter_context(patch.dict(sys.modules, {"arcrho_api": self.api_module, **self._app_server_modules()}))
         stack.enter_context(patch.object(self.module, "review_import_plan", side_effect=review))
         return stack
 
@@ -202,6 +227,36 @@ class ImportResqReservingClassMacroTests(unittest.TestCase):
             return request_path
 
         return publish_and_respond
+
+    def test_the_request_is_published_through_the_gateway_and_never_over_the_share(self):
+        request_id, payload = self.module.create_import_request(project_name="Demo", rc_path=r"Auto\PP")
+        with patch.dict(sys.modules, self._app_server_modules()):
+            request_path = self.module.publish_import_request(
+                server_root=self.server_root, request_id=request_id, payload=payload
+            )
+        self.assertEqual(
+            self.published,
+            [{
+                "kind": "resq_import_request_publish",
+                "kwargs": {
+                    "project_name": "Demo",
+                    "reserving_class": r"Auto\PP",
+                    "request_id": request_id,
+                    "request": payload,
+                },
+                "gateway_required": True,
+            }],
+        )
+        self.assertEqual(json.loads(request_path.read_text(encoding="utf-8")), payload)
+
+    def test_a_request_the_gateway_cannot_take_stops_the_import(self):
+        request_id, payload = self.module.create_import_request(project_name="Demo", rc_path=r"Auto\PP")
+        self.publish_error = RuntimeError("Arco Gateway could not answer this request.")
+        with patch.dict(sys.modules, self._app_server_modules()):
+            with self.assertRaises(self.module.BridgeRequestError) as raised:
+                self.module.publish_import_request(server_root=self.server_root, request_id=request_id, payload=payload)
+        self.assertIn("Arco Gateway could not answer", str(raised.exception))
+        self.assertFalse((self.server_root / self.module.REQUEST_RELATIVE_DIR).exists())
 
     def test_embedded_adapter_matches_canonical_bridge_contract(self):
         contract = self._contract()

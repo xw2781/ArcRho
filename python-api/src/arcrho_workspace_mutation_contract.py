@@ -244,6 +244,16 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ("project_name", "reserving_class", "request_id", "phase"),
         ("selected_rows", "selected_names", "direction"),
     ),
+    # The ResQ import macros hand their request to the Bridge the same way.
+    # The macro owns the request it builds; the server only checks that the
+    # request names this project, class and id, stamps the signed user, and
+    # writes it into the import queue. Idempotent by request id, like the sync
+    # publish.
+    "resq_import_request_publish": WorkspaceMutationKind(
+        "resq_import_queue_service",
+        "publish_resq_import_request",
+        ("project_name", "reserving_class", "request_id", "request"),
+    ),
     # Both ResQ import macros copy the reserving class they are about to
     # rewrite into the server's pre-import backups. That copy is one file per
     # method, sidecar and data file, so from a Client PC it is a round trip

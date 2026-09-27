@@ -1,15 +1,29 @@
 from __future__ import annotations
 
+import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+FRONTEND_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = FRONTEND_ROOT.parent
+for _path in (FRONTEND_ROOT, REPOSITORY_ROOT / "python-api" / "src"):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
-from app_server import config
-from app_server.services import macro_library_service
-from app_server.services.scripting_macro_service import _parse_macro_metadata
+from fastapi.encoders import jsonable_encoder  # noqa: E402
+
+from arcrho_api import config as api_config  # noqa: E402
+from app_server import config  # noqa: E402
+from app_server.services import macro_library_service, workspace_read_client  # noqa: E402
+from app_server.services.scripting_macro_service import _parse_macro_metadata  # noqa: E402
+
+TEST_TEMP_ROOT = REPOSITORY_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+GATEWAY = {"enabled": True, "url": "http://server:28767", "user": "alice", "secret": "x"}
 
 
 def _macro_source(version: str, note: str = "Initial release.", body: str = "print('hi')") -> str:
@@ -26,9 +40,10 @@ def _macro_source(version: str, note: str = "Initial release.", body: str = "pri
 
 
 class MacroLibraryServiceTests(unittest.TestCase):
+    """The library logic, run as a server process runs it: the reads are local disk."""
+
     def setUp(self) -> None:
-        # Temp dirs must stay inside the repository per validation rules.
-        self._tmp = tempfile.TemporaryDirectory(dir=str(Path(__file__).resolve().parent))
+        self._tmp = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         root = Path(self._tmp.name)
         self.library_dir = root / "library"
         self.macro_dir = root / "macros"
@@ -38,6 +53,12 @@ class MacroLibraryServiceTests(unittest.TestCase):
         self._old_library_dir = config.MACRO_LIBRARY_DIR
         config.MACRO_DIR = str(self.macro_dir)
         config.MACRO_LIBRARY_DIR = str(self.library_dir)
+        for patcher in (
+            patch.dict(os.environ, {api_config.RUNTIME_SERVER_ROOT_ENV: str(root)}),
+            patch.object(workspace_read_client, "_log"),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def tearDown(self) -> None:
         config.MACRO_DIR = self._old_macro_dir
@@ -201,6 +222,89 @@ class MacroLibraryServiceTests(unittest.TestCase):
         self.assertIsNone(macro_library_service.sync_library_macro("sample.py"))
         config.MACRO_LIBRARY_DIR = ""
         self.assertIsNone(macro_library_service.sync_library_macro("sample.py"))
+        self.assertEqual((self.macro_dir / "sample.py").read_text(encoding="utf-8"), _macro_source("1.0.0"))
+
+
+class MacroLibraryTransportTests(unittest.TestCase):
+    """A Client PC reads the library through the Gateway and writes only its own macros folder."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
+        self.addCleanup(self._tmp.cleanup)
+        root = Path(self._tmp.name)
+        self.library_dir = root / "server" / "shared" / "macros"
+        self.macro_dir = root / "client" / "macros"
+        self.library_dir.mkdir(parents=True)
+        self.macro_dir.mkdir(parents=True)
+        (self.library_dir / "sample.py").write_bytes(_macro_source("2.0.0").replace("\n", "\r\n").encode("utf-8"))
+        self.requests: list[dict] = []
+        env = {key: value for key, value in os.environ.items() if key != api_config.RUNTIME_SERVER_ROOT_ENV}
+        for patcher in (
+            patch.dict(os.environ, env, clear=True),
+            patch.object(config, "MACRO_DIR", str(self.macro_dir)),
+            # The client's own view of the library is a folder that does not
+            # exist: any read of it over the share would find nothing.
+            patch.object(config, "MACRO_LIBRARY_DIR", str(root / "client" / "no-share")),
+            patch.object(config, "load_gateway_config", return_value=dict(GATEWAY)),
+            patch.object(
+                workspace_read_client,
+                "cached_gateway_capabilities",
+                return_value={"workspace_read_kinds": ["macro_library_listing", "macro_library_file"]},
+            ),
+            patch.object(workspace_read_client, "post_signed_json", side_effect=self._gateway),
+            patch.object(workspace_read_client, "_log"),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        workspace_read_client.reset_capability_cache()
+        self.addCleanup(workspace_read_client.reset_capability_cache)
+
+    def _gateway(self, gateway_config, path, request_payload, *, timeout):
+        """Run the read as the Gateway does, against the server's library folder."""
+
+        request = json.loads(json.dumps(request_payload))
+        self.requests.append(request)
+        function = getattr(macro_library_service, {
+            "macro_library_listing": "read_library_files",
+            "macro_library_file": "read_library_file",
+        }[request["ReadKind"]])
+        with patch.object(config, "MACRO_LIBRARY_DIR", str(self.library_dir)):
+            answer = jsonable_encoder(function(**request["Kwargs"]))
+        return answer, str(self.library_dir.parent.parent), 0
+
+    def test_listing_load_and_run_check_read_through_the_gateway(self) -> None:
+        listing = macro_library_service.list_library_macros()
+        self.assertTrue(listing["available"])
+        self.assertEqual([(item["id"], item["status"]) for item in listing["macros"]], [("sample.py", "not_installed")])
+
+        loaded = macro_library_service.install_library_macro("sample.py")
+        self.assertTrue(loaded["installed"], loaded)
+        # The copy keeps the published line endings, as a byte copy did.
+        self.assertEqual(
+            (self.macro_dir / "sample.py").read_bytes(),
+            (self.library_dir / "sample.py").read_bytes(),
+        )
+        (self.library_dir / "sample.py").write_text(_macro_source("2.1.0"), encoding="utf-8")
+        self.assertEqual(macro_library_service.sync_library_macro("sample.py")["version"], "2.1.0")
+        self.assertEqual(
+            [(request["ReadKind"], request["Kwargs"]) for request in self.requests],
+            [
+                ("macro_library_listing", {}),
+                ("macro_library_file", {"macro_id": "sample.py"}),
+                ("macro_library_file", {"macro_id": "sample.py"}),
+            ],
+        )
+        self.assertEqual({request["UserName"] for request in self.requests}, {"alice"})
+
+    def test_a_client_without_the_gateway_reports_the_library_unavailable(self) -> None:
+        (self.macro_dir / "sample.py").write_text(_macro_source("1.0.0"), encoding="utf-8")
+        with patch.object(workspace_read_client, "cached_gateway_capabilities", return_value=None):
+            listing = macro_library_service.list_library_macros()
+            self.assertFalse(listing["available"])
+            self.assertEqual(listing["macros"], [])
+            self.assertFalse(macro_library_service.install_library_macro("sample.py")["success"])
+            self.assertIsNone(macro_library_service.sync_library_macro("sample.py"))
+        self.assertEqual(self.requests, [])
         self.assertEqual((self.macro_dir / "sample.py").read_text(encoding="utf-8"), _macro_source("1.0.0"))
 
 

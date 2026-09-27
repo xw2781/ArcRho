@@ -21,6 +21,7 @@ No new browser-facing route. This existing route selects the transport per reque
 | `POST /dfm/rpc-bridge/update-remote` | `dfm_rpc_bridge_update_remote` | `dfm_rpc_bridge_service.hosted_update_remote` |
 | (no route; the ResQ sync and export macros call `run_workspace_mutation` directly through `arcrho_api.resq_sync_queue.submit_sync_request`) | `resq_sync_request_publish` | `resq_sync_queue_service.publish_resq_sync_request` |
 | (no route; the two ResQ import macros call `run_workspace_mutation` directly through `arcrho_api.resq_import_backup.back_up_reserving_class`) | `resq_import_backup` | `resq_import_backup_service.back_up_reserving_class_for_import` |
+| (no route; the two ResQ import macros call `run_workspace_mutation` directly from `publish_import_request`, Gateway-required) | `resq_import_request_publish` | `resq_import_queue_service.publish_resq_import_request` |
 | `POST /audit_log`, and every client-process caller of `audit_service.safe_append_project_audit_log` (see [`audit_log`](audit_log.md)) | `project_audit_log_append` | `audit_service.append_project_audit_log` |
 | `POST /reserving_class_hidden_paths` | `reserving_class_hidden_paths_save` | `reserving_class_service.save_hidden_paths` |
 | `POST /reserving_class_filter_spec` | `reserving_class_filter_spec_save` | `reserving_class_service.save_filter_spec` |
@@ -101,6 +102,17 @@ that died part way leaves no manifest and is never presented as a restore
 point. Because a backup that cannot be taken never stops an import, the macro
 turns a transport failure into a warning rather than an error, and words an
 unconfirmed outcome as unknown rather than as "no restore point".
+
+The ResQ import request itself is published the same way as the sync
+request (added by step 16 of client_smb_retirement.md). The macro builds the
+request -- a macro must stand on its own -- so the service restates none of
+its fields: it checks that the request names the project, reserving class and
+id the mutation was validated for, stamps the signed user's login, and writes
+it into the Bridge's import queue on the server's own disk. It is idempotent
+by request id, like the sync publish. The macro calls it Gateway-required, so
+a Gateway that cannot take the request stops the import rather than writing
+the queue over the share. Macro version 1.15.0 carries this and needs the app
+release that registers the kind; the released app's contract does not know it.
 
 The RPC-bridge kinds are the one family whose work is not finished when the
 service returns from local disk: `sync` and `update-remote` publish a request

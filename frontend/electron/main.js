@@ -1948,6 +1948,7 @@ const arcBotHost = registerArcBotIpc({
   getWorkspacePathsPath,
   findExecutableOnPath,
   runHostCommand,
+  getAppServerUrl: () => `http://${HOST}:${getBackendPort()}`,
 });
 registerUiAutomationIpc({
   ipcMain,

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "macros",
+  "audience": "user",
+  "summary": "The Macro Library, the automatic macro updates and ArcBot's shared prompts now load from the server instead of the shared drive, and ArcBot no longer creates prompt files on the server. While the server cannot be reached the Macro Library says it is unavailable and your loaded macros keep running as they are."
+}

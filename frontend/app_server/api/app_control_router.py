@@ -8,6 +8,7 @@ from typing import Any, Dict
 from fastapi import APIRouter
 
 from app_server import config
+from app_server.services import arcbot_prompt_service, workspace_read_client
 
 router = APIRouter()
 
@@ -58,3 +59,15 @@ def app_shutdown() -> Dict[str, Any]:
 
     threading.Thread(target=_shutdown, daemon=True).start()
     return {"ok": True}
+
+
+@router.get("/arcbot/prompt-files")
+def arcbot_prompt_files() -> Dict[str, Any]:
+    """ArcBot's shared prompt files, read on the server host through the Gateway."""
+
+    return workspace_read_client.run_workspace_read(
+        "arcbot_prompt_files",
+        {},
+        local=arcbot_prompt_service.read_arcbot_prompt_files,
+        gateway_required=True,
+    )

@@ -8,6 +8,10 @@ the Macros panel lists them, and for the one macro about to run, so a user
 always runs the latest published version. Metadata parsing and local macro
 path safety are delegated to scripting_macro_service so there is a single
 owner for both.
+
+The library is read on the server host through the Gateway
+(``macro_library_listing`` and ``macro_library_file``); a Client PC never
+opens it over the share, and every write lands in its own local macros folder.
 """
 from __future__ import annotations
 
@@ -16,14 +20,15 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Tuple
 
+from fastapi import HTTPException
+
 from app_server import config
+from app_server.services import workspace_read_client
 from app_server.services.scripting_macro_service import (
     _parse_macro_metadata,
     _safe_macro_path,
 )
 
-# Bounded parallel reads: the library lives on a network share where each
-# file read can cost a full round trip.
 _LIBRARY_READ_WORKERS = 8
 _MAX_LIBRARY_SOURCE_CHARS = 2_000_000
 
@@ -100,16 +105,27 @@ def _list_library_entries(library_dir: str) -> List[str]:
     return sorted(entries, key=str.lower)
 
 
-def list_library_macros() -> Dict[str, Any]:
-    """List the shared library with install/update status per macro."""
+def _read_library_text(path: str) -> Optional[str]:
+    """A library macro's exact text, line endings included, so a load copies it as published."""
+
+    try:
+        with open(path, "rb") as f:
+            return f.read(_MAX_LIBRARY_SOURCE_CHARS).decode("utf-8-sig", errors="replace")
+    except OSError:
+        return None
+
+
+def read_library_files() -> Dict[str, Any]:
+    """Every macro the library holds, with its text; runs where the library is local disk."""
+
     library_dir = _get_library_dir()
     if not library_dir:
-        return {"available": False, "message": "Macro library is not configured.", "macros": []}
+        return {"available": False, "message": "Macro library is not configured.", "files": []}
     if not os.path.isdir(library_dir):
         return {
             "available": False,
             "message": f"Macro library folder is not reachable: {library_dir}",
-            "macros": [],
+            "files": [],
         }
     try:
         entries = _list_library_entries(library_dir)
@@ -117,28 +133,76 @@ def list_library_macros() -> Dict[str, Any]:
         return {
             "available": False,
             "message": f"Macro library folder could not be read: {exc}",
-            "macros": [],
+            "files": [],
         }
-
     library_paths = [os.path.join(library_dir, entry) for entry in entries]
     with ThreadPoolExecutor(max_workers=_LIBRARY_READ_WORKERS) as pool:
-        library_texts = list(pool.map(_read_macro_file, library_paths))
+        library_texts = list(pool.map(_read_library_text, library_paths))
+    files = [
+        {"name": entry, "text": text}
+        for entry, text in zip(entries, library_texts)
+        if text is not None
+    ]
+    return {"available": True, "message": "", "files": files}
 
+
+def read_library_file(macro_id: str) -> Dict[str, Any]:
+    """One library macro's text; runs where the library is local disk."""
+
+    try:
+        library_path = _safe_library_path(macro_id)
+    except ValueError as exc:
+        return {"found": False, "name": "", "text": "", "message": str(exc)}
+    name = os.path.basename(library_path)
+    text = _read_library_text(library_path) if os.path.isfile(library_path) else None
+    if text is None:
+        return {"found": False, "name": name, "text": "", "message": f"Macro not found in library: {name}"}
+    return {"found": True, "name": name, "text": text, "message": ""}
+
+
+# A Client PC reads the library through the Gateway, never over the share; a
+# server process (and a test that stands in for one) runs the read itself.
+def _library_listing() -> Dict[str, Any]:
+    try:
+        return workspace_read_client.run_workspace_read(
+            "macro_library_listing", {}, local=read_library_files, gateway_required=True
+        )
+    except HTTPException as exc:
+        return {"available": False, "message": str(exc.detail), "files": []}
+
+
+def _library_file(macro_id: str) -> Dict[str, Any]:
+    try:
+        return workspace_read_client.run_workspace_read(
+            "macro_library_file",
+            {"macro_id": macro_id},
+            local=lambda: read_library_file(macro_id),
+            gateway_required=True,
+        )
+    except HTTPException as exc:
+        return {"found": False, "name": "", "text": "", "message": str(exc.detail)}
+
+
+def _local_text(macro_id: str) -> Tuple[str, Optional[str]]:
+    try:
+        local_path = _safe_macro_path(macro_id)
+    except ValueError:
+        return "", None
+    if not os.path.isfile(local_path):
+        return local_path, None
+    return local_path, _read_macro_file(local_path)
+
+
+def list_library_macros() -> Dict[str, Any]:
+    """List the shared library with install/update status per macro."""
+    listing = _library_listing()
     macros: List[Dict[str, Any]] = []
-    for entry, path, text in zip(entries, library_paths, library_texts):
-        if text is None:
-            continue
+    for item in listing.get("files") or []:
+        entry = str(item.get("name") or "")
+        text = str(item.get("text") or "")
         meta = _parse_macro_metadata(text, entry)
-        local_text = None
-        local_version = ""
-        try:
-            local_path = _safe_macro_path(entry)
-        except ValueError:
-            local_path = ""
-        if local_path and os.path.isfile(local_path):
-            local_text = _read_macro_file(local_path)
-            if local_text is not None:
-                local_version = _parse_macro_metadata(local_text, entry)["version"]
+        _, local_text = _local_text(entry)
+        local_version = _parse_macro_metadata(local_text, entry)["version"] if local_text is not None else ""
         macros.append({
             "id": entry,
             "name": meta["title"],
@@ -149,28 +213,24 @@ def list_library_macros() -> Dict[str, Any]:
             "release_note": meta["release_note"],
             "local_version": local_version,
             "status": _library_status(text, meta["version"], local_text, local_version),
-            "path": path,
         })
-    return {"available": True, "message": "", "macros": macros}
+    return {"available": bool(listing.get("available")), "message": str(listing.get("message") or ""), "macros": macros}
 
 
 def install_library_macro(macro_id: str, overwrite: bool = False) -> Dict[str, Any]:
-    """Copy a library macro byte-for-byte into the local macro folder atomically."""
+    """Copy a library macro exactly as published into the local macro folder atomically."""
     try:
-        library_path = _safe_library_path(macro_id)
         local_path = _safe_macro_path(macro_id)
     except ValueError as exc:
         return {"success": False, "message": str(exc)}
+    library = _library_file(macro_id)
+    if not library.get("found"):
+        return {"success": False, "message": str(library.get("message") or "")}
+    return _install_text(local_path, str(library.get("text") or ""), overwrite)
 
-    if not os.path.isfile(library_path):
-        return {"success": False, "message": f"Macro not found in library: {os.path.basename(library_path)}"}
-    try:
-        with open(library_path, "rb") as f:
-            library_bytes = f.read()
-    except OSError as exc:
-        return {"success": False, "message": f"Library macro could not be read: {exc}"}
-    library_text = library_bytes.decode("utf-8-sig", errors="replace")
-    meta = _parse_macro_metadata(library_text, os.path.basename(library_path))
+
+def _install_text(local_path: str, library_text: str, overwrite: bool) -> Dict[str, Any]:
+    meta = _parse_macro_metadata(library_text, os.path.basename(local_path))
     library_label = f"v{meta['version']}" if meta["version"] else "unversioned"
 
     local_text = _read_macro_file(local_path) if os.path.isfile(local_path) else None
@@ -204,7 +264,7 @@ def install_library_macro(macro_id: str, overwrite: bool = False) -> Dict[str, A
         fd, temp_path = tempfile.mkstemp(prefix=".macro_library_", suffix=".tmp", dir=macro_dir)
         try:
             with os.fdopen(fd, "wb") as f:
-                f.write(library_bytes)
+                f.write(library_text.encode("utf-8"))
             os.replace(temp_path, local_path)
         except BaseException:
             try:
@@ -230,28 +290,24 @@ def sync_library_macro(macro_id: str) -> Optional[Dict[str, Any]]:
     """Replace one local macro when the library holds a strictly newer version.
 
     Reads only that macro's library file, so the check before a run costs one
-    share read. Returns the install result when a copy was replaced, otherwise
-    None: a macro the library does not hold, an unreachable library, a copy that
-    is current, and a local copy that differs at the same or a higher version
-    are all left alone.
+    Gateway read. Returns the install result when a copy was replaced,
+    otherwise None: a macro the library does not hold, an unreachable library,
+    a copy that is current, and a local copy that differs at the same or a
+    higher version are all left alone.
     """
-    try:
-        library_path = _safe_library_path(macro_id)
-        local_path = _safe_macro_path(macro_id)
-    except ValueError:
+    local_path, local_text = _local_text(macro_id)
+    if local_text is None:
         return None
-    if not os.path.isfile(local_path) or not os.path.isfile(library_path):
+    library = _library_file(macro_id)
+    if not library.get("found"):
         return None
-    library_text = _read_macro_file(library_path)
-    local_text = _read_macro_file(local_path)
-    if library_text is None or local_text is None:
-        return None
-    name = os.path.basename(library_path)
+    library_text = str(library.get("text") or "")
+    name = os.path.basename(local_path)
     library_version = _parse_macro_metadata(library_text, name)["version"]
     local_version = _parse_macro_metadata(local_text, name)["version"]
     if _library_status(library_text, library_version, local_text, local_version) != STATUS_UPDATE_AVAILABLE:
         return None
-    result = install_library_macro(macro_id, overwrite=True)
+    result = _install_text(local_path, library_text, overwrite=True)
     if not result.get("installed"):
         return None
     result["local_version"] = local_version

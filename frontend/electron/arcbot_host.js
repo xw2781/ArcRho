@@ -1,5 +1,6 @@
 const { spawn } = require("child_process");
 const fs = require("fs");
+const http = require("http");
 const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
@@ -22,14 +23,14 @@ let PYTHON_API_SRC = "";
 let PYTHON_API_WHEEL_DIR = "";
 let getPrefsDir = () => "";
 let getWorkspacePathsPath = () => "";
+let getAppServerUrl = () => "";
 let findExecutableOnPath = () => "";
 let runHostCommandBase = null;
 let spawnProcessBase = spawn;
 
 const ARCBOT_PROMPT_TEMPLATE_PATH = path.join(__dirname, "prompts", "arcbot_prompt.md");
-const ARCBOT_SERVER_PROMPT_RELATIVE_PATH = path.join("config", "arcbot", "arcbot_prompt.md");
-const ARCBOT_LEGACY_SERVER_PROMPT_RELATIVE_PATH = path.join("config", "arcbot_prompt.md");
-const ARCBOT_SERVER_INSTRUCTIONS_RELATIVE_DIR = path.join("config", "arcbot", "instructions");
+// Shown in the Prompt Guide for an instruction file the server does not hold
+// yet; never written anywhere.
 const ARCBOT_SERVER_INSTRUCTION_PLACEHOLDERS = [
   ["data_labels.md", "# Data Labels\n\nAdd shared definitions for dataset labels, triangle names, abbreviations, and common naming patterns.\n"],
   ["dfm_workflow.md", "# DFM Workflow\n\nAdd DFM-specific review, analysis, and editing practices.\n"],
@@ -53,6 +54,7 @@ const CODEX_ASSISTANT_CONTEXT_WINDOW_TOKENS = Math.max(
 );
 const CODEX_APP_SERVER_MAX_FRAME_CHARS = 16 * 1024 * 1024;
 const CODEX_APP_SERVER_ENABLED = process.env.ARCRHO_CODEX_APP_SERVER !== "0";
+const ARCBOT_PROMPT_FILES_TIMEOUT_MS = 15000;
 const mappedDriveRemoteCache = new Map();
 const activeCodexAssistantRequests = new Map();
 const arcBotRequestLoggers = new Map();
@@ -1951,32 +1953,6 @@ function cloneJsonValue(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function getJsonValueAtPath(root, keyPath = []) {
-  let cursor = root;
-  for (const key of keyPath) {
-    if (!cursor || typeof cursor !== "object") return undefined;
-    cursor = cursor[key];
-  }
-  return cursor;
-}
-
-function setJsonValueAtPath(root, keyPath = [], value) {
-  let cursor = root;
-  for (let index = 0; index < keyPath.length - 1; index += 1) {
-    const key = keyPath[index];
-    if (!cursor[key] || typeof cursor[key] !== "object") cursor[key] = {};
-    cursor = cursor[key];
-  }
-  cursor[keyPath[keyPath.length - 1]] = value;
-}
-
-function getKnownDfmCsvPathFields() {
-  return [
-    ["data_tab", "input data triangle csv path"],
-    ["results_tab", "ultimate vector csv path"],
-  ];
-}
-
 function findRootForPath(filePath, roots = []) {
   return roots.find((root) => root && isPathWithinRoot(filePath, root)) || "";
 }
@@ -1984,85 +1960,6 @@ function findRootForPath(filePath, roots = []) {
 function relativePathForPrompt(fromDir, targetPath) {
   const relative = path.relative(fromDir, targetPath) || path.basename(targetPath);
   return relative.startsWith("..") ? targetPath : relative;
-}
-
-function copyFileIfPossible(sourcePath, destPath, role, manifestFiles) {
-  try {
-    if (!sourcePath || !fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) return false;
-    fs.mkdirSync(path.dirname(destPath), { recursive: true });
-    fs.copyFileSync(sourcePath, destPath);
-    manifestFiles.push({
-      role,
-      serverPath: sourcePath,
-      localPath: destPath,
-      writable: role === "dfm",
-      beforeSha256: sha256Text(fs.readFileSync(destPath, "utf8")),
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function stageArcBotLinkedCsv({
-  activeJson,
-  keyPath,
-  targetPath,
-  localTargetPath,
-  exchangeRoot,
-  allowedRoots,
-  manifestFiles,
-  csvRewrites,
-}) {
-  const rawValue = getJsonValueAtPath(activeJson, keyPath);
-  const text = String(rawValue || "").trim();
-  if (!text || !/\.csv$/iu.test(text)) return;
-  const sourcePath = path.isAbsolute(text) ? text : path.resolve(path.dirname(targetPath), text);
-  const root = findRootForPath(sourcePath, allowedRoots);
-  const localCsvPath = root
-    ? path.join(exchangeRoot, path.relative(root, sourcePath))
-    : path.join(path.dirname(localTargetPath), path.basename(sourcePath));
-  if (!copyFileIfPossible(sourcePath, localCsvPath, "linked-csv", manifestFiles)) return;
-  const localReference = relativePathForPrompt(path.dirname(localTargetPath), localCsvPath);
-  setJsonValueAtPath(activeJson, keyPath, localReference);
-  csvRewrites.push({
-    keyPath,
-    originalValue: text,
-    exchangeValue: localReference,
-    serverPath: sourcePath,
-    localPath: localCsvPath,
-  });
-}
-
-function stageArcBotReservingClassCsvs({ targetPath, localTargetPath, manifestFiles }) {
-  const sourceDir = path.dirname(targetPath);
-  const localDir = path.dirname(localTargetPath);
-  let copied = 0;
-  try {
-    for (const item of fs.readdirSync(sourceDir, { withFileTypes: true })) {
-      if (!item.isFile() || path.extname(item.name).toLowerCase() !== ".csv") continue;
-      const sourcePath = path.join(sourceDir, item.name);
-      const destPath = path.join(localDir, item.name);
-      if (copyFileIfPossible(sourcePath, destPath, "reserving-class-csv", manifestFiles)) copied += 1;
-    }
-  } catch {
-    // The active DFM JSON can still be edited even when linked CSV staging fails.
-  }
-  return copied;
-}
-
-function restoreExchangeJsonForApply(editSession, editedJson) {
-  if (!editSession?.csvRewrites?.length || !editedJson || typeof editedJson !== "object" || Array.isArray(editedJson)) {
-    return editedJson;
-  }
-  const restored = cloneJsonValue(editedJson);
-  for (const rewrite of editSession.csvRewrites) {
-    const current = String(getJsonValueAtPath(restored, rewrite.keyPath) || "").trim();
-    if (current === String(rewrite.exchangeValue || "").trim()) {
-      setJsonValueAtPath(restored, rewrite.keyPath, rewrite.originalValue);
-    }
-  }
-  return restored;
 }
 
 function isArcBotDfmContext(activeContext) {
@@ -2089,34 +1986,17 @@ function createArcBotEditSession({ targetPath, activeJson, roots = null }) {
     : path.join(exchangeRoot, "_active", path.basename(targetPath) || "active-method.json");
   const metaPath = path.join(sessionDir, "session.json");
   const exchangeJson = cloneJsonValue(activeJson);
-  const manifestFiles = [];
-  const csvRewrites = [];
-  // The method JSON comes from the open page. The class CSVs and the linked
-  // CSVs are still copied from the share: no hosted read lists a class folder
-  // or returns a raw CSV yet (client_smb_retirement.md step 16).
-  if (matchedRoot) {
-    stageArcBotReservingClassCsvs({ targetPath, localTargetPath: jsonPath, manifestFiles });
-    for (const keyPath of getKnownDfmCsvPathFields()) {
-      stageArcBotLinkedCsv({
-        activeJson: exchangeJson,
-        keyPath,
-        targetPath,
-        localTargetPath: jsonPath,
-        exchangeRoot,
-        allowedRoots,
-        manifestFiles,
-        csvRewrites,
-      });
-    }
-  }
+  // Only the page's own JSON is staged. A current method names no CSV and
+  // keeps none beside it (its datasets are in the class's datasets folder),
+  // so nothing is copied from the share.
   const beforeText = formatJsonForArcBot(exchangeJson);
-  manifestFiles.unshift({
+  const manifestFiles = [{
     role: "dfm",
     serverPath: String(targetPath || ""),
     localPath: jsonPath,
     writable: true,
     beforeSha256: sha256Text(beforeText),
-  });
+  }];
   const session = {
     sessionDir,
     exchangeRoot,
@@ -2126,7 +2006,6 @@ function createArcBotEditSession({ targetPath, activeJson, roots = null }) {
     editablePathForPrompt: relativePathForPrompt(exchangeRoot || sessionDir, jsonPath),
     targetPath: String(targetPath || ""),
     beforeSha256: sha256Text(beforeText),
-    csvRewrites,
     manifestFiles,
   };
   fs.mkdirSync(path.dirname(jsonPath), { recursive: true });
@@ -2139,7 +2018,6 @@ function createArcBotEditSession({ targetPath, activeJson, roots = null }) {
     exchangeRoot,
     editablePathForPrompt: session.editablePathForPrompt,
     files: manifestFiles,
-    csvRewrites,
   }), "utf8");
   return session;
 }
@@ -2196,56 +2074,55 @@ function readBundledArcBotPromptTemplate() {
   }
 }
 
-function getArcBotServerPromptTemplatePath() {
-  const configuredRoot = getConfiguredWorkspaceRoot();
-  return configuredRoot ? path.join(configuredRoot, ARCBOT_SERVER_PROMPT_RELATIVE_PATH) : "";
+// ArcBot's entry prompt and the team's instruction files live on the server
+// under config\arcbot. They are read through the app server, which asks the
+// Gateway; nothing here opens or seeds that folder over the share. When the
+// server holds no entry prompt, or cannot be asked, ArcBot uses the prompt
+// bundled with the app.
+function requestArcBotPromptFiles() {
+  const baseUrl = String(getAppServerUrl() || "").trim();
+  if (!baseUrl) return Promise.resolve({ error: "The Arco app server is not available." });
+  return new Promise((resolve) => {
+    const req = http.get(`${baseUrl}/arcbot/prompt-files`, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => {
+        body += chunk;
+      });
+      res.on("end", () => {
+        let parsed = null;
+        try {
+          parsed = JSON.parse(body || "{}");
+        } catch {
+          parsed = null;
+        }
+        if (res.statusCode === 200 && parsed && typeof parsed === "object") {
+          resolve(parsed);
+          return;
+        }
+        const detail = parsed?.detail ? String(parsed.detail) : `HTTP ${res.statusCode || "error"}`;
+        resolve({ error: detail });
+      });
+    });
+    req.setTimeout(ARCBOT_PROMPT_FILES_TIMEOUT_MS, () => req.destroy(new Error("timed out")));
+    req.on("error", (err) => resolve({ error: String(err?.message || err || "request failed") }));
+  });
 }
 
-function getArcBotLegacyServerPromptTemplatePath() {
-  const configuredRoot = getConfiguredWorkspaceRoot();
-  return configuredRoot ? path.join(configuredRoot, ARCBOT_LEGACY_SERVER_PROMPT_RELATIVE_PATH) : "";
-}
-
-function getArcBotServerInstructionsDir() {
-  const configuredRoot = getConfiguredWorkspaceRoot();
-  return configuredRoot ? path.join(configuredRoot, ARCBOT_SERVER_INSTRUCTIONS_RELATIVE_DIR) : "";
-}
-
-function seedArcBotServerPromptFiles(serverPromptPath, bundledTemplate) {
-  if (!serverPromptPath) return;
-  fs.mkdirSync(path.dirname(serverPromptPath), { recursive: true });
-  if (!fs.existsSync(serverPromptPath)) {
-    const legacyPromptPath = getArcBotLegacyServerPromptTemplatePath();
-    const seedText = legacyPromptPath && fs.existsSync(legacyPromptPath)
-      ? fs.readFileSync(legacyPromptPath, "utf8")
-      : bundledTemplate;
-    fs.writeFileSync(serverPromptPath, seedText, "utf8");
-  }
-  const instructionsDir = getArcBotServerInstructionsDir();
-  if (!instructionsDir) return;
-  fs.mkdirSync(instructionsDir, { recursive: true });
-  for (const [fileName, placeholderText] of ARCBOT_SERVER_INSTRUCTION_PLACEHOLDERS) {
-    const filePath = path.join(instructionsDir, fileName);
-    if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, placeholderText, "utf8");
-  }
-}
-
-function readArcBotSharedInstructions() {
-  const instructionsDir = getArcBotServerInstructionsDir();
-  if (!instructionsDir || !fs.existsSync(instructionsDir)) return "No shared instruction files were found.";
+function readArcBotSharedInstructions(promptFiles) {
+  if (promptFiles?.error) return `Shared instruction files could not be read: ${promptFiles.error}`;
+  const files = Array.isArray(promptFiles?.instructions) ? promptFiles.instructions : [];
+  if (!files.length) return "No shared instruction files were found.";
   const parts = [];
   const maxFileChars = 30000;
   const maxTotalChars = 80000;
-  for (const item of fs.readdirSync(instructionsDir, { withFileTypes: true })) {
-    if (!item.isFile() || path.extname(item.name).toLowerCase() !== ".md") continue;
-    if (item.name.startsWith(".") || item.name.startsWith("_")) continue;
-    const filePath = path.join(instructionsDir, item.name);
-    let text = fs.readFileSync(filePath, "utf8").trim();
+  for (const file of files) {
+    let text = String(file?.text || "").trim();
     if (!text) continue;
     if (text.length > maxFileChars) {
       text = `${text.slice(0, maxFileChars)}\n\n[Instruction file truncated at ${maxFileChars} characters.]`;
     }
-    parts.push(`## ${item.name}\n\n${text}`);
+    parts.push(`## ${String(file?.name || "")}\n\n${text}`);
   }
   if (!parts.length) return "No shared instruction files contain content yet.";
   const combined = parts.join("\n\n---\n\n");
@@ -2266,62 +2143,41 @@ function ensureArcBotSharedInstructionsPlaceholder(template) {
   return `${text}\n\nShared team instructions:\n{{SHARED_INSTRUCTIONS}}\n`;
 }
 
-function readArcBotPromptComponentsForGuide() {
-  const bundledTemplate = readBundledArcBotPromptTemplate();
-  const serverPromptPath = getArcBotServerPromptTemplatePath();
-  if (serverPromptPath) seedArcBotServerPromptFiles(serverPromptPath, bundledTemplate);
-  const promptPath = serverPromptPath || ARCBOT_PROMPT_TEMPLATE_PATH;
+function readArcBotPromptComponentsForGuide(promptFiles) {
+  const serverPrompt = typeof promptFiles?.prompt === "string" ? promptFiles.prompt : null;
   const components = [{
     id: "entry",
     title: "Entry Prompt",
-    path: promptPath,
-    text: ensureArcBotSharedInstructionsPlaceholder(
-      serverPromptPath && fs.existsSync(serverPromptPath)
-        ? fs.readFileSync(serverPromptPath, "utf8")
-        : bundledTemplate
-    ),
+    path: serverPrompt != null ? String(promptFiles.prompt_path || "") : ARCBOT_PROMPT_TEMPLATE_PATH,
+    text: ensureArcBotSharedInstructionsPlaceholder(serverPrompt ?? readBundledArcBotPromptTemplate()),
   }];
-  const instructionsDir = getArcBotServerInstructionsDir();
+  const instructionsDir = String(promptFiles?.instructions_dir || "");
+  const serverFiles = new Map(
+    (Array.isArray(promptFiles?.instructions) ? promptFiles.instructions : [])
+      .map((file) => [String(file?.name || "").toLowerCase(), file])
+  );
+  const componentFor = (fileName, text) => ({
+    id: fileName.replace(/[^a-z0-9]+/giu, "-").replace(/^-+|-+$/g, ""),
+    title: fileName,
+    path: instructionsDir ? path.join(instructionsDir, fileName) : fileName,
+    text,
+  });
   const included = new Set();
   for (const [fileName, placeholderText] of ARCBOT_SERVER_INSTRUCTION_PLACEHOLDERS) {
-    const filePath = instructionsDir ? path.join(instructionsDir, fileName) : fileName;
     included.add(fileName.toLowerCase());
-    components.push({
-      id: fileName.replace(/[^a-z0-9]+/giu, "-").replace(/^-+|-+$/g, ""),
-      title: fileName,
-      path: filePath,
-      text: instructionsDir && fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : placeholderText,
-    });
+    const serverFile = serverFiles.get(fileName.toLowerCase());
+    components.push(componentFor(fileName, serverFile ? String(serverFile.text || "") : placeholderText));
   }
-  if (instructionsDir && fs.existsSync(instructionsDir)) {
-    const extraFiles = fs.readdirSync(instructionsDir, { withFileTypes: true })
-      .filter((item) => item.isFile() && path.extname(item.name).toLowerCase() === ".md")
-      .map((item) => item.name)
-      .filter((fileName) => !included.has(fileName.toLowerCase()) && !fileName.startsWith(".") && !fileName.startsWith("_"))
-      .sort((a, b) => a.localeCompare(b));
-    for (const fileName of extraFiles) {
-      const filePath = path.join(instructionsDir, fileName);
-      components.push({
-        id: fileName.replace(/[^a-z0-9]+/giu, "-").replace(/^-+|-+$/g, ""),
-        title: fileName,
-        path: filePath,
-        text: fs.readFileSync(filePath, "utf8"),
-      });
-    }
-  }
+  const extraFiles = [...serverFiles.values()]
+    .filter((file) => !included.has(String(file?.name || "").toLowerCase()))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  for (const file of extraFiles) components.push(componentFor(String(file.name), String(file.text || "")));
   return components;
 }
 
-function readArcBotPromptTemplate() {
-  const bundledTemplate = readBundledArcBotPromptTemplate();
-  const serverPromptPath = getArcBotServerPromptTemplatePath();
-  if (!serverPromptPath) return ensureArcBotSharedInstructionsPlaceholder(bundledTemplate);
-  try {
-    seedArcBotServerPromptFiles(serverPromptPath, bundledTemplate);
-    return ensureArcBotSharedInstructionsPlaceholder(fs.readFileSync(serverPromptPath, "utf8"));
-  } catch (err) {
-    throw new Error(`ArcBot server prompt template could not be read: ${serverPromptPath}: ${err?.message || err}`);
-  }
+function readArcBotPromptTemplate(promptFiles) {
+  const serverPrompt = typeof promptFiles?.prompt === "string" ? promptFiles.prompt : null;
+  return ensureArcBotSharedInstructionsPlaceholder(serverPrompt ?? readBundledArcBotPromptTemplate());
 }
 
 function extractArcBotPromptSection(template, sectionName) {
@@ -2348,7 +2204,8 @@ function buildAssistantPrompt(
   activeContext = null,
   activeJson = null,
   editSession = null,
-  attachments = []
+  attachments = [],
+  promptFiles = null
 ) {
   const safeMessages = Array.isArray(messages) ? messages.slice(-12) : [];
   const safeAttachments = Array.isArray(attachments)
@@ -2380,7 +2237,7 @@ function buildAssistantPrompt(
         item.text,
       ].filter(Boolean).join("\n")).join("\n\n---\n\n")
     : "No additional files were attached.";
-  const template = readArcBotPromptTemplate();
+  const template = readArcBotPromptTemplate(promptFiles);
   const baseSection = extractArcBotPromptSection(template, "BASE");
   const modeSection = extractArcBotPromptSection(template, mode === "edit" ? "EDIT_MODE" : "REVIEW_MODE");
   const activeJsonName = editSession?.editablePathForPrompt || (editSession?.jsonPath ? path.basename(editSession.jsonPath) : "active-method.json");
@@ -2409,7 +2266,7 @@ function buildAssistantPrompt(
     ACTIVE_JSON_DATA: editSession?.jsonPath
       ? `The active JSON-backed file is available as ${activeJsonName} in the current working folder. Use the Arco Python API helper for DFM reads and edits before falling back to raw JSON inspection. When using the public Arco Python API directly, use ArcRhoClient(${JSON.stringify(exchangeRoot || ".")}) so API reads and writes stay inside the local exchange workspace.`
       : (activeJson ? JSON.stringify(activeJson, null, 2) : "No active JSON-backed data was loaded."),
-    SHARED_INSTRUCTIONS: readArcBotSharedInstructions(),
+    SHARED_INSTRUCTIONS: readArcBotSharedInstructions(promptFiles),
     ATTACHMENT_TEXT: attachmentText,
     TRANSCRIPT: transcript || "User: Hello",
   });
@@ -2528,6 +2385,7 @@ function registerArcBotIpc(deps = {}) {
     findExecutableOnPath,
     runHostCommand: runHostCommandBase,
   } = deps);
+  getAppServerUrl = typeof deps.getAppServerUrl === "function" ? deps.getAppServerUrl : () => "";
   if (!ipcMain || !app) {
     throw new Error("registerArcBotIpc requires ipcMain and app dependencies");
   }
@@ -2623,12 +2481,13 @@ ipcMain.handle("codex-assistant-ui-settings-save", async (_event, payload) => {
 
 ipcMain.handle("codex-assistant-prompt-guide-load", async () => {
   try {
-    const components = readArcBotPromptComponentsForGuide();
+    const promptFiles = await requestArcBotPromptFiles();
+    const components = readArcBotPromptComponentsForGuide(promptFiles);
     return {
       ok: true,
       serverRoot: getConfiguredWorkspaceRoot(),
-      instructionsDir: getArcBotServerInstructionsDir(),
-      entryPromptPath: getArcBotServerPromptTemplatePath() || ARCBOT_PROMPT_TEMPLATE_PATH,
+      instructionsDir: String(promptFiles?.instructions_dir || ""),
+      entryPromptPath: components[0].path,
       components,
     };
   } catch (err) {
@@ -2906,7 +2765,6 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
       jsonPath: editSession.jsonPath,
       exchangeRoot: editSession.exchangeRoot || "",
       stagedFileCount: editSession.manifestFiles?.length || 0,
-      csvRewriteCount: editSession.csvRewrites?.length || 0,
     });
   }
   const codexCwd = editSession?.codexCwd || editSession?.sessionDir || roots.cliRoot;
@@ -2917,6 +2775,8 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
     codexSandbox,
     hasEditSession: !!editSession,
   });
+  const promptFiles = await requestArcBotPromptFiles();
+  if (promptFiles?.error) requestLog.mark("prompt_files_unavailable", { error: promptFiles.error });
   const rawPrompt = buildAssistantPrompt(
     payload?.messages,
     promptMode,
@@ -2926,7 +2786,8 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
     activeContext,
     activeJson,
     editSession,
-    attachments
+    attachments,
+    promptFiles
   );
   const prompt = clampCodexPrompt(rawPrompt);
   requestLog.end("build_prompt", {
@@ -3126,7 +2987,7 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
         }, "failed");
       }
       if (sha256Text(editedText) !== editSession.beforeSha256) {
-        const replacementJson = restoreExchangeJsonForApply(editSession, editedJson);
+        const replacementJson = editedJson;
         const structured = extractJsonObject(rawText);
         // The open page applies the edit and saves it through its own save,
         // so nothing here writes the target file.

@@ -519,6 +519,27 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         ("project_name", "period_length", "timeout_sec"),
         ("period_type", "transposed", "calendar", "stored_period_length"),
     ),
+    # The shared macro library: every published macro's text for the Macro
+    # Library window and the automatic update, and one macro's text for a
+    # load or the check before a run. The install writes only to this PC's
+    # own macros folder.
+    "macro_library_listing": WorkspaceReadKind(
+        "macro_library_service",
+        "read_library_files",
+        (),
+    ),
+    "macro_library_file": WorkspaceReadKind(
+        "macro_library_service",
+        "read_library_file",
+        ("macro_id",),
+    ),
+    # ArcBot's entry prompt and the team's instruction files, read where the
+    # server keeps them; a Client PC neither reads nor seeds them on the share.
+    "arcbot_prompt_files": WorkspaceReadKind(
+        "arcbot_prompt_service",
+        "read_arcbot_prompt_files",
+        (),
+    ),
 }
 
 HTTP_WORKSPACE_READ_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_READ_KINDS))

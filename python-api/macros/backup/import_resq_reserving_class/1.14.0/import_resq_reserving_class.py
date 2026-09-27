@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Class
-# Version: 1.15.0
-# Release Note: The import request reaches the Arco Bridge through the Arco Server instead of being written over the shared drive; needs an Arco release that offers it.
+# Version: 1.14.0
+# Release Note: Every message, dialog title and review-table label now reads "Arco" instead of the old product name.
 # Description: Import the ResQ datasets and methods you tick into the reserving-class path selected in the active Project Instance page, overwriting the existing ArcRho copies after copying the existing class to a dated backup folder. Ticked items whose ArcRho copy is newer than ResQ's are listed for review, with links that open them, before the overwrite is confirmed. A DFM User Entry value explained by the notes "Generate Notes for Combined Adjustment" wrote comes back as its growth and accounting cutoff formula rather than a plain number.
 # Scope: Reserving Class
 # Icon: download
@@ -10,6 +10,8 @@
 from __future__ import annotations
 
 import getpass
+import json
+import os
 from pathlib import Path
 import time
 import uuid
@@ -271,46 +273,30 @@ def create_import_request(
     return identifier, payload
 
 
-# The hosted mutation that writes the request into the Bridge's import queue on
-# the server host. The macro builds the request; the server only places it.
-PUBLISH_MUTATION_KIND = "resq_import_request_publish"
-
-
 def publish_import_request(
     *,
     server_root: object,
     request_id: str,
     payload: dict[str, Any],
 ) -> Path:
-    """Hand the request to the server host, which writes it into the Bridge queue.
+    """Atomically publish a Bridge request after the hard availability preflight."""
 
-    A Client PC sends it through the Gateway and never writes the queue over
-    the share; an Arco Server process writes it on its own disk. Nothing falls
-    back to the mapped drive: a Gateway that cannot take the request stops the
-    import before the Bridge is asked for anything.
-    """
-
-    from app_server.services import resq_import_queue_service, workspace_mutation_client
-
-    kwargs = {
-        "project_name": payload["ProjectName"],
-        "reserving_class": payload["Path"],
-        "request_id": request_id,
-        "request": dict(payload),
-    }
-    try:
-        workspace_mutation_client.run_workspace_mutation(
-            PUBLISH_MUTATION_KIND,
-            kwargs,
-            local=lambda: resq_import_queue_service.publish_resq_import_request(**kwargs),
-            gateway_required=True,
-        )
-    except Exception as exc:
-        detail = getattr(exc, "detail", None) or exc
-        raise BridgeRequestError(
-            f"Could not publish Arco Bridge request [{request_id}]: {detail}"
-        ) from exc
     request_path, _ = _request_paths(server_root, request_id)
+    temp_path = request_path.with_name(f".{request_id}.tmp")
+    try:
+        request_path.parent.mkdir(parents=True, exist_ok=True)
+        with temp_path.open("x", encoding="utf-8") as stream:
+            json.dump(payload, stream, indent=2)
+            stream.write("\n")
+        os.replace(temp_path, request_path)
+    except Exception as exc:
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
+        raise BridgeRequestError(
+            f"Could not publish Arco Bridge request [{request_id}]: {exc}"
+        ) from exc
     return request_path
 
 
