@@ -58,3 +58,7 @@ When no build listener is available, running a component's own `build_exe.py` st
 Set `ARCRHO_DEPLOY_ROOT` to the mapped or UNC ArcRho Server path. The scripts align the workspace root from it before reading any configuration and refuse a pair naming two different workspaces, so the kill switch, heartbeats, and deployed folder always belong to the same server. When the deploy root is not a local fixed disk the script does not start the deployed executable — that would run the server's component on the build machine — so clearing the kill switch is enough and the server's Orchestrator restores it. Verification is unchanged.
 
 Do not substitute manual process termination or an in-place executable overwrite for a build script's deploy: the slot rotation, rollback, and kill-switch restore all live in that path.
+
+## Local test root first
+
+On the developer PC a private root at `C:\Arco Server` takes the same Engine and Gateway builds without reaching any other user: `py -3.10 tools/local_server.py deploy` builds from the working tree into it, and `launch-app` opens the dev app against it. Deploy there first whenever the change can be checked without ResQ, then deploy to production as above. A deploy to the local root needs no ship-impact check, since no released app talks to it; the production deploy that follows still does. The root, its limits, and what keeps it apart are in [docs/plans/local_server_root_and_server_switcher.md](../docs/plans/local_server_root_and_server_switcher.md).

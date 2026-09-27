@@ -1,0 +1,113 @@
+"""The tool that keeps a private Arco Server root on this PC for testing.
+
+What matters is that it can never reach production: it refuses a shared or
+production root, binds the local Gateway to this PC only, keeps its credential
+in a file of its own, and hands every build and child process the local root
+rather than whatever the calling shell inherited.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+TEST_TEMP_ROOT = REPO_ROOT / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+MODULE_PATH = REPO_ROOT / "tools" / "local_server.py"
+SPEC = importlib.util.spec_from_file_location("local_server", MODULE_PATH)
+assert SPEC is not None and SPEC.loader is not None
+local_server = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = local_server
+SPEC.loader.exec_module(local_server)
+
+
+class LocalServerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
+        base = Path(self.temp.name)
+        self.root = base / "Arco Server"
+        self.production = base / "production"
+        (self.production / "config").mkdir(parents=True)
+        (self.production / "config" / "username_index.json").write_text("{}", encoding="utf-8")
+        orchestrator = self.production / "apps" / "ArcRho Orchestrator"
+        orchestrator.mkdir(parents=True)
+        (orchestrator / "ArcRho Orchestrator.exe").write_bytes(b"exe")
+        self.credential = base / "appdata" / "arcrho_gateway.local.json"
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def _init(self) -> list[str]:
+        return local_server.init_root(
+            self.root,
+            production_root=self.production,
+            credential_path=self.credential,
+            user="tester",
+        )
+
+    def test_a_shared_or_production_root_is_refused(self) -> None:
+        with self.assertRaisesRegex(local_server.LocalServerError, "network path"):
+            local_server.require_local_root(Path(r"\\server\share\Arco Server"), self.production)
+        with self.assertRaisesRegex(local_server.LocalServerError, "production root"):
+            local_server.require_local_root(self.production, self.production)
+        self.assertEqual(
+            local_server.require_local_root(self.root, self.production),
+            self.root.resolve(),
+        )
+
+    def test_init_builds_a_root_that_serves_this_pc_only(self) -> None:
+        self._init()
+        for folder in local_server.ROOT_FOLDERS:
+            self.assertTrue((self.root / folder).is_dir(), folder)
+        apps = json.loads((self.root / "config" / "config.json").read_text(encoding="utf-8"))["apps"]
+        self.assertFalse(apps["bridge"]["auto_create_instance"])
+        self.assertTrue(apps["bridge"]["kill_all"])
+        registry = json.loads((self.root / "config" / "arcrho_gateway.json").read_text(encoding="utf-8"))
+        self.assertEqual(registry["host"], "127.0.0.1")
+        self.assertEqual(registry["client_url"], "http://127.0.0.1:28767")
+        credential = json.loads(self.credential.read_text(encoding="utf-8"))
+        self.assertEqual(credential["url"], "http://127.0.0.1:28767")
+        self.assertEqual(registry["users"]["tester"], credential["secret"])
+        self.assertTrue((self.root / "config" / "username_index.json").is_file())
+        self.assertTrue((self.root / "apps" / "ArcRho Orchestrator" / "ArcRho Orchestrator.exe").is_file())
+
+    def test_init_again_keeps_the_same_credential(self) -> None:
+        self._init()
+        first = json.loads(self.credential.read_text(encoding="utf-8"))["secret"]
+        self._init()
+        self.assertEqual(json.loads(self.credential.read_text(encoding="utf-8"))["secret"], first)
+
+    def test_copy_project_skips_locks_and_refuses_to_overwrite_silently(self) -> None:
+        project = self.production / "projects" / "Fake"
+        (project / "data").mkdir(parents=True)
+        (project / "data" / "index.json").write_text("{}", encoding="utf-8")
+        (project / "data" / ".index.json.lock").write_text("", encoding="utf-8")
+        (project / ".tmp_write").write_text("", encoding="utf-8")
+        target = local_server.copy_project(self.root, production_root=self.production, name="Fake", overwrite=False)
+        self.assertTrue((target / "data" / "index.json").is_file())
+        self.assertFalse((target / "data" / ".index.json.lock").exists())
+        self.assertFalse((target / ".tmp_write").exists())
+        with self.assertRaisesRegex(local_server.LocalServerError, "--overwrite"):
+            local_server.copy_project(self.root, production_root=self.production, name="Fake", overwrite=False)
+
+    def test_builds_get_the_local_root_and_none_of_the_inherited_overrides(self) -> None:
+        inherited = {"ARCRHO_SERVER_ROOT": r"E:\ArcRho Server", "ARCRHO_RUNTIME_SERVER_ROOT": r"E:\ArcRho Server"}
+        with patch.dict(local_server.os.environ, inherited), patch.object(local_server.subprocess, "run") as run:
+            run.return_value.returncode = 0
+            local_server.deploy(self.root, ["engine"])
+        env = run.call_args.kwargs["env"]
+        self.assertEqual(env["ARCRHO_DEPLOY_ROOT"], str(self.root))
+        self.assertEqual(env["ARCRHO_ROOT"], str(self.root))
+        self.assertNotIn("ARCRHO_SERVER_ROOT", env)
+        self.assertNotIn("ARCRHO_RUNTIME_SERVER_ROOT", env)
+
+
+if __name__ == "__main__":
+    unittest.main()

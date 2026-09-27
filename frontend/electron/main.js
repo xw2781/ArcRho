@@ -55,6 +55,11 @@ if (APP_MODE === "arcode") {
 } else {
   app.setAppUserModelId("com.arcrho.app");
 }
+// A launch against another server root (tools/local_server) gets its own Electron
+// profile, so it never reuses the backend, window state, or storage of an app
+// already running against the production root.
+const USER_DATA_OVERRIDE = String(process.env.ARCRHO_USER_DATA_DIR || "").trim();
+if (USER_DATA_OVERRIDE) app.setPath("userData", path.resolve(USER_DATA_OVERRIDE));
 const HOST = process.env.ARCRHO_HOST || "127.0.0.1";
 const UI_VERSION = process.env.ARCRHO_UI_VERSION || process.env.ARCODE_UI_VERSION || String(Date.now());
 const DISPLAY_VERSION_OVERRIDE = APP_MODE === "arcode"

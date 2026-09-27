@@ -549,6 +549,10 @@ function deleteArcBotChatSession(sessionId) {
 }
 
 function getConfiguredWorkspaceRoot() {
+  // The launch override wins, as it does for the app server (arcrho_api.config),
+  // so ArcBot never edits the production root from an app launched against another.
+  const launchRoot = String(process.env.ARCRHO_SERVER_ROOT || "").trim();
+  if (launchRoot) return launchRoot;
   try {
     const filePath = getWorkspacePathsPath();
     if (!fs.existsSync(filePath)) return "";
