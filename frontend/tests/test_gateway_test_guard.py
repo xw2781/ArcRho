@@ -130,6 +130,20 @@ class GuardLaunchTests(unittest.TestCase):
         )
         self.assertEqual(result.stdout.split(), ["False", "True"], result.stderr)
 
+    def test_the_gateway_client_imports_where_no_temp_folder_is_writable(self) -> None:
+        # ArcBot's read-only sandbox refuses the probe file that finding the
+        # temp folder writes; the Gateway client must still import there.
+        script = (
+            "import sys, tempfile; sys.path.insert(0, sys.argv[1]);"
+            "tempfile.gettempdir = lambda: (_ for _ in ()).throw(FileNotFoundError('no usable temporary directory'));"
+            "from arcrho_api.gateway import GatewayClient; print('imported')"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script, str(REPOSITORY_ROOT / "python-api" / "src")],
+            env=_child_env(), capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(result.stdout.split(), ["imported"], result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -26,7 +26,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import tempfile
 from pathlib import Path
 from typing import Callable
 from urllib.error import URLError
@@ -35,7 +34,10 @@ from urllib.request import BaseHandler, OpenerDirector, ProxyHandler, Request, b
 
 GUARD_ENV = "ARCRHO_TEST_GATEWAY_GUARD"
 RECORD_ENV = "ARCRHO_TEST_GATEWAY_RECORD"
-MISSING_CREDENTIAL = Path(tempfile.gettempdir()) / "arcrho-tests-have-no-gateway" / "arcrho_gateway.json"
+# A path that never exists. It is not under the temp folder: finding that folder
+# writes a probe file, which a read-only sandbox (ArcBot's) refuses, and every
+# arcrho_api import would fail with it.
+MISSING_CREDENTIAL = Path(__file__).with_name("arcrho-tests-have-no-gateway") / "arcrho_gateway.json"
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 _TEST_RUNNER_MAINS = {"unittest.__main__", "pytest.__main__"}
 _allowed: set[tuple[str, int]] = set()

@@ -325,7 +325,7 @@ function buildClaudeSystemPrompt(mode, activeContext, activeJson) {
   if (activeContext?.available) {
     const tabLabel = activeContext.title || activeContext.tabType || "active tab";
     parts.push(`Current app context: ${tabLabel}${activeContext.tabType ? ` (${activeContext.tabType})` : ""}.`);
-    if (activeContext.targetPath) parts.push(`Active file: ${activeContext.targetPath}`);
+    if (activeContext.targetPath) parts.push(`Active file: ${withFileNamesOnly(activeContext.targetPath)}`);
   }
   if (activeJson && typeof activeJson === "object" && !activeJson.error) {
     const jsonStr = JSON.stringify(activeJson, null, 2).slice(0, 12000);
@@ -550,9 +550,11 @@ function deleteArcBotChatSession(sessionId) {
   return true;
 }
 
+// The configured server folder, as text only. ArcBot never opens it and never
+// names it to the model: it only strips it from a staged file's path so the
+// exchange copy keeps the project's layout.
 function getConfiguredWorkspaceRoot() {
-  // The launch override wins, as it does for the app server (arcrho_api.config),
-  // so ArcBot never edits the production root from an app launched against another.
+  // The launch override wins, as it does for the app server (arcrho_api.config).
   const launchRoot = String(process.env.ARCRHO_SERVER_ROOT || "").trim();
   if (launchRoot) return launchRoot;
   try {
@@ -564,16 +566,6 @@ function getConfiguredWorkspaceRoot() {
   } catch {
     return "";
   }
-}
-
-function getCodexAssistantProjectRoot() {
-  const configuredRoot = getConfiguredWorkspaceRoot();
-  if (configuredRoot) return configuredRoot;
-  return app?.isPackaged ? getArcBotHostCwd() : APP_ROOT;
-}
-
-function isUncPath(filePath) {
-  return /^\\\\[^\\]+\\[^\\]+/u.test(String(filePath || "").trim());
 }
 
 function getLocalArcRhoAssistantRoot() {
@@ -703,24 +695,6 @@ async function getArcBotReadableRootsForSandbox() {
   return normalizeSandboxRoots(roots);
 }
 
-async function getCodexAssistantProjectRoots(options = {}) {
-  const { ensureLocalRoot = false } = options;
-  const configuredRoot = getCodexAssistantProjectRoot();
-  const resolvedProjectRoot = await resolveMappedDrivePath(configuredRoot);
-  const configuredReadableRoots = await getArcBotReadableRootsForSandbox();
-  const networkRoot = isUncPath(resolvedProjectRoot);
-  const localArcRhoRoot = networkRoot
-    ? (ensureLocalRoot ? ensureLocalArcRhoAssistantRoot() : getLocalArcRhoAssistantRoot())
-    : "";
-  return {
-    projectRoot: resolvedProjectRoot,
-    cliRoot: networkRoot ? localArcRhoRoot : resolvedProjectRoot,
-    serverReadRoots: normalizeSandboxRoots([resolvedProjectRoot, ...configuredReadableRoots]),
-    configuredReadableRoots,
-    networkRoot,
-  };
-}
-
 function getBundledNpmCommand() {
   if (process.platform === "win32") {
     const bundled = path.join(getBundledNodePortableRoot(), "npm.cmd");
@@ -798,17 +772,22 @@ function extractCodexCommandFromInstallOutput(output) {
   return match ? match[1].trim() : "";
 }
 
+// ArcBot's Python imports this app's own arcrho_api: the source folder in
+// development, else the bundled wheel, which is pure Python and imports
+// straight from the path. Its Gateway client then signs with this app's
+// credential and knows the same read kinds as the app.
 function getArcBotCodexEnv(env = process.env) {
   const nextEnv = { ...env };
-  if (fs.existsSync(PYTHON_API_SRC)) {
+  const wheelPath = getPythonApiWheelPath();
+  const importRoot = fs.existsSync(PYTHON_API_SRC) ? PYTHON_API_SRC : wheelPath;
+  if (importRoot) {
     const existing = String(nextEnv.PYTHONPATH || nextEnv.PythonPath || "");
     nextEnv.PYTHONPATH = existing
-      ? `${PYTHON_API_SRC}${path.delimiter}${existing}`
-      : PYTHON_API_SRC;
-    nextEnv.ARCRHO_PYTHON_API_SRC = PYTHON_API_SRC;
+      ? `${importRoot}${path.delimiter}${existing}`
+      : importRoot;
   }
+  if (fs.existsSync(PYTHON_API_SRC)) nextEnv.ARCRHO_PYTHON_API_SRC = PYTHON_API_SRC;
   nextEnv.ARCRHO_PYTHON_API_WHEEL_DIR = PYTHON_API_WHEEL_DIR;
-  const wheelPath = getPythonApiWheelPath();
   if (wheelPath) nextEnv.ARCRHO_PYTHON_API_WHEEL = wheelPath;
   return nextEnv;
 }
@@ -1909,21 +1888,6 @@ function getAssistantTargetJsonPath(activeContext) {
   return String(candidates.find((candidate) => String(candidate || "").trim()) || "").trim();
 }
 
-async function getArcBotEditRoots() {
-  const configuredRoot = getConfiguredWorkspaceRoot();
-  if (!configuredRoot) {
-    return {
-      configuredRoot: "",
-      resolvedRoot: "",
-    };
-  }
-  const resolvedRoot = await resolveMappedDrivePath(configuredRoot);
-  return {
-    configuredRoot,
-    resolvedRoot,
-  };
-}
-
 function isArcBotEditableTarget(targetPath) {
   const extension = path.extname(String(targetPath || "").trim()).toLowerCase();
   return [".json", ".ipynb", ".arcnb"].includes(extension);
@@ -1969,7 +1933,7 @@ function isArcBotDfmContext(activeContext) {
   return pageType === "dfm" || nestedPageType === "dfm";
 }
 
-function createArcBotEditSession({ targetPath, activeJson, roots = null }) {
+function createArcBotEditSession({ targetPath, activeJson, serverRoot = "" }) {
   if (activeJson == null || typeof activeJson !== "object" || Array.isArray(activeJson)) {
     return null;
   }
@@ -1977,8 +1941,7 @@ function createArcBotEditSession({ targetPath, activeJson, roots = null }) {
   fs.mkdirSync(sessionsRoot, { recursive: true });
   const sessionDir = fs.mkdtempSync(path.join(sessionsRoot, "session-"));
   const sharedWorkspaceRoot = getArcBotWorkspaceRoot();
-  const allowedRoots = [roots?.resolvedRoot, roots?.configuredRoot].filter(Boolean);
-  const matchedRoot = findRootForPath(targetPath, allowedRoots);
+  const matchedRoot = findRootForPath(targetPath, [serverRoot]);
   const exchangeRoot = sharedWorkspaceRoot;
   const relativeTarget = matchedRoot ? path.relative(matchedRoot, targetPath) : "";
   const jsonPath = matchedRoot
@@ -2195,12 +2158,24 @@ function renderArcBotPromptTemplate(template, values) {
   });
 }
 
+// The model is told a file's name, never where it lives: a page's path points
+// into the server folder, and ArcBot reads project data through the server.
+function withFileNamesOnly(value) {
+  if (typeof value === "string") {
+    return /^(?:[A-Za-z]:[\\/]|\\\\)[^\r\n]*$/u.test(value) ? path.win32.basename(value) : value;
+  }
+  if (Array.isArray(value)) return value.map(withFileNamesOnly);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, withFileNamesOnly(item)]));
+  }
+  return value;
+}
+
 function buildAssistantPrompt(
   messages,
   mode = "edit",
-  projectRoot = "",
-  cliRoot = "",
-  networkRoot = false,
+  workingFolder = "",
+  readableFolders = [],
   activeContext = null,
   activeJson = null,
   editSession = null,
@@ -2228,6 +2203,7 @@ function buildAssistantPrompt(
     ? { ...activeContext }
     : { available: false };
   delete contextForPrompt.activeJson;
+  const contextNamesOnly = withFileNamesOnly(contextForPrompt);
   const attachmentText = safeAttachments.length
     ? safeAttachments.map((item, index) => [
         `Attachment ${index + 1}: ${item.name}`,
@@ -2245,11 +2221,8 @@ function buildAssistantPrompt(
   const pythonApiWheelPath = getPythonApiWheelPath();
   return renderArcBotPromptTemplate(baseSection, {
     MODE_LABEL: mode === "edit" ? "Edit Mode" : "Review Mode",
-    PROJECT_ROOT: projectRoot || APP_ROOT,
-    CLI_ROOT: cliRoot || projectRoot || APP_ROOT,
-    NETWORK_ROOT_NOTE: networkRoot
-      ? "The project folder is a network path, so the CLI process starts from the local Documents\\ArcRho folder to avoid Windows/Codex startup failures with UNC working directories."
-      : "",
+    CLI_ROOT: workingFolder,
+    READABLE_FOLDERS: readableFolders.length ? readableFolders.join("; ") : "None.",
     MODE_INSTRUCTIONS: renderArcBotPromptTemplate(modeSection, {
       EDITABLE_JSON_BASENAME: activeJsonName,
       EXCHANGE_SERVER_ROOT: exchangeRoot || "No local exchange workspace is available.",
@@ -2262,7 +2235,7 @@ function buildAssistantPrompt(
     PYTHON_API_WHEEL_PATH: pythonApiWheelPath || "No bundled arcrho-api wheel was found.",
     PYTHON_API_INSTALL_COMMAND: pythonApiWheelPath ? `${PYTHON_EXE} -m pip install ${quoteWindowsCmdArg(pythonApiWheelPath)}` : "",
     PYTHON_API_COMMAND: `${PYTHON_EXE} -m arcrho_api.agent --file ${quoteWindowsCmdArg(activeJsonName)}`,
-    ACTIVE_CONTEXT_JSON: JSON.stringify(contextForPrompt, null, 2),
+    ACTIVE_CONTEXT_JSON: JSON.stringify(contextNamesOnly, null, 2),
     ACTIVE_JSON_DATA: editSession?.jsonPath
       ? `The active JSON-backed file is available as ${activeJsonName} in the current working folder. Use the Arco Python API helper for DFM reads and edits before falling back to raw JSON inspection. When using the public Arco Python API directly, use ArcRhoClient(${JSON.stringify(exchangeRoot || ".")}) so API reads and writes stay inside the local exchange workspace.`
       : (activeJson ? JSON.stringify(activeJson, null, 2) : "No active JSON-backed data was loaded."),
@@ -2699,18 +2672,17 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
     error: "Request canceled.",
     ...(usage ? { usage } : {}),
   });
-  sendArcBotActivity(event, requestId, "activity", "Resolving ArcBot project and working folders...");
-  requestLog.start("resolve_project_roots");
-  const roots = await getCodexAssistantProjectRoots({ ensureLocalRoot: true });
-  requestLog.end("resolve_project_roots", {
-    projectRoot: roots.projectRoot,
-    cliRoot: roots.cliRoot,
-    networkRoot: !!roots.networkRoot,
-    serverReadRoots: roots.serverReadRoots || [],
-  });
-  if (roots.serverReadRoots?.length) {
+  sendArcBotActivity(event, requestId, "activity", "Resolving ArcBot working folders...");
+  requestLog.start("resolve_working_folders");
+  // ArcBot works in the local exchange folder and reads other project data
+  // through the server; only folders the user added are named to it.
+  const exchangeFolder = getArcBotWorkspaceRoot();
+  fs.mkdirSync(exchangeFolder, { recursive: true });
+  const readableFolders = await getArcBotReadableRootsForSandbox();
+  requestLog.end("resolve_working_folders", { exchangeFolder, readableFolders });
+  if (readableFolders.length) {
     sendArcBotActivity(event, requestId, "activity", "ArcBot can read the configured folders for this request.", {
-      debugText: `ArcBot readable roots: ${roots.serverReadRoots.join("; ")}`,
+      debugText: `ArcBot readable folders: ${readableFolders.join("; ")}`,
     });
   }
   const activeContext = payload?.activeContext && typeof payload.activeContext === "object"
@@ -2759,7 +2731,7 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
   ) {
     sendArcBotActivity(event, requestId, "activity", "Creating editable local JSON-backed copy...");
     requestLog.start("create_edit_session", { targetPath });
-    editSession = createArcBotEditSession({ targetPath, activeJson, roots: await getArcBotEditRoots() });
+    editSession = createArcBotEditSession({ targetPath, activeJson, serverRoot: getConfiguredWorkspaceRoot() });
     requestLog.end("create_edit_session", {
       sessionDir: editSession.sessionDir,
       jsonPath: editSession.jsonPath,
@@ -2767,7 +2739,7 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
       stagedFileCount: editSession.manifestFiles?.length || 0,
     });
   }
-  const codexCwd = editSession?.codexCwd || editSession?.sessionDir || roots.cliRoot;
+  const codexCwd = editSession?.codexCwd || exchangeFolder;
   const codexSandbox = editSession ? "workspace-write" : "read-only";
   requestLog.start("build_prompt", {
     mode,
@@ -2780,9 +2752,8 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
   const rawPrompt = buildAssistantPrompt(
     payload?.messages,
     promptMode,
-    roots.projectRoot,
     codexCwd,
-    roots.networkRoot,
+    readableFolders,
     activeContext,
     activeJson,
     editSession,
@@ -2841,7 +2812,7 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
       mode,
       model,
       reasoningEffort,
-      configuredReadRoots: roots.serverReadRoots || [],
+      readableFolders,
     });
     try {
       result = await runCodexWarmTurn({
@@ -3067,7 +3038,6 @@ module.exports = {
     getFallbackCodexModelCatalog,
     isCodexNotificationForTurn,
     getArcBotHostCwd,
-    getCodexAssistantProjectRoot,
     getNodeBackedCodexSpec,
     launchDetachedArcBotProcess,
     reconcileArcBotReasoningEffort,

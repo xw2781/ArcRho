@@ -8,7 +8,7 @@ import { clearTestData, getLastWorkflowDir, getLastWorkflowPath, getWorkflowTabS
 import { buildShellActivityEntry, closeTab, closeTabsExcept, dockTab, floatTab, openAgentGuideTab, openBornhuetterFergusonTab, openBrowsingHistoryTab, openDatasetTab, openDFMTab, openFileExplorerTab, openProjectInstanceTab, openProjectSettingsTab, openResultSelectionTab, openScriptingTab, openServerTab, openShellActivityHistoryEntry, openTaskDesigner, openWorkflowTab, recordActiveTabHistory, setActive, setDockedActive } from "./tab_actions.js?v=20260926a";
 import { applyDockedIframeLayout, clampFloatingTabsToContent, clampFloatRect, defaultFloatRectFromPointer, ensureContentContainers, ensureIframe, notifyBrowsingHistoryTabs, notifyCalculatedDatasetTabs, notifyServerConnectionUpdated, notifyTabActivated, printActiveTab, removeFloatPreview, renderContent, renderFloatingWindows, updateFloatPreview } from "./shell_content.js?v=20260926a";
 import { closeTabCtxMenu, initTabStrip, isTabStripDragging, openTabCtxMenu, renderTabs, togglePlusMenu } from "./tab_strip.js?v=20260821a";
-import { closeAllShellMenus, initShellMenus, isActiveDatasetTab, isActiveDFMDetailsTab, isActiveDFMTab, isActiveProjectInstanceTab, isActiveProjectSettingsDatasetTypesTab, isActiveProjectSettingsReservingClassTypesTab, isActiveScriptingTab, isActiveWorkflowTab, openDevPanel, sendDatasetCommand, sendDFMCommand, sendProjectInstanceCommand, sendProjectSettingsCommand, sendScriptingCommand, sendWorkflowCommand, setDfmEditEnabled, setDfmHistoryEnabled, toggleNavigationPanel, updateEditMenuState, updateFileMenuState, updateHelpMenuState, updateViewMenuState } from "./shell_menus.js?v=20260927a";
+import { closeAllShellMenus, initShellMenus, isActiveDatasetTab, isActiveDFMDetailsTab, isActiveDFMTab, isActiveProjectInstanceTab, isActiveProjectSettingsDatasetTypesTab, isActiveProjectSettingsReservingClassTypesTab, isActiveScriptingTab, isActiveWorkflowTab, openDevPanel, sendDatasetCommand, sendDFMCommand, sendProjectInstanceCommand, sendProjectSettingsCommand, sendScriptingCommand, sendWorkflowCommand, setDfmEditEnabled, setDfmHistoryEnabled, toggleNavigationPanel, updateEditMenuState, updateFileMenuState, updateHelpMenuState, updateViewMenuState } from "./shell_menus.js?v=20260927smb24";
 import { initHotkeys, resolveHotkeyAction, runHotkeyAction } from "./shell_hotkeys.js?v=20260831a";
 import { initShellMessages } from "./shell_messages.js?v=20260927a";
 import { initUiAutomation } from "./ui_automation.js?v=20260904resize2";
@@ -16,7 +16,7 @@ import { handleShellFileDragOver, handleShellFileDrop, initShellFileDrops } from
 import { initTitlebarControls } from "./titlebar_controls.js?v=20260517a";
 import { initServerBadge } from "./server_badge.js?v=20260927b";
 import { initFullscreenChrome, setFullscreenChrome, syncFullscreenChromeFromHost } from "./fullscreen_chrome.js?v=20260913b";
-import { initAiAssistant } from "../ai-assistant/arcrho.js?v=20260927a";
+import { initAiAssistant } from "../ai-assistant/arcrho.js?v=20260927smb24";
 import { closeMacroWindow, initMacroWindow, openMacroWindow } from "../macro/macro_window.js?v=20260908b";
 import { addMacroToFlightDeck, closeFlightDeck, initFlightDeck, isFlightDeckVisible, openFlightDeck, toggleFlightDeck } from "../flight_deck/flight_deck.js?v=20260906a";
 

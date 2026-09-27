@@ -5,7 +5,7 @@ import {
   isAiAssistantLauncherVisible,
   setAiAssistantLauncherVisible,
   toggleAiAssistantLauncherVisible,
-} from "./index.js?v=20260927a";
+} from "./index.js?v=20260927smb24";
 
 function cleanText(value) {
   return String(value || "").trim();

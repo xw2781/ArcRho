@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcbot",
+  "audience": "user",
+  "summary": "ArcBot now reads other objects of your project through the server instead of browsing the shared drive, signed in as you. It can still answer questions about other methods, datasets and reserving classes, but it can no longer open raw CSV files or list project folders."
+}

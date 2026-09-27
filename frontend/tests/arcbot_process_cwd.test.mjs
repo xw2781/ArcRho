@@ -96,7 +96,6 @@ test.after(() => {
 });
 
 test("packaged ArcBot status, install, and fallback commands use a writable host cwd", async () => {
-  assert.equal(testHooks.getCodexAssistantProjectRoot(), expectedHostCwd);
   const status = await handlers.get("codex-assistant-status")();
   assert.equal(status.installed, true);
   assert.equal(status.authenticated, false);

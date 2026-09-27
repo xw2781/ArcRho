@@ -1,4 +1,4 @@
-import { ensureAiAssistantDom } from "./template.js";
+import { ensureAiAssistantDom } from "./template.js?v=20260927smb24";
 import {
   ATTACHMENT_EXTENSIONS as ASSISTANT_ATTACHMENT_EXTENSIONS,
   PANEL_DEFAULT_HEIGHT as ASSISTANT_PANEL_DEFAULT_HEIGHT,
@@ -1061,7 +1061,7 @@ function renderFolderPermissionsList() {
   }
   const countText = assistantReadableRoots.length
     ? `${assistantReadableRoots.length} extra folder${assistantReadableRoots.length === 1 ? "" : "s"} allowed.`
-    : "Server folder is included by default.";
+    : "Project data is read through the server.";
   setFolderPermissionsStatus(countText);
   updateAssistantSettingsPanel();
 }
@@ -1170,7 +1170,7 @@ function updateAssistantSettingsPanel() {
     ["session", currentSessionTitle || currentSessionId || "New ArcBot Chat"],
     ["model", getAssistantModelLabel()],
     ["reasoning", hasReasoning ? getAssistantReasoningLabel() : "—"],
-    ["folders", assistantReadableRoots.length ? `${assistantReadableRoots.length} extra` : "Server only"],
+    ["folders", assistantReadableRoots.length ? `${assistantReadableRoots.length} extra` : "None"],
     ["tokens", formatContextWindowUsage(currentUsage || {})],
     ["status", assistantReady ? "Online" : "Offline"],
     ["login", formatAssistantLoginDetail()],
