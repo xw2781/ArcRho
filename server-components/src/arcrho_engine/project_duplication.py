@@ -70,6 +70,22 @@ PROJECT_DUPLICATION_JOURNAL_VERSION = 1
 PROJECT_DUPLICATION_COPY_ATTEMPTS = 4
 PROJECT_DUPLICATION_COPY_RETRY_SECONDS = (0.5, 1.5, 3.0)
 
+# The app rewrites these while people merely have the source project open:
+# per-user preferences and review exports, caches that check their own
+# staleness when read, and each reserving class's index, which is rebuilt
+# whenever its folder signature no longer matches. They are still copied, but
+# a change to them during the copy leaves the copy consistent, so the
+# "did the source change?" comparison skips them.
+_UNCOMPARED_PROJECT_DIR_NAMES = frozenset({"users"})
+_UNCOMPARED_PROJECT_FILE_NAMES = frozenset(
+    {
+        "table_summary.json",
+        "reserving_class_combinations_cache.json",
+        "reserving_class_path_tree_cache.json",
+    }
+)
+_UNCOMPARED_CLASS_FILE_NAMES = frozenset({"index.json"})
+
 # The shared status message is deliberately location-independent, so the real
 # OSError is only recoverable from this server-local log. Its rotation and
 # append semantics belong to `arcrho_engine.runtime_log`.
@@ -538,12 +554,41 @@ def _load_recovery_journal(
     return _validate_recovery_journal(payload, normalized)
 
 
+def _is_scratch_name(name: str) -> bool:
+    """Lock and temporary files come and go mid-copy and are never copied."""
+
+    folded = name.casefold()
+    return folded.endswith((".lock", ".tmp")) or folded.startswith(".tmp")
+
+
+def _ignore_scratch_names(_directory: str, names: list[str]) -> list[str]:
+    return [name for name in names if _is_scratch_name(name)]
+
+
+def _is_uncompared(relative: Path, name: str, is_dir: bool) -> bool:
+    folded = name.casefold()
+    parts = relative.parts
+    if not parts:
+        if is_dir:
+            return folded in _UNCOMPARED_PROJECT_DIR_NAMES
+        return folded in _UNCOMPARED_PROJECT_FILE_NAMES
+    if len(parts) == 2 and parts[0].casefold() == "data" and not is_dir:
+        return folded in _UNCOMPARED_CLASS_FILE_NAMES
+    return False
+
+
 def _source_manifest(
     project_dir: Path,
     *,
     include_transient: bool = False,
 ) -> str:
-    """Hash relative names and metadata without reading project file contents."""
+    """Hash relative names and metadata without reading project file contents.
+
+    Without ``include_transient`` this is the "did the source change?"
+    comparison: lock and temporary files are left out, and the entries the app
+    rewrites while a project is merely open are inspected for links but not
+    hashed.
+    """
 
     if _path_is_link_or_reparse(project_dir):
         raise ProjectDuplicationError(
@@ -552,10 +597,16 @@ def _source_manifest(
     digest = hashlib.sha256()
     transient = {name.casefold() for name in PROJECT_DUPLICATION_TRANSIENT_DATA_DIR_NAMES}
 
-    def walk(folder: Path, relative: Path) -> None:
+    def walk(folder: Path, relative: Path, compared: bool = True) -> None:
         try:
             with os.scandir(folder) as scan:
                 entries = sorted(scan, key=lambda entry: (entry.name.casefold(), entry.name))
+        except FileNotFoundError:
+            if not compared:
+                return
+            raise ProjectDuplicationError(
+                "The source project changed or became unavailable while it was being inspected."
+            )
         except OSError as exc:
             raise ProjectDuplicationError(
                 "The source project changed or became unavailable while it was being inspected."
@@ -570,8 +621,17 @@ def _source_manifest(
                 and entry.is_dir(follow_symlinks=False)
             ):
                 continue
+            if not include_transient and _is_scratch_name(entry.name):
+                continue
             try:
                 entry_stat = entry.stat(follow_symlinks=False)
+            except FileNotFoundError:
+                if not compared:
+                    continue
+                raise ProjectDuplicationError(
+                    "The source project changed or became unavailable while it "
+                    "was being inspected."
+                )
             except OSError as exc:
                 raise ProjectDuplicationError(
                     "The source project changed or became unavailable while it "
@@ -596,12 +656,17 @@ def _source_manifest(
                     "The source project contains an unsupported filesystem entry: "
                     f"{child_relative.as_posix()}"
                 )
-            record = (
-                f"{kind}\0{child_relative.as_posix()}\0{size}\0{mtime_ns}\n"
+            child_compared = compared and (
+                include_transient
+                or not _is_uncompared(relative, entry.name, kind == "directory")
             )
-            digest.update(record.encode("utf-8", errors="surrogatepass"))
+            if child_compared:
+                record = (
+                    f"{kind}\0{child_relative.as_posix()}\0{size}\0{mtime_ns}\n"
+                )
+                digest.update(record.encode("utf-8", errors="surrogatepass"))
             if kind == "directory":
-                walk(Path(entry.path), child_relative)
+                walk(Path(entry.path), child_relative, child_compared)
 
     walk(project_dir, Path())
     return digest.hexdigest()
@@ -691,7 +756,8 @@ def _data_inventory(data_dir: Path) -> tuple[list[Path], list[Path]]:
             if entry.name.casefold() not in transient:
                 reserving_classes.append(path)
         elif entry.is_file(follow_symlinks=False):
-            files.append(path)
+            if not _is_scratch_name(entry.name):
+                files.append(path)
         else:
             raise ProjectDuplicationError(
                 f"The project data folder contains an unsupported filesystem entry: {entry.name}"
@@ -703,9 +769,10 @@ def _copy_non_data_project(source: Path, staging: Path) -> None:
     source_identity = os.path.normcase(os.path.normpath(source))
 
     def ignore_data_at_root(current_dir: str, names: list[str]) -> list[str]:
+        ignored = _ignore_scratch_names(current_dir, names)
         if os.path.normcase(os.path.normpath(current_dir)) != source_identity:
-            return []
-        return [name for name in names if name.casefold() == "data"]
+            return ignored
+        return ignored + [name for name in names if name.casefold() == "data"]
 
     shutil.copytree(source, staging, ignore=ignore_data_at_root, symlinks=True)
 
@@ -834,6 +901,7 @@ def duplicate_project(
                         source_rc,
                         staged_rc,
                         symlinks=True,
+                        ignore=_ignore_scratch_names,
                     ),
                 )
                 report(

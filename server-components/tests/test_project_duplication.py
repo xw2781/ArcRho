@@ -621,6 +621,73 @@ class ProjectDuplicationTests(unittest.TestCase):
         self.assertFalse((self.projects_dir / "Target").exists())
         self.assertEqual(list(self.projects_dir.glob(".arcrho-project-duplication-*")), [])
 
+    def test_open_project_bookkeeping_during_the_copy_still_publishes(self):
+        """Preferences, caches and indexes the app rewrites must not fail a copy."""
+
+        source = self._create_source()
+        prefs = source / "users" / "tester" / "preferences.json"
+        prefs.parent.mkdir(parents=True)
+        prefs.write_text('{"zoom":1}\n', encoding="utf-8")
+        (source / "table_summary.json").write_text("{}\n", encoding="utf-8")
+        (source / "data" / "RC A" / "index.json").write_text("{}\n", encoding="utf-8")
+        (source / "data" / "RC A" / ".index.json.lock").write_bytes(b"\0")
+        (source / "data" / "RC A" / "sidecars" / "old.json.abc.tmp").write_text(
+            "", encoding="utf-8"
+        )
+        request = self._request()
+
+        def touch_bookkeeping(event):
+            if event["stage"] != "reserving_classes" or event["completed"] != 1:
+                return
+            prefs.write_text('{"zoom":2}\n', encoding="utf-8")
+            (source / "users" / "other" / "reviews").mkdir(parents=True)
+            (source / "users" / "other" / "reviews" / "side.xlsx").write_bytes(b"x")
+            (source / "table_summary.json").write_text('{"v":2}\n', encoding="utf-8")
+            (source / "reserving_class_combinations_cache.json").write_text(
+                "{}\n", encoding="utf-8"
+            )
+            (source / "data" / "RC A" / "index.json").write_text(
+                '{"rebuilt":true}\n', encoding="utf-8"
+            )
+            (source / "data" / "RC B" / ".index.json.lock").write_bytes(b"\0")
+            (source / ".arcrho-visibility-probe-1.tmp").write_text("", encoding="utf-8")
+
+        project_duplication.duplicate_project(
+            self.server_root,
+            request,
+            progress_callback=touch_bookkeeping,
+        )
+
+        target = self.projects_dir / "Target"
+        self.assertTrue((target / "users" / "tester" / "preferences.json").is_file())
+        self.assertTrue((target / "data" / "RC A" / "index.json").is_file())
+        self.assertFalse((target / "data" / "RC A" / ".index.json.lock").exists())
+        self.assertFalse(
+            (target / "data" / "RC A" / "sidecars" / "old.json.abc.tmp").exists()
+        )
+        self.assertFalse((target / ".arcrho-visibility-probe-1.tmp").exists())
+
+    def test_data_change_during_the_copy_is_still_refused(self):
+        source = self._create_source()
+        request = self._request()
+
+        def edit_dataset(event):
+            if event["stage"] == "reserving_classes" and event["completed"] == 1:
+                (source / "data" / "RC B" / "datasets" / "paid.csv").write_text(
+                    "1,2,3\n", encoding="utf-8"
+                )
+
+        with self.assertRaisesRegex(
+            project_duplication.ProjectDuplicationError,
+            "source project changed",
+        ):
+            project_duplication.duplicate_project(
+                self.server_root,
+                request,
+                progress_callback=edit_dataset,
+            )
+        self.assertFalse((self.projects_dir / "Target").exists())
+
     def test_transient_copy_error_is_retried_and_publishes_the_target(self):
         """A share hiccup on one reserving class must not abort the project."""
 
