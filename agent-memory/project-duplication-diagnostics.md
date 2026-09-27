@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: b0ec034e-0a3d-47bf-a13b-25fdc7f5fd6e
-  modified: 2026-08-10T02:10:02.740Z
+  modified: 2026-09-27T21:20:28.046Z
 ---
 
 Project-duplication failures surface to the UI as "The ArcRho Server filesystem
@@ -25,6 +25,14 @@ Where to look instead:
 
 **Why:** without the varying-vs-fixed stop point signal I chased a plausible but
 wrong MAX_PATH theory for two rounds.
+
+Two known causes seen 2026-09-27 (source NJ_Annual_Prod_2026 Q3-Aug):
+- "source project changed during duplication": the app rewrote
+  `users/<user>/preferences.json` inside the source project mid-copy; the
+  before/after manifest covers `users/`.
+- Redacted "filesystem could not complete": a *progress* status write lost its
+  `os.replace` retries (~1.1 s) to the app polling the status file every 750 ms,
+  and any progress-write failure aborts the whole copy.
 
 **How to apply:** read the status JSON history *before* theorizing. Client PCs
 reach the server over a mapped network drive (`\\NE7SASWPN02\E`), so every
