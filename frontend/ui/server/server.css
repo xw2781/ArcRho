@@ -290,6 +290,43 @@ body {
   overflow-x: auto;
 }
 
+/* The header keeps the Start and Stop buttons' height whether or not they show, so the table
+   does not move when the status arrives. */
+.svCompHeader {
+  align-items: center;
+  min-height: 46px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.svCompActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.svControlNote {
+  color: var(--ar-color-text-muted);
+  font-size: 11px;
+  text-align: right;
+}
+
+.svCompActions .svCount {
+  font-variant-numeric: tabular-nums;
+}
+
+.svBtn.danger {
+  border-color: var(--ar-color-danger);
+  background: var(--ar-color-danger-soft);
+  color: var(--ar-color-danger);
+}
+
+.svBtn.danger:hover:not(:disabled) {
+  background: var(--ar-color-danger-soft);
+  filter: brightness(0.97);
+}
+
 .svCompTable {
   width: 100%;
   border-collapse: separate;

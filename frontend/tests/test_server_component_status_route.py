@@ -1,7 +1,12 @@
-"""The Server tab's component status: the disk for a folder on this PC, the Gateway otherwise, never the share."""
+"""The Server tab's component status and start/stop.
+
+Status comes from the disk for a folder on this PC and the Gateway otherwise, never the
+share; start and stop act only on a non-production folder on a fixed disk of this PC.
+"""
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import json
 import os
@@ -20,6 +25,7 @@ for path in (FRONTEND_ROOT, REPOSITORY_ROOT / "python-api" / "src"):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+import arcrho_server_control as server_control  # noqa: E402
 from arcrho_api import config as api_config  # noqa: E402
 from arcrho_workspace_read_contract import WORKSPACE_READ_KINDS  # noqa: E402
 from app_server import config  # noqa: E402
@@ -130,6 +136,65 @@ class ServerComponentStatusRouteTests(unittest.TestCase):
             with self.assertRaises(HTTPException) as caught:
                 server_profile_service.server_component_status()
         self.assertEqual(caught.exception.status_code, 409)
+
+
+class ServerStartStopRouteTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / "Arco Server"
+        (self.root / "config").mkdir(parents=True)
+        self.config = self.root / "config" / "config.json"
+        self.config.write_text(json.dumps({"apps": {}}), encoding="utf-8")
+        exe = server_control.orchestrator_exe(self.root)
+        exe.parent.mkdir(parents=True)
+        exe.write_bytes(b"exe")
+
+    def _serve(self, root):
+        return patch.object(config, "get_root_path", return_value=str(root))
+
+    def _switches(self) -> dict:
+        apps = json.loads(self.config.read_text(encoding="utf-8"))["apps"]
+        return {role: apps[role]["kill_all"] for role in server_control.SUPERVISED_ROLES}
+
+    def test_a_network_non_fixed_or_production_folder_is_refused_and_left_alone(self) -> None:
+        cases = [
+            (r"\server\share\Arco Server", None),
+            (str(self.root), False),
+            (config.DEFAULT_WORKSPACE_ROOT, None),
+        ]
+        for root, fixed_disk in cases:
+            fixed = (
+                contextlib.nullcontext() if fixed_disk is None
+                else patch.object(server_control, "is_on_local_fixed_disk", return_value=fixed_disk)
+            )
+            for route in (router.start_server, router.stop_server):
+                with self.subTest(root=root, route=route.__name__), self._serve(root),                         patch.object(server_control.subprocess, "Popen") as popen,                         fixed:
+                    with self.assertRaises(HTTPException) as caught:
+                        route()
+                    self.assertEqual(caught.exception.status_code, 409)
+                    popen.assert_not_called()
+        self.assertEqual(json.loads(self.config.read_text(encoding="utf-8")), {"apps": {}})
+
+    def test_the_status_says_whether_this_server_can_be_started_and_stopped(self) -> None:
+        with self._serve(self.root):
+            control = router.get_server_component_status()["control"]
+        self.assertEqual(control, {"available": True, "detail": "", "roles": ["orchestrator", "engine", "gateway"]})
+        with self._serve(config.DEFAULT_WORKSPACE_ROOT),                 patch.object(server_profile_service, "is_on_local_fixed_disk", return_value=False),                 patch.object(workspace_read_client, "run_workspace_read", return_value={"ok": True, "roles": []}):
+            control = router.get_server_component_status()["control"]
+        self.assertEqual((control["available"], control["detail"]), (False, server_control.PRODUCTION_REFUSAL))
+
+    def test_stop_sets_and_start_clears_the_switches_without_the_windows_overrides(self) -> None:
+        with self._serve(self.root):
+            self.assertEqual(router.stop_server(), {"ok": True, "stopped": True})
+            self.assertEqual(self._switches(), {"orchestrator": True, "engine": True, "gateway": True})
+            overrides = {api_config.SERVER_ROOT_ENV: str(self.root), "ARCRHO_GATEWAY_CONFIG": r"C:\cred.json"}
+            with patch.dict(os.environ, overrides), patch.object(server_control.subprocess, "Popen") as popen:
+                self.assertEqual(router.start_server(), {"ok": True, "launched": True})
+        self.assertEqual(self._switches(), {"orchestrator": False, "engine": False, "gateway": False})
+        env = popen.call_args.kwargs["env"]
+        self.assertEqual(env["ARCRHO_ROOT"], str(self.root))
+        self.assertFalse(set(server_control.ROOT_ENV_VARS[:2] + ("ARCRHO_GATEWAY_CONFIG",)) & set(env))
 
 
 if __name__ == "__main__":

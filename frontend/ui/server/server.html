@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="/ui/shared/services/color_theme.js?v=20260923c"></script>
   <title>Server</title>
-  <link rel="stylesheet" href="/ui/server/server.css?v=20260926b"/>
+  <link rel="stylesheet" href="/ui/server/server.css?v=20260926c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260923c">
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260923c">
   <link rel="stylesheet" href="/ui/shared/styles/themes/revolutionary.css?v=20260923c">
@@ -54,13 +54,20 @@
         <div id="svMessage" class="svMessage" role="status" aria-live="polite"></div>
       </section>
       <section id="svComponentsPanel" class="svPanel" aria-labelledby="svComponentsTitle">
-        <div class="svPanelHeader">
+        <div class="svPanelHeader svCompHeader">
           <h2 id="svComponentsTitle">Components</h2>
           <span id="svComponentsSource" class="svCount"></span>
+          <div class="svCompActions">
+            <span id="svControlNote" class="svControlNote"></span>
+            <span id="svControlProgress" class="svCount" role="status"></span>
+            <button id="svStartBtn" class="svBtn primary" type="button" hidden>Start</button>
+            <button id="svStopBtn" class="svBtn" type="button" hidden>Stop</button>
+          </div>
         </div>
         <div id="svComponents" class="svComponents" aria-live="polite">
           <div class="svEmpty">Reading component status...</div>
         </div>
+        <div id="svControlMessage" class="svMessage" role="status" aria-live="polite"></div>
       </section>
     </main>
   </div>
@@ -74,6 +81,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="./server.js?v=20260926b"></script>
+  <script type="module" src="./server.js?v=20260926c"></script>
 </body>
 </html>

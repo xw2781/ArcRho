@@ -19,6 +19,7 @@ from arcrho_api.exceptions import InvalidArcRhoServerError
 from arcrho_api.hosted_save_enrollment import load_server_gateway_config
 from arcrho_hosted_save_http_contract import HostedSaveHttpContractError
 from arcrho_server_component_status import is_on_local_fixed_disk
+import arcrho_server_control as server_control
 
 from app_server import config
 from app_server.services import (
@@ -209,9 +210,10 @@ def server_component_status() -> Dict[str, Any]:
     """
 
     root = config.get_root_path()
+    control = _server_control(root)
     if is_on_local_fixed_disk(root):
         status = server_component_status_service.get_server_component_status()
-        return {**status, "source": "disk", "answering": True, "detail": ""}
+        return {**status, "source": "disk", "answering": True, "detail": "", "control": control}
     try:
         status = workspace_read_client.run_workspace_read(
             COMPONENT_STATUS_READ_KIND,
@@ -222,5 +224,47 @@ def server_component_status() -> Dict[str, Any]:
     except HTTPException as exc:
         if exc.status_code not in (503, 504):
             raise
-        return {"ok": True, "source": "gateway", "answering": False, "detail": _silent_gateway_detail(), "roles": []}
-    return {**status, "source": "gateway", "answering": True, "detail": ""}
+        return {
+            "ok": True, "source": "gateway", "answering": False, "detail": _silent_gateway_detail(), "roles": [],
+            "control": control,
+        }
+    return {**status, "source": "gateway", "answering": True, "detail": "", "control": control}
+
+
+def _server_control(root: str) -> Dict[str, Any]:
+    """Whether the Server tab may start and stop this server, and which roles that covers."""
+
+    refusal = server_control.control_refusal(root, config.DEFAULT_WORKSPACE_ROOT)
+    return {"available": not refusal, "detail": refusal, "roles": list(server_control.SUPERVISED_ROLES)}
+
+
+def _controllable_root() -> str:
+    root = config.get_root_path()
+    try:
+        server_control.require_local_root(root, config.DEFAULT_WORKSPACE_ROOT)
+    except server_control.ServerControlError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return root
+
+
+def start_active_server() -> Dict[str, Any]:
+    """Start this window's server: clear its stop switches and launch its Orchestrator.
+
+    Refused unless the server's folder is on a fixed disk of this PC and is not
+    production. The launch drops this process's own root and credential
+    overrides, so a launch-time session never hands them to the server.
+    """
+
+    root = _controllable_root()
+    try:
+        launched = server_control.start_server(root)
+    except server_control.ServerControlError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {"ok": True, "launched": launched}
+
+
+def stop_active_server() -> Dict[str, Any]:
+    """Set this window's server's stop switches; the page follows the heartbeats as they go."""
+
+    root = _controllable_root()
+    return {"ok": True, "stopped": server_control.stop_server(root, wait_seconds=0)}

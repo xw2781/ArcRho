@@ -72,6 +72,16 @@ def get_server_component_status() -> Dict[str, Any]:
     return server_profile_service.server_component_status()
 
 
+@router.post("/server/start")
+def start_server() -> Dict[str, Any]:
+    return server_profile_service.start_active_server()
+
+
+@router.post("/server/stop")
+def stop_server() -> Dict[str, Any]:
+    return server_profile_service.stop_active_server()
+
+
 @router.get("/server_profiles/inspect")
 def inspect_server_folder(root: str) -> Dict[str, Any]:
     return server_profile_service.inspect_server_folder(root)

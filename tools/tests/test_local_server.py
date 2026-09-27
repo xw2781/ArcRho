@@ -53,9 +53,9 @@ class LocalServerTests(unittest.TestCase):
         )
 
     def test_a_shared_or_production_root_is_refused(self) -> None:
-        with self.assertRaisesRegex(local_server.LocalServerError, "network path"):
+        with self.assertRaisesRegex(local_server.LocalServerError, "fixed disk of this PC"):
             local_server.require_local_root(Path(r"\\server\share\Arco Server"), self.production)
-        with self.assertRaisesRegex(local_server.LocalServerError, "production root"):
+        with self.assertRaisesRegex(local_server.LocalServerError, "production server"):
             local_server.require_local_root(self.production, self.production)
         self.assertEqual(
             local_server.require_local_root(self.root, self.production),
@@ -107,6 +107,16 @@ class LocalServerTests(unittest.TestCase):
         self.assertEqual(env["ARCRHO_ROOT"], str(self.root))
         self.assertNotIn("ARCRHO_SERVER_ROOT", env)
         self.assertNotIn("ARCRHO_RUNTIME_SERVER_ROOT", env)
+
+    def test_start_and_stop_act_through_the_shared_server_control(self) -> None:
+        with patch.object(local_server, "start_server", return_value=True) as start, \
+                patch.object(local_server, "stop_server", return_value=True) as stop:
+            for command in ("start", "stop"):
+                self.assertEqual(
+                    local_server.main(["--root", str(self.root), "--production-root", str(self.production), command]), 0
+                )
+        self.assertEqual(start.call_args.args[0], self.root.resolve())
+        self.assertEqual(stop.call_args.args, (self.root.resolve(), local_server.STOP_WAIT_SECONDS))
 
     def test_deploy_with_no_components_builds_engine_and_gateway(self) -> None:
         with patch.object(local_server, "deploy") as deploy:

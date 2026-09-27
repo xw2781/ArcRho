@@ -1,20 +1,25 @@
 // Server tab: the servers this PC knows, which one is in use, adding one, and switching, plus the
-// components of the server in use. The listing, health checks, folder reads and component status
-// come from the app server; switching goes through the shell, which owns the unsaved-changes
-// guard and the restart.
+// components of the server in use and, for a server whose folder is on this PC, starting and
+// stopping it. The listing, health checks, folder reads, component status, start and stop come
+// from the app server; switching goes through the shell, which owns the unsaved-changes guard
+// and the restart.
 import {
   COMPONENT_VISIBILITY_TICK_MS,
+  SERVER_ACTION_POLL_MS,
   addServerProblem,
   buildComponentGroups,
   buildServerRows,
   componentPanelState,
   healthQuery,
   isSetAtLaunch,
+  serverActionMessage,
+  serverActionOutcome,
   serverAddress,
+  serverControlView,
   serverLabel,
   shouldRefreshComponents,
   switchResultMessage,
-} from "./server_model.js?v=20260926b";
+} from "./server_model.js?v=20260926c";
 
 const $ = (id) => document.getElementById(id);
 const hostApi = () => window.ADAHost || window.parent?.ADAHost || null;
@@ -27,7 +32,7 @@ const state = {
   inspectedRoot: "",
   autoName: "",
   inspectSeq: 0,
-  pendingSwitch: null,
+  pendingConfirm: null,
 };
 
 const components = {
@@ -36,10 +41,12 @@ const components = {
   inFlight: false,
   lastFetchAt: 0,
   wasHidden: false,
+  // The start or stop under way: { kind: "start" | "stop", startedAt }.
+  action: null,
 };
 
-function setMessage(text, tone = "") {
-  const el = $("svMessage");
+function setMessage(text, tone = "", id = "svMessage") {
+  const el = $(id);
   el.textContent = text || "";
   el.classList.toggle("error", tone === "error");
 }
@@ -199,7 +206,18 @@ function renderComponentGroup(group) {
   return body;
 }
 
+function renderControls() {
+  const view = serverControlView(components.status, components.action, Date.now());
+  $("svControlNote").textContent = view.note;
+  $("svControlProgress").textContent = view.progress;
+  $("svStartBtn").hidden = !view.show;
+  $("svStopBtn").hidden = !view.show;
+  $("svStartBtn").disabled = !view.canStart;
+  $("svStopBtn").disabled = !view.canStop;
+}
+
 function renderComponents() {
+  renderControls();
   const host = $("svComponents");
   const view = componentPanelState(components.status, components.error);
   $("svComponentsSource").textContent = view.kind === "ready" ? view.source : "";
@@ -232,7 +250,18 @@ async function loadComponents() {
     components.inFlight = false;
     components.lastFetchAt = Date.now();
   }
+  followServerAction();
   renderComponents();
+}
+
+// Ends a start or stop once the heartbeats show it finished, or once it has waited too long.
+function followServerAction() {
+  const { action } = components;
+  const outcome = serverActionOutcome(components.status, action, Date.now());
+  if (!outcome || outcome === "waiting") return;
+  components.action = null;
+  const message = serverActionMessage(action.kind, outcome);
+  setMessage(message.text, message.tone, "svControlMessage");
 }
 
 // An inactive shell tab keeps its page loaded but hides its frame, which the page's own
@@ -250,9 +279,40 @@ function componentTick() {
     components.wasHidden = true;
     return;
   }
-  const ask = shouldRefreshComponents({ ...components, visible, now: Date.now() });
+  const now = Date.now();
+  const ask = components.action
+    ? !components.inFlight && now - components.lastFetchAt >= SERVER_ACTION_POLL_MS
+    : shouldRefreshComponents({ ...components, visible, now });
   components.wasHidden = false;
+  if (components.action) renderControls();
   if (ask) void loadComponents();
+}
+
+// Start and stop -----------------------------------------------------------------------------
+
+async function runServerAction(kind) {
+  setMessage(kind === "start" ? "Starting the server..." : "Stopping the server...", "", "svControlMessage");
+  components.action = { kind, startedAt: Date.now() };
+  renderControls();
+  try {
+    await readJson(await fetch(`/server/${kind}`, { method: "POST" }));
+  } catch (error) {
+    components.action = null;
+    renderControls();
+    setMessage(String(error?.message || error), "error", "svControlMessage");
+    return;
+  }
+  if (!components.inFlight) void loadComponents();
+}
+
+function confirmStop() {
+  openConfirm({
+    title: "Stop Server",
+    message: "This window uses this server, so it cannot open, save or calculate until you start it again.",
+    okText: "Stop Server",
+    danger: true,
+    onOk: () => void runServerAction("stop"),
+  });
 }
 
 // Add server ---------------------------------------------------------------------------------
@@ -344,16 +404,36 @@ async function saveServer(event) {
 
 // Switch -------------------------------------------------------------------------------------
 
-function openSwitchConfirm(row) {
-  state.pendingSwitch = row;
-  $("svConfirmMessage").textContent = `Switch to ${row.label}? The app restarts to connect to it, and your open tabs reopen afterwards.`;
+function openConfirm({ title, message, okText, danger = false, onOk }) {
+  state.pendingConfirm = onOk;
+  $("svConfirmTitle").textContent = title;
+  $("svConfirmMessage").textContent = message;
+  const ok = $("svConfirmOk");
+  ok.textContent = okText;
+  ok.classList.toggle("primary", !danger);
+  ok.classList.toggle("danger", danger);
   $("svConfirmOverlay").hidden = false;
   $("svConfirmCancel").focus();
 }
 
-function closeSwitchConfirm() {
-  state.pendingSwitch = null;
+function closeConfirm() {
+  state.pendingConfirm = null;
   $("svConfirmOverlay").hidden = true;
+}
+
+function acceptConfirm() {
+  const onOk = state.pendingConfirm;
+  closeConfirm();
+  if (onOk) onOk();
+}
+
+function openSwitchConfirm(row) {
+  openConfirm({
+    title: "Switch Server",
+    message: `Switch to ${row.label}? The app restarts to connect to it, and your open tabs reopen afterwards.`,
+    okText: "Switch and Restart",
+    onOk: () => void confirmSwitch(row),
+  });
 }
 
 // The shell checks every tab for unsaved changes, activates the server and restarts the app.
@@ -377,10 +457,7 @@ function requestSwitch(profileId) {
   });
 }
 
-async function confirmSwitch() {
-  const row = state.pendingSwitch;
-  closeSwitchConfirm();
-  if (!row) return;
+async function confirmSwitch(row) {
   if (window.parent === window) {
     setMessage("Switching servers needs the Arco window.", "error");
     return;
@@ -404,13 +481,15 @@ function wire() {
   $("svAddBrowse").addEventListener("click", () => void browseFolder());
   $("svAddFolder").addEventListener("change", () => void inspectFolder());
   $("svAddForm").addEventListener("submit", (event) => void saveServer(event));
-  $("svConfirmCancel").addEventListener("click", closeSwitchConfirm);
-  $("svConfirmOk").addEventListener("click", () => void confirmSwitch());
+  $("svStartBtn").addEventListener("click", () => void runServerAction("start"));
+  $("svStopBtn").addEventListener("click", confirmStop);
+  $("svConfirmCancel").addEventListener("click", closeConfirm);
+  $("svConfirmOk").addEventListener("click", acceptConfirm);
   $("svConfirmOverlay").addEventListener("click", (event) => {
-    if (event.target === event.currentTarget) closeSwitchConfirm();
+    if (event.target === event.currentTarget) closeConfirm();
   });
   window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !$("svConfirmOverlay").hidden) closeSwitchConfirm();
+    if (event.key === "Escape" && !$("svConfirmOverlay").hidden) closeConfirm();
   });
 }
 

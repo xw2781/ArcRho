@@ -1,6 +1,6 @@
 # Local Server Root and Server Switcher
 
-Status: Steps 1-3 done 2026-09-26 — a private test server runs on the developer PC at `C:\Arco Server` beside production, with its own Gateway, credential and app profile, built from the working tree by `tools/local_server.py`; the app keeps a list of servers, one active, each with its own credential, behind three new app-server routes; every server root carries an id its Gateway reports, and the app refuses a Gateway whose id differs from its folder's (the server side reaches production with the step 6 deploy). Step 4 done 2026-09-26: a Server tab opened from Home lists the servers by name and address with a health dot, adds a server from its folder, and switches by restarting the app once no tab has unsaved changes. Step 7 done 2026-09-26: the tab's Components panel lists the server's running components with machine, user, last heard and stale state, grouped by role with each stop switch, read from disk for a folder on this PC and through the Gateway otherwise (the Gateway side reaches production with the step 6 deploy). Steps 5, 6 and 8 (the active-server badge, starting and stopping a server on this PC, the release) are planned and not started; the Server tab was added 2026-09-26 at the user's request; offline use for every user is recorded as a direction with open decisions, not yet broken into steps.
+Status: Steps 1-3 done 2026-09-26 — a private test server runs on the developer PC at `C:\Arco Server` beside production, with its own Gateway, credential and app profile, built from the working tree by `tools/local_server.py`; the app keeps a list of servers, one active, each with its own credential, behind three new app-server routes; every server root carries an id its Gateway reports, and the app refuses a Gateway whose id differs from its folder's (the server side reaches production with the step 6 deploy). Step 4 done 2026-09-26: a Server tab opened from Home lists the servers by name and address with a health dot, adds a server from its folder, and switches by restarting the app once no tab has unsaved changes. Step 7 done 2026-09-26: the tab's Components panel lists the server's running components with machine, user, last heard and stale state, grouped by role with each stop switch, read from disk for a folder on this PC and through the Gateway otherwise (the Gateway side reaches production with the step 6 deploy). Step 8 done 2026-09-26: for a server whose folder is on a fixed disk of this PC the panel starts and stops it, through the same module `tools/local_server.py` now uses; production shows only a line saying it is managed from Admin Control on the Server PC. Steps 5 and 6 (the active-server badge, the release) are planned and not started; the Server tab was added 2026-09-26 at the user's request; offline use for every user is recorded as a direction with open decisions, not yet broken into steps.
 Last updated: 2026-09-26
 Related: [client_smb_retirement.md](client_smb_retirement.md) (the first work tested this way), [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md)
 
@@ -19,9 +19,9 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 5 | The window shows which server it is using whenever it is not production | [ ] | | 30 min | | |
 | 6 | Deploy the server side and ship the app | [ ] | | 30 min | | |
 | 7 | The Server tab shows which server components are running and how long since each was last heard from | [x] | 2026-09-26 | 60 min | 26 min | The Server tab lists each running part of the server with its machine, user and how long since it was last heard from, flags silent ones as stale, and shows when a part's stop switch is on. |
-| 8 | A server on this PC can be started and stopped from the Server tab | [ ] | | 45 min | | |
+| 8 | A server on this PC can be started and stopped from the Server tab | [x] | 2026-09-26 | 45 min | 22 min | The Server tab starts and stops a server whose folder is on this PC, asks before stopping the one the window uses, and shows the parts going and coming back; production says it is managed from Admin Control on the Server PC. |
 
-Overall: 5 of 8 steps done. Estimated 470 min; actual so far 108 min (step 1 was not clocked). Order: 2, 3, 4, 7, 8, 5, then 6.
+Overall: 6 of 8 steps done. Estimated 470 min; actual so far 130 min (step 1 was not clocked). Order: 2, 3, 4, 7, 8, 5, then 6.
 
 ## How agents work this plan
 
@@ -224,15 +224,17 @@ Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code e
 
 **Goal.** For a server whose folder is on this PC, the Server tab starts it (launches its Orchestrator) and stops it (sets its kill switches and waits for the heartbeats to go). Production shows no controls and a line saying it is managed from Admin Control on the Server PC (decision 4).
 
-**Read first.** `tools/local_server.py` `start`, `stop`, `require_local_root`; step 7's reader.
+**Read first.** `tools/local_server.py` `start`, `stop`, `require_local_root`; step 7's reader; `frontend/electron/backend_lifecycle.js` (the app ends its app server with `taskkill /T`, so a child the app server launches dies with it); the main loop of `server-components/src/arcrho_orchestrator/main.py` (it checks its stop switch every 15 s).
 
 **Do.**
-- [ ] Move start, stop and the local-root check from `tools/local_server.py` into a module the app server can import, and keep the tool as a thin wrapper.
-- [ ] `POST /server/start` and `POST /server/stop`, refused unless the active server's folder is on a fixed disk of this PC.
-- [ ] Start and Stop buttons in the component panel, with a confirmation for Stop.
+- [x] Move start, stop and the local-root check from `tools/local_server.py` into a module the app server can import, and keep the tool as a thin wrapper.
+- [x] `POST /server/start` and `POST /server/stop`, refused unless the active server's folder is on a fixed disk of this PC.
+- [x] Start and Stop buttons in the component panel, with a confirmation for Stop.
 
 **Tests.** The routes refuse a network or production folder; start and stop set and clear the switches in a temporary root.
 
 **Done when.** The developer stops and restarts the local root from the tab and the panel follows.
 
-Estimate: code edit 30 min, test/validation 15 min, total 45 min.
+Estimate: code edit 30 min, test/validation 15 min, total 45 min. Actual: code edit 10 min, test/validation 12 min, total 22 min; under half the estimate because step 7's reader and route already carried everything the controls needed to follow.
+
+**What was built.** `python-api/src/arcrho_server_control.py` owns the check (`control_refusal`: not production, on a fixed disk of this PC), `start_server`, `stop_server` and the stop-switch write, which uses the canonical `write_json_atomic` with a short retry; a test pins its text to `server_config.write_server_config` and its Orchestrator folder name to the server-components table. `tools/local_server.py` `start`, `stop` and `status` call it and the step 7 reader, so the 30 s file-age rule is gone. Start launches the Orchestrator through `start`, so it is not in the app server's process tree: the app ends its app server with `taskkill /T`, which would otherwise take the whole server down with the app. `GET /server/status` gained `control`; `POST /server/stop` returns at once and the page follows the heartbeats (every 2 s, up to 90 s). Checked on `C:\Arco Server` through the routes of a `launch-app` session: stop cleared every heartbeat within 5 s, and start brought the Orchestrator, both Engines and the Gateway back within 6 s.

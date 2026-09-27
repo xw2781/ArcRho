@@ -58,7 +58,9 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `save_workspace_paths`
   - `workspace_paths_file_exists`
 - Workspace path config routes:
+  - `POST` `/server/start` handled by `start_server`
   - `GET` `/server/status` handled by `get_server_component_status`
+  - `POST` `/server/stop` handled by `stop_server`
   - `GET` `/server_profiles` handled by `get_server_profiles`
   - `POST` `/server_profiles` handled by `save_server_profile`
   - `POST` `/server_profiles/activate` handled by `activate_server_profile`

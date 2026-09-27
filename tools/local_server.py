@@ -37,7 +37,6 @@ import os
 import shutil
 import subprocess
 import sys
-import time
 import urllib.request
 from pathlib import Path
 from typing import Any, Sequence
@@ -56,7 +55,16 @@ from arcrho_hosted_save_http_contract import (  # noqa: E402
     normalize_gateway_config,
     server_config_path as gateway_registry_path,
 )
-from arcrho_server_component_status import is_on_local_fixed_disk  # noqa: E402
+from arcrho_server_component_status import component_status  # noqa: E402
+from arcrho_server_control import (  # noqa: E402
+    STOP_WAIT_SECONDS,
+    SUPERVISED_ROLES,
+    ServerControlError,
+    child_env,
+    require_local_root,
+    start_server,
+    stop_server,
+)
 from server_config import ensure_server_config, read_server_config, write_server_config  # noqa: E402
 from utils import component_app_name  # noqa: E402
 
@@ -76,23 +84,11 @@ SHARED_CONFIG_FILES = (
     "username_index.csv",
     "mssql_connections.json",
 )
-SUPERVISED_ROLES = ("orchestrator", "engine", "gateway")
 BUILDABLE = ("engine", "gateway", "orchestrator")
-HEARTBEAT_FRESH_SECONDS = 30
-# Every override that could point a child process at another root. The tool
-# sets the ones it means; nothing inherited from the calling shell survives.
-ROOT_ENV_VARS = (
-    "ARCRHO_SERVER_ROOT",
-    "ARCRHO_RUNTIME_SERVER_ROOT",
-    "ARCRHO_ROOT",
-    "ADAS_ROOT",
-    "ARCRHO_DEPLOY_ROOT",
-    "ARCRHO_GATEWAY_CONFIG",
-)
 
-
-class LocalServerError(RuntimeError):
-    pass
+# The local-root check, start and stop live in python-api's
+# arcrho_server_control, which the desktop app's Server tab uses too.
+LocalServerError = ServerControlError
 
 
 def _appdata() -> Path:
@@ -101,26 +97,6 @@ def _appdata() -> Path:
 
 def local_credential_path() -> Path:
     return _appdata() / "ArcRho" / LOCAL_CREDENTIAL_NAME
-
-
-def require_local_root(root: Path, production_root: Path) -> Path:
-    """Return ``root`` resolved, or refuse anything that could be shared."""
-
-    resolved = Path(root).expanduser().resolve()
-    text = str(resolved)
-    if text.startswith("\\\\"):
-        raise LocalServerError(f"{text} is a network path; a local test root must be on this PC.")
-    if text.casefold() == str(Path(production_root).expanduser().resolve()).casefold():
-        raise LocalServerError(f"{text} is the production root.")
-    if not is_on_local_fixed_disk(resolved):
-        raise LocalServerError(f"{text} is not on a local fixed disk.")
-    return resolved
-
-
-def _child_env(root: Path, **extra: str) -> dict[str, str]:
-    env = {key: value for key, value in os.environ.items() if key not in ROOT_ENV_VARS}
-    env.update(extra)
-    return env
 
 
 def _set_apps(root: Path, updates: dict[str, dict[str, Any]]) -> None:
@@ -212,7 +188,7 @@ def deploy(root: Path, components: Sequence[str]) -> None:
     # ARCRHO_ROOT as well as ARCRHO_DEPLOY_ROOT: the Engine and Orchestrator
     # builds find their kill switches and heartbeats through ARCRHO_ROOT and
     # would otherwise look for them somewhere else entirely.
-    env = _child_env(root, ARCRHO_DEPLOY_ROOT=str(root), ARCRHO_ROOT=str(root))
+    env = child_env(ARCRHO_DEPLOY_ROOT=str(root), ARCRHO_ROOT=str(root))
     for component in components:
         script = REPO_ROOT / "server-components" / "src" / f"arcrho_{component}" / "build_exe.py"
         print(f"== building {component} into {root}", flush=True)
@@ -221,14 +197,17 @@ def deploy(root: Path, components: Sequence[str]) -> None:
             raise LocalServerError(f"{component} build failed with exit code {result.returncode}.")
 
 
-def heartbeat_ages(root: Path) -> dict[str, list[int]]:
-    now = time.time()
-    ages: dict[str, list[int]] = {}
-    for role in SUPERVISED_ROLES:
-        folder = root / "runtime" / "instances" / f"arcrho_{role}"
-        files = folder.glob("*.json") if folder.is_dir() else []
-        ages[role] = sorted(round(now - path.stat().st_mtime) for path in files)
-    return ages
+def status_lines(root: Path) -> list[str]:
+    """One line per supervised role: each heartbeat's age and whether it is stale."""
+
+    lines = []
+    for role in component_status(root)["roles"]:
+        if role["role"] not in SUPERVISED_ROLES:
+            continue
+        beats = [f"{row['age_seconds']}s {row['status'].lower()}" for row in role["instances"]]
+        switch = "  (stop switch on)" if role["stop_switch"] else ""
+        lines.append(f"{role['role']:13} {', '.join(beats) or 'not running'}{switch}")
+    return lines
 
 
 def gateway_health(timeout: float = 3.0) -> dict[str, Any] | None:
@@ -240,45 +219,12 @@ def gateway_health(timeout: float = 3.0) -> dict[str, Any] | None:
         return None
 
 
-def start(root: Path) -> None:
-    exe = root / "apps" / component_app_name("orchestrator") / f"{component_app_name('orchestrator')}.exe"
-    if not exe.is_file():
-        raise LocalServerError(f"{exe} is missing; run init first.")
-    _set_apps(root, {role: {"kill_all": False} for role in SUPERVISED_ROLES})
-    if any(age < HEARTBEAT_FRESH_SECONDS for age in heartbeat_ages(root)["orchestrator"]):
-        print("An Orchestrator is already running for this root; kill switches cleared.")
-        return
-    flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-    subprocess.Popen(
-        [str(exe)],
-        cwd=str(exe.parent),
-        env=_child_env(root, ARCRHO_ROOT=str(root)),
-        creationflags=flags,
-        close_fds=True,
-    )
-    print(f"Started {exe}")
-
-
-def stop(root: Path, wait_seconds: float = 45.0) -> bool:
-    # The kill switches, not a process kill: each component exits cleanly and
-    # removes its own heartbeat, and nothing on another root is touched.
-    _set_apps(root, {role: {"kill_all": True} for role in SUPERVISED_ROLES})
-    deadline = time.monotonic() + wait_seconds
-    while time.monotonic() < deadline:
-        live = [age for ages in heartbeat_ages(root).values() for age in ages if age < HEARTBEAT_FRESH_SECONDS]
-        if not live:
-            return True
-        time.sleep(1.0)
-    return False
-
-
 def launch_app(root: Path, credential_path: Path) -> None:
     if not credential_path.is_file():
         raise LocalServerError(f"{credential_path} is missing; run init first.")
     if gateway_health() is None:
         print(f"WARNING: no Gateway answers at {LOCAL_GATEWAY_URL}; run start first.")
-    env = _child_env(
-        root,
+    env = child_env(
         ARCRHO_SERVER_ROOT=str(root),
         ARCRHO_GATEWAY_CONFIG=str(credential_path),
         ARCRHO_USER_DATA_DIR=str(_appdata() / LOCAL_USER_DATA_NAME),
@@ -332,12 +278,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "deploy":
             deploy(root, args.components or ["engine", "gateway"])
         elif args.command == "start":
-            start(root)
+            if start_server(root):
+                print(f"Started the Orchestrator of {root}.")
+            else:
+                print("An Orchestrator is already running for this root; stop switches cleared.")
         elif args.command == "stop":
-            print("Stopped." if stop(root) else "Some components still report a heartbeat.")
+            stopped = stop_server(root, STOP_WAIT_SECONDS)
+            print("Stopped." if stopped else "Some components still report a live heartbeat.")
         elif args.command == "status":
-            for role, ages in heartbeat_ages(root).items():
-                print(f"{role:13} heartbeat ages (s): {ages or 'none'}")
+            print("\n".join(status_lines(root)))
             print(f"gateway       {LOCAL_GATEWAY_URL}/api/health: {gateway_health() or 'no answer'}")
         elif args.command == "launch-app":
             launch_app(root, local_credential_path())

@@ -161,3 +161,53 @@ export function shouldRefreshComponents({ visible, wasHidden, inFlight, lastFetc
   if (wasHidden || !lastFetchAt) return true;
   return now - lastFetchAt >= COMPONENT_REFRESH_MS;
 }
+
+// Start and stop -------------------------------------------------------------------------------
+
+// While a start or stop is under way the panel asks this often, and gives up waiting after this.
+export const SERVER_ACTION_POLL_MS = 2000;
+export const SERVER_ACTION_TIMEOUT_MS = 90000;
+
+// The roles start and stop cover (from the app server) that have a live heartbeat, and whether
+// any of their stop switches is on.
+function supervisedState(status) {
+  const roles = Array.isArray(status?.control?.roles) ? status.control.roles : [];
+  const byRole = new Map((Array.isArray(status?.roles) ? status.roles : []).map((role) => [role.role, role]));
+  const running = roles.filter((role) => (byRole.get(role)?.instances || []).some((item) => item.status !== "Stale"));
+  const switchOn = roles.some((role) => !!byRole.get(role)?.stop_switch);
+  return { roles, running, allUp: roles.length > 0 && running.length === roles.length && !switchOn };
+}
+
+// Whether a start or stop in progress has finished, is still waiting, or ran out of time.
+export function serverActionOutcome(status, action, now) {
+  if (!action) return "";
+  const { running, allUp } = supervisedState(status);
+  if (action.kind === "start" ? allUp : running.length === 0) return "done";
+  return now - action.startedAt >= SERVER_ACTION_TIMEOUT_MS ? "timeout" : "waiting";
+}
+
+// What the panel offers: Start and Stop for a server this PC may control, otherwise one line
+// saying why not; while an action runs, its progress instead of the buttons' use.
+export function serverControlView(status, action, now) {
+  const control = status?.control;
+  if (!control) return { show: false, note: "", canStart: false, canStop: false, progress: "" };
+  if (!control.available) {
+    return { show: false, note: String(control.detail || ""), canStart: false, canStop: false, progress: "" };
+  }
+  const { running, allUp } = supervisedState(status);
+  const progress = action
+    ? `${action.kind === "start" ? "Starting" : "Stopping"}... ${Math.max(0, Math.round((now - action.startedAt) / 1000))} s`
+    : "";
+  return { show: true, note: "", canStart: !action && !allUp, canStop: !action && running.length > 0, progress };
+}
+
+// What the page says when a start or stop ends.
+export function serverActionMessage(kind, outcome) {
+  if (outcome === "done") {
+    return { text: kind === "start" ? "The server is running." : "The server is stopped.", tone: "" };
+  }
+  const seconds = SERVER_ACTION_TIMEOUT_MS / 1000;
+  return kind === "start"
+    ? { text: `Not every component started within ${seconds} s.`, tone: "error" }
+    : { text: `Some components were still running after ${seconds} s.`, tone: "error" };
+}

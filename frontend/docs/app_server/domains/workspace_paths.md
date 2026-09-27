@@ -9,7 +9,9 @@ Runtime workspace path read/update domain, and the server profiles: the servers 
 <!-- AUTO-GEN:BEGIN app_server.workspace_paths.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
+| `POST` | `/server/start` | `start_server` | - | - | `server_profile_service.start_active_server` |
 | `GET` | `/server/status` | `get_server_component_status` | - | - | `server_profile_service.server_component_status` |
+| `POST` | `/server/stop` | `stop_server` | - | - | `server_profile_service.stop_active_server` |
 | `GET` | `/server_profiles` | `get_server_profiles` | - | - | `server_profile_service.list_server_profiles` |
 | `POST` | `/server_profiles` | `save_server_profile` | `ServerProfileSaveRequest` | [`app_server/schemas/workspace_paths.py`](../../../app_server/schemas/workspace_paths.py) | `server_profile_service.save_server_profile` |
 | `POST` | `/server_profiles/activate` | `activate_server_profile` | `ServerProfileActivateRequest` | [`app_server/schemas/workspace_paths.py`](../../../app_server/schemas/workspace_paths.py) | `server_profile_service.activate_server_profile` |
@@ -24,7 +26,7 @@ Runtime workspace path read/update domain, and the server profiles: the servers 
 - [`app_server/api/workspace_paths_router.py`](../../../app_server/api/workspace_paths_router.py) - Read/update workspace path config.
 - [`app_server/config.py`](../../../app_server/config.py) - Config loader and runtime path refresh.
 - [`app_server/schemas/workspace_paths.py`](../../../app_server/schemas/workspace_paths.py) - Workspace path request models.
-- [`app_server/services/server_profile_service.py`](../../../app_server/services/server_profile_service.py) - Server profiles: list, add, activate, and what a switch does in this process.
+- [`app_server/services/server_profile_service.py`](../../../app_server/services/server_profile_service.py) - Server profiles: list, add, activate, what a switch does in this process, and start/stop of a server on this PC.
 <!-- AUTO-GEN:END -->
 
 ## External Interfaces
@@ -39,6 +41,8 @@ Runtime workspace path read/update domain, and the server profiles: the servers 
 - `POST /server_profiles` adds a server (or replaces the one with the same `id`; without an `id` one is derived from the name). The folder must hold a `projects` folder.
 - `POST /server_profiles/activate` makes one server active. When the active server changes, the response carries `restart_required: true` and the caller restarts the app the way File > Restart does (`restartApplication` in `ui/shell/app_lifecycle.js`). The route refreshes runtime paths, clears path caches, and enrolls against the new server's Gateway registry when that server's credential does not exist yet, but restarts nothing itself.
 - Both profile writes are refused with 409 while a launch override is set, because they would change the per-machine file the production app reads.
+- `GET /server/status` carries `control`: whether this process's server may be started and stopped from this PC (`available`), why not (`detail`), and the roles that covers (`roles`: orchestrator, engine, gateway).
+- `POST /server/start` and `POST /server/stop` act on this process's own server and are refused with 409 unless its folder is on a fixed disk of this PC and is not production (`arcrho_server_control.control_refusal`). Start clears those roles' stop switches (`apps.<role>.kill_all`) and, unless an Orchestrator heartbeat is live, launches `<root>pps\ArcRho Orchestrator\ArcRho Orchestrator.exe` through `start`, so it is not in the app server's process tree and survives the app's exit; it gets `ARCRHO_ROOT=<root>` and none of this process's root or credential overrides. Stop sets the switches and returns at once with `stopped` (whether no live heartbeat remains); the page follows the heartbeats. No process is ever killed. `tools/local_server.py` uses the same module.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

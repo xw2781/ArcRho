@@ -312,3 +312,62 @@ test("the page asks the app server for component status and checks its own frame
   assert.match(page, /frameElement[\s\S]*getClientRects\(\)\.length/u);
   assert.match(page, /visibilitychange/u);
 });
+
+// A status as the app server returns it for start and stop: the supervised roles, each with its
+// heartbeats and stop switch.
+function supervisedStatus({ running = [], stale = [], switches = [], available = true, detail = "" } = {}) {
+  const roles = ["orchestrator", "engine", "gateway"];
+  return {
+    control: { available, detail, roles },
+    roles: [...roles, "bridge"].map((role) => ({
+      role,
+      stop_switch: switches.includes(role),
+      instances: [
+        ...(running.includes(role) ? [{ name: `${role}.json`, status: "Active" }] : []),
+        ...(stale.includes(role) ? [{ name: `${role}-old.json`, status: "Stale" }] : []),
+      ],
+    })),
+  };
+}
+
+test("start and stop show only for a server this PC may control, and production says why not", () => {
+  const note = "The production server is started and stopped from Admin Control on the Server PC.";
+  assert.deepEqual(
+    model.serverControlView(supervisedStatus({ available: false, detail: note }), null, 0),
+    { show: false, note, canStart: false, canStop: false, progress: "" },
+  );
+  assert.equal(model.serverControlView(null, null, 0).show, false);
+
+  const up = model.serverControlView(supervisedStatus({ running: ["orchestrator", "engine", "gateway"] }), null, 0);
+  assert.deepEqual([up.show, up.canStart, up.canStop], [true, false, true]);
+  const down = model.serverControlView(supervisedStatus({ stale: ["gateway"], switches: ["gateway"] }), null, 0);
+  assert.deepEqual([down.canStart, down.canStop], [true, false]);
+  // A running server with a stop switch left on can still be started, which clears it.
+  const switchOn = model.serverControlView(supervisedStatus({ running: ["orchestrator", "engine", "gateway"], switches: ["engine"] }), null, 0);
+  assert.deepEqual([switchOn.canStart, switchOn.canStop], [true, true]);
+});
+
+test("a start or stop shows its progress and ends when the heartbeats agree, or after ninety seconds", () => {
+  const start = { kind: "start", startedAt: 1000 };
+  const partly = supervisedStatus({ running: ["orchestrator", "engine"] });
+  const view = model.serverControlView(partly, start, 13400);
+  assert.deepEqual([view.progress, view.canStart, view.canStop], ["Starting... 12 s", false, false]);
+  assert.equal(model.serverActionOutcome(partly, start, 13400), "waiting");
+  assert.equal(model.serverActionOutcome(supervisedStatus({ running: ["orchestrator", "engine", "gateway"] }), start, 20000), "done");
+  assert.equal(model.serverActionOutcome(partly, start, 1000 + model.SERVER_ACTION_TIMEOUT_MS), "timeout");
+
+  const stop = { kind: "stop", startedAt: 1000 };
+  assert.equal(model.serverActionOutcome(supervisedStatus({ running: ["gateway"], switches: ["gateway"] }), stop, 5000), "waiting");
+  assert.equal(model.serverActionOutcome(supervisedStatus({ stale: ["gateway"], switches: ["gateway"] }), stop, 5000), "done");
+  assert.equal(model.serverActionOutcome(null, null, 0), "");
+
+  assert.deepEqual(model.serverActionMessage("stop", "done"), { text: "The server is stopped.", tone: "" });
+  assert.equal(model.serverActionMessage("start", "timeout").tone, "error");
+});
+
+test("the page posts start and stop to the app server and confirms a stop first", async () => {
+  const page = await read("../ui/server/server.js");
+  assert.match(page, /fetch\(`\/server\/\$\{kind\}`, \{ method: "POST" \}\)/u);
+  assert.match(page, /"svStopBtn"\)\.addEventListener\("click", confirmStop\)/u);
+  assert.match(page, /title: "Stop Server"/u);
+});
