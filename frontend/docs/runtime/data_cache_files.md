@@ -59,7 +59,6 @@ Cache/lock constants detected:
 - `TABLE_SUMMARY_CACHE_FILE`
 - `USERNAME_INDEX_FILE`
 - `_AUDIT_LOG_LOCK`
-- `_RESERVING_CLASS_PATH_TREE_LOCK`
 <!-- AUTO-GEN:END -->
 
 ## External Interfaces

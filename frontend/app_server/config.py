@@ -325,7 +325,6 @@ RESERVING_CLASS_VALUES_FILE = "reserving_class_values.json"
 RESERVING_CLASS_COMBINATIONS_FILE = "reserving_class_combinations_cache.json"
 RESERVING_CLASS_TYPES_FILE = "reserving_class_types.json"
 RESERVING_CLASS_PATH_TREE_FILE = "reserving_class_path_tree_cache.json"
-RESERVING_CLASS_PATH_TREE_MAX_GENERATED = 250000
 SCRIPTING_PREFS_FILE = "scripting_prefs.json"
 LOCAL_PROJECT_PREFS_FILE = "local_project_prefs.json"
 DATASET_TYPES_FILE = "dataset_types.json"
@@ -366,7 +365,6 @@ RUNTIME_CACHE_PROVENANCE_FORMAT = "arcrho-runtime-cache-provenance-v4"
 # ---------------------------------------------------------------------------
 
 _AUDIT_LOG_LOCK = threading.Lock()
-_RESERVING_CLASS_PATH_TREE_LOCK = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # App-control flag paths

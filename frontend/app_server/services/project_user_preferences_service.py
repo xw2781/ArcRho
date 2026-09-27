@@ -1,4 +1,8 @@
-"""Per-project, per-Windows-user preferences stored on the server root."""
+"""Per-project, per-Windows-user preferences stored on the server root.
+
+A Client PC reads and writes them through the Gateway, where the login is the
+one the request is signed with (the acting identity), never a payload field.
+"""
 from __future__ import annotations
 
 import json
@@ -7,7 +11,7 @@ import threading
 import time
 from copy import deepcopy
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Iterable, Optional, Tuple
 
 from fastapi import HTTPException
 
@@ -247,7 +251,29 @@ def get_preferences(project_name: str) -> Dict[str, Any]:
     }
 
 
-def update_preferences(project_name: str, patch: Dict[str, Any]) -> Dict[str, Any]:
+def _replace_whole_values(merged: Dict[str, Any], patch: Dict[str, Any], whole_values: Iterable[Tuple[str, ...]]) -> None:
+    for key_path in whole_values:
+        target, source = merged, patch
+        for key in key_path[:-1]:
+            target, source = target[key], source[key]
+        target[key_path[-1]] = deepcopy(source[key_path[-1]])
+
+
+def update_preferences(
+    project_name: str,
+    patch: Optional[Dict[str, Any]] = None,
+    whole_values: Iterable[Tuple[str, ...]] = (),
+) -> Dict[str, Any]:
+    """Merge *patch* into the signed-in user's preference file.
+
+    Each value the patch names replaces the stored one, and nested objects are
+    merged key by key, so applying the same patch again lands the same state
+    (only ``updated_at`` moves). A key path listed in *whole_values* is
+    replaced outright instead of merged, so keys it no longer holds are
+    dropped.
+    """
+    if patch is None:
+        patch = {}
     if not isinstance(patch, dict):
         raise HTTPException(400, "data must be an object.")
     path = _prefs_path(project_name)
@@ -258,7 +284,9 @@ def update_preferences(project_name: str, patch: Dict[str, Any]) -> Dict[str, An
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             current = _read_json_for_update(path)
-            next_data = _normalize_project_user_preferences(_deep_merge(current, patch))
+            merged = _deep_merge(current, patch)
+            _replace_whole_values(merged, patch, whole_values)
+            next_data = _normalize_project_user_preferences(merged)
             next_data["updated_at"] = datetime.now(timezone.utc).isoformat()
             _write_preferences_file(path, next_data)
         except HTTPException:

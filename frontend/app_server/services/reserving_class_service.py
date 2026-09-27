@@ -5,8 +5,9 @@ import os
 import re
 import json
 import hashlib
+from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import openpyxl
 import pandas as pd
@@ -21,8 +22,6 @@ from app_server.config import (
     RESERVING_CLASS_TYPES_SHEET_NAME,
     RESERVING_CLASS_TYPES_COLUMNS,
     RESERVING_CLASS_TYPES_FILE_COLUMNS,
-    RESERVING_CLASS_PATH_TREE_MAX_GENERATED,
-    _RESERVING_CLASS_PATH_TREE_LOCK,
     get_reserving_class_types_path,
     get_reserving_class_values_path,
     get_reserving_class_combinations_path,
@@ -91,40 +90,6 @@ def _tree_filter_spec_from_section(section: Dict[str, Any]) -> Dict[str, List[st
     return _normalize_reserving_filter_spec(filter_spec_raw)
 
 
-def _read_reserving_class_tree_preferences(project_name: str) -> Dict[str, Any]:
-    section, _path = _project_user_reserving_tree_section(project_name)
-    return _tree_preferences_from_section(section)
-
-
-def _write_reserving_class_tree_preferences(project_name: str, preferences: Any) -> Dict[str, Any]:
-    preferences_norm = _normalize_reserving_filter_preferences(preferences)
-    update_project_user_preferences(project_name, {
-        PROJECT_USER_RESERVING_CLASS_TREE_KEY: {
-            "preferences": preferences_norm,
-            "updated_at": utc_now_text(),
-        },
-    })
-    return preferences_norm
-
-
-def _read_reserving_class_tree_filter_spec(project_name: str) -> Tuple[Dict[str, List[str]], str]:
-    section, path = _project_user_reserving_tree_section(project_name)
-    return _tree_filter_spec_from_section(section), path
-
-
-def _write_reserving_class_tree_filter_spec(project_name: str, filter_spec: Any) -> Tuple[Dict[str, List[str]], str]:
-    filter_spec_norm = _normalize_reserving_filter_spec(filter_spec)
-    now_iso = utc_now_text()
-    out = update_project_user_preferences(project_name, {
-        PROJECT_USER_RESERVING_CLASS_TREE_KEY: {
-            "filterSpec": filter_spec_norm,
-            "updated_at": now_iso,
-        },
-    })
-    path = str(out.get("path", "") or "") if isinstance(out, dict) else ""
-    return filter_spec_norm, path
-
-
 def list_reserving_classes_with_data(project_name: str) -> Dict[str, Any]:
     """Reserving classes of *project_name* whose folder holds a dataset index.
 
@@ -166,6 +131,11 @@ def get_hidden_paths_for_project(project_name: str) -> Dict[str, Any]:
     }
 
 def save_hidden_paths_for_project(project_name: str, hidden_paths: Any) -> Dict[str, Any]:
+    """Replace the signed-in user's hidden paths with *hidden_paths*.
+
+    A whole value: the list replaces the stored list outright, so a repeat
+    lands the same state.
+    """
     key = _canon_project_pref_key(project_name)
     if not key:
         raise ValueError("project_name is required")
@@ -208,23 +178,213 @@ def save_filter_spec_for_project(
     filter_spec: Any,
     preferences: Any = None,
 ) -> Dict[str, Any]:
+    """Replace the signed-in user's filter spec, and the tree preferences when
+    given, in one write.
+
+    Both are whole values: the stored spec and preferences become exactly what
+    was sent, so clearing a level's filter or the last favorite sticks and a
+    repeat lands the same state. Omitted ``preferences`` keep the stored ones.
+    """
     key = _canon_project_pref_key(project_name)
     if not key:
         raise ValueError("project_name is required")
 
-    preferences_out = (
-        _write_reserving_class_tree_preferences(project_name, preferences)
-        if preferences is not None
-        else _read_reserving_class_tree_preferences(project_name)
+    filter_spec_norm = _normalize_reserving_filter_spec(filter_spec)
+    section: Dict[str, Any] = {"filterSpec": filter_spec_norm, "updated_at": utc_now_text()}
+    whole_values = [(PROJECT_USER_RESERVING_CLASS_TREE_KEY, "filterSpec")]
+    if preferences is not None:
+        section["preferences"] = _normalize_reserving_filter_preferences(preferences)
+        whole_values.append((PROJECT_USER_RESERVING_CLASS_TREE_KEY, "preferences"))
+    out = update_project_user_preferences(
+        project_name,
+        {PROJECT_USER_RESERVING_CLASS_TREE_KEY: section},
+        whole_values=whole_values,
     )
-    filter_spec_norm, filepath = _write_reserving_class_tree_filter_spec(project_name, filter_spec)
+    stored = out.get("data", {}).get(PROJECT_USER_RESERVING_CLASS_TREE_KEY, {})
 
     return {
-        "path": filepath,
+        "path": str(out.get("path", "") or ""),
         "project_key": key,
         "filter_spec": filter_spec_norm,
-        "preferences": preferences_out,
+        "preferences": _tree_preferences_from_section(stored if isinstance(stored, dict) else {}),
     }
+
+
+# ---------------------------------------------------------------------------
+# Route answers
+#
+# Each returns its route's whole response, refusals included, so the Gateway
+# (which runs these for a Client PC) and a server process answer alike.
+# ---------------------------------------------------------------------------
+
+_EMPTY_PATH_TREE = {"name": "All", "path": "", "level_index": 0, "level_label": "All", "children": []}
+
+
+@contextmanager
+def _route_errors(locked: str, failed: str, value_status: int = 400) -> Iterator[None]:
+    try:
+        yield
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(value_status, str(e))
+    except PermissionError:
+        raise HTTPException(423, locked)
+    except Exception as e:
+        raise HTTPException(500, f"{failed}: {str(e)}")
+
+
+def _project_file_path(resolve: Any, project_name: str) -> str:
+    try:
+        return resolve(project_name)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+def read_reserving_class_combinations(project_name: str) -> Dict[str, Any]:
+    filepath = _project_file_path(get_reserving_class_combinations_path, project_name)
+    empty = {"fields": [], "levels": [], "combinations": [], "paths": [], "tree": dict(_EMPTY_PATH_TREE)}
+    if not os.path.exists(filepath):
+        return {"ok": True, "exists": False, "path": filepath, "data": empty}
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            data = empty
+        for key in ("fields", "levels", "combinations", "paths"):
+            if not isinstance(data.get(key), list):
+                data[key] = []
+        if not isinstance(data.get("tree"), dict):
+            data["tree"] = dict(_EMPTY_PATH_TREE)
+        return {"ok": True, "exists": True, "path": filepath, "data": data}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to read reserving class combinations: {str(e)}")
+
+
+def read_reserving_class_path_tree(project_name: str) -> Dict[str, Any]:
+    filepath = _project_file_path(get_reserving_class_path_tree_path, project_name)
+    if not os.path.exists(filepath):
+        return {
+            "ok": True,
+            "exists": False,
+            "path": filepath,
+            "data": {"levels": [], "paths": [], "tree": dict(_EMPTY_PATH_TREE)},
+        }
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            data = {}
+        for key in ("levels", "paths"):
+            if not isinstance(data.get(key), list):
+                data[key] = []
+        if not isinstance(data.get("tree"), dict):
+            data["tree"] = dict(_EMPTY_PATH_TREE)
+        return {"ok": True, "exists": True, "path": filepath, "data": data}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to read reserving class path tree: {str(e)}")
+
+
+def read_reserving_class_path_tree_children(
+    project_name: str,
+    prefix: str = "",
+    force: bool = False,
+) -> Dict[str, Any]:
+    try:
+        out = get_reserving_class_path_tree_children(project_name=project_name, prefix=prefix, force=bool(force))
+        return {"ok": True, **out}
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        msg = str(e)
+        raise HTTPException(404 if "Project folder not found under projects:" in msg else 400, msg)
+    except PermissionError:
+        raise HTTPException(423, "Reserving class path tree cache is locked. Another user may have it open.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to get reserving class path children: {str(e)}")
+
+
+def read_reserving_class_types(project_name: str) -> Dict[str, Any]:
+    """The saved types merged with the source-derived rows, written nowhere."""
+    filepath = _project_file_path(get_reserving_class_types_path, project_name)
+    with _route_errors(
+        "Reserving class types file is locked. Another user may have it open.",
+        "Failed to read reserving class types",
+        value_status=500,
+    ):
+        out = refresh_reserving_class_types_json(project_name, persist=False)
+        return {
+            "ok": True,
+            "exists": os.path.exists(filepath),
+            "path": filepath,
+            "xlsx_path": out.get("xlsx_path", ""),
+            "data": out.get("ui_data", {"columns": list(RESERVING_CLASS_TYPES_COLUMNS), "rows": []}),
+            "source_derived_names": out.get("source_derived_names", []),
+        }
+
+
+def _hidden_paths_answer(project_name: str, out: Dict[str, Any]) -> Dict[str, Any]:
+    hidden_paths = out.get("hidden_paths", [])
+    return {
+        "ok": True,
+        "project_name": project_name,
+        "path": out.get("path", ""),
+        "hidden_paths": hidden_paths,
+        "count": len(hidden_paths),
+    }
+
+
+def read_hidden_paths(project_name: str) -> Dict[str, Any]:
+    with _route_errors(
+        "Project user preference file is locked. Please retry.",
+        "Failed to read reserving class hidden paths",
+    ):
+        return _hidden_paths_answer(project_name, get_hidden_paths_for_project(project_name))
+
+
+def save_hidden_paths(project_name: str, hidden_paths: Optional[List[str]] = None) -> Dict[str, Any]:
+    with _route_errors(
+        "Project user preference file is locked. Please retry.",
+        "Failed to save reserving class hidden paths",
+    ):
+        return _hidden_paths_answer(project_name, save_hidden_paths_for_project(project_name, hidden_paths or []))
+
+
+def _filter_spec_answer(project_name: str, out: Dict[str, Any]) -> Dict[str, Any]:
+    filter_spec = out.get("filter_spec", {})
+    return {
+        "ok": True,
+        "project_name": project_name,
+        "path": out.get("path", ""),
+        "filter_spec": filter_spec,
+        "preferences": out.get("preferences", {}),
+        "count": len(filter_spec) if isinstance(filter_spec, dict) else 0,
+    }
+
+
+def read_filter_spec(project_name: str) -> Dict[str, Any]:
+    with _route_errors(
+        "Filter preference file is locked. Please retry.",
+        "Failed to read reserving class filter spec",
+    ):
+        return _filter_spec_answer(project_name, get_filter_spec_for_project(project_name))
+
+
+def save_filter_spec(
+    project_name: str,
+    filter_spec: Optional[Dict[str, List[str]]] = None,
+    preferences: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    with _route_errors(
+        "Filter preference file is locked. Please retry.",
+        "Failed to save reserving class filter spec",
+    ):
+        return _filter_spec_answer(
+            project_name,
+            save_filter_spec_for_project(project_name, filter_spec or {}, preferences),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -971,7 +1131,13 @@ def refresh_reserving_class_types_json(
     project_name: str,
     source_fields_override: Optional[List[Dict[str, Any]]] = None,
     rows_override: Optional[List[List[Any]]] = None,
+    persist: bool = True,
 ) -> Dict[str, Any]:
+    """Merge the saved types with the source-derived rows.
+
+    With ``persist`` false nothing is written: ``GET /reserving_class_types``
+    shows the merge while the writers (a save, a values refresh) persist it.
+    """
     source_fields = source_fields_override if source_fields_override is not None else _load_reserving_class_value_fields(project_name)
     source_rows, source_names_lower, source_name_level_pairs = _build_reserving_class_source_rows(source_fields)
     # This one read serves both the merge base and the unchanged-file
@@ -1079,7 +1245,7 @@ def refresh_reserving_class_types_json(
         should_write = True
 
     write_out = {"json_path": output_path, "xlsx_path": output_xlsx_path}
-    if should_write:
+    if should_write and persist:
         write_out = save_reserving_class_types_payload(output_path, payload)
 
     return {
@@ -1802,51 +1968,6 @@ def _build_reserving_descendants_lookup_by_level(
         out[level] = lookup
     return out
 
-def _build_path_tree_structure(paths: List[str], level_labels: List[str]) -> Dict[str, Any]:
-    root: Dict[str, Any] = {
-        "name": "All",
-        "path": "",
-        "level_index": 0,
-        "level_label": "All",
-        "_children": {},
-    }
-
-    for raw in paths:
-        path = str(raw if raw is not None else "").strip()
-        if not path:
-            continue
-        parts = [str(p).strip() for p in path.split("\\") if str(p).strip()]
-        if not parts:
-            continue
-        cur = root
-        acc: List[str] = []
-        for idx, part in enumerate(parts):
-            acc.append(part)
-            children = cur["_children"]
-            if part not in children:
-                children[part] = {
-                    "name": part,
-                    "path": "\\".join(acc),
-                    "level_index": idx + 1,
-                    "level_label": level_labels[idx] if idx < len(level_labels) else f"Level {idx + 1}",
-                    "_children": {},
-                }
-            cur = children[part]
-
-    def _finalize(node: Dict[str, Any]) -> Dict[str, Any]:
-        kids_map = node.get("_children", {})
-        kid_keys = sorted(kids_map.keys(), key=lambda k: str(k).lower())
-        kids = [_finalize(kids_map[k]) for k in kid_keys]
-        return {
-            "name": node.get("name", ""),
-            "path": node.get("path", ""),
-            "level_index": node.get("level_index", 0),
-            "level_label": node.get("level_label", ""),
-            "children": kids,
-        }
-
-    return _finalize(root)
-
 def _extract_reserving_base_paths_from_combo_payload(combo_payload: Dict[str, Any]) -> List[str]:
     base_paths_raw = combo_payload.get("combinations", []) if isinstance(combo_payload, dict) else []
     base_paths: List[str] = []
@@ -2025,13 +2146,6 @@ def _load_reserving_path_tree_cache_payload(cache_path: str) -> Dict[str, Any]:
         return {}
     return {}
 
-def _write_reserving_path_tree_cache_payload(cache_path: str, payload: Dict[str, Any]) -> None:
-    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-    tmp_path = cache_path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8", newline="\n") as f:
-        f.write(persisted_json_text(payload))
-    os.replace(tmp_path, cache_path)
-
 def _build_reserving_child_nodes(
     child_names: List[str],
     prefix_parts_display: List[str],
@@ -2051,25 +2165,10 @@ def _build_reserving_child_nodes(
         })
     return out
 
-def get_reserving_class_path_tree_children(
-    project_name: str,
-    prefix: str = "",
-    force: bool = False,
-) -> Dict[str, Any]:
-    project_name_clean = str(project_name or "").strip()
-    if not project_name_clean:
-        raise ValueError("project_name is required")
+def _load_reserving_path_tree_inputs(project_name: str) -> Dict[str, Any]:
+    """Everything a path-tree answer is derived from, read as it stands."""
 
-    refresh_out = refresh_reserving_class_values(
-        project_name=project_name_clean,
-        mapping_rows_override=None,
-        force=bool(force),
-    )
-
-    combinations_path = str(refresh_out.get("combination_path") or "").strip()
-    if not combinations_path:
-        combinations_path = get_reserving_class_combinations_path(project_name_clean)
-
+    combinations_path = get_reserving_class_combinations_path(project_name)
     combo_payload: Dict[str, Any] = {}
     if os.path.exists(combinations_path):
         with open(combinations_path, "r", encoding="utf-8") as f:
@@ -2083,13 +2182,166 @@ def get_reserving_class_path_tree_children(
         base_paths,
     )
 
+    reserving_raw = _load_reserving_class_types_raw_data(project_name)
+    reserving_rows = reserving_raw.get("rows", []) if isinstance(reserving_raw, dict) else []
+    rules_by_level, rule_count, parent_to_components_by_level = _extract_reserving_class_level_rules(
+        reserving_rows if isinstance(reserving_rows, list) else [],
+    )
+
+    rct_path = get_reserving_class_types_path(project_name)
+    rct_mtime: Optional[float] = None
+    try:
+        if os.path.exists(rct_path):
+            rct_mtime = os.stat(rct_path).st_mtime
+    except Exception:
+        rct_mtime = None
+
+    table_path = str(combo_payload.get("table_path", "") or "").strip()
+    return {
+        "project_name": project_name,
+        "combinations_path": combinations_path,
+        "cache_path": get_reserving_class_path_tree_path(project_name),
+        "base_paths": base_paths,
+        "level_numbers": level_numbers,
+        "level_labels": level_labels,
+        "levels_payload": levels_payload,
+        "rules_by_level": rules_by_level,
+        "rule_count": rule_count,
+        "parent_to_components_by_level": parent_to_components_by_level,
+        "rct_path": rct_path,
+        "rct_mtime": rct_mtime,
+        "field_signature": str(combo_payload.get("field_signature", "") or "").strip(),
+        "table_path": table_path,
+        "table_path_norm": _norm_path_for_compare(table_path),
+        "source_csv_mtime": combo_payload.get("source_csv_mtime"),
+        "source_csv_size": combo_payload.get("source_csv_size"),
+    }
+
+
+def _reserving_path_tree_cache_is_current(payload: Dict[str, Any], inputs: Dict[str, Any]) -> bool:
+    return bool(payload) and _payload_matches_reserving_snapshot(
+        payload,
+        field_signature=inputs["field_signature"],
+        table_path_norm=inputs["table_path_norm"],
+        source_csv_mtime=inputs["source_csv_mtime"],
+        source_csv_size=inputs["source_csv_size"],
+    ) and _is_same_optional_mtime(payload.get("reserving_class_types_mtime"), inputs["rct_mtime"])
+
+
+def _reserving_path_tree_matchers(inputs: Dict[str, Any]) -> Dict[str, Any]:
+    """The base rows and lookups every prefix matches against, built once."""
+
+    matchers = inputs.get("_matchers")
+    if matchers is not None:
+        return matchers
+    base_parts_list: List[List[str]] = []
+    base_key_rows: List[List[str]] = []
+    for raw in inputs["base_paths"]:
+        parts = _split_reserving_combo_parts(raw)
+        if not parts:
+            continue
+        keys = [_canon_reserving_class_type_name(part) for part in parts]
+        if not all(keys):
+            continue
+        base_parts_list.append(parts)
+        base_key_rows.append(keys)
+    matchers = {
+        "base_key_rows": base_key_rows,
+        "display_by_level": _build_reserving_level_display_lookup_by_level(
+            base_parts_list,
+            inputs["level_numbers"],
+            inputs["rules_by_level"],
+            inputs["parent_to_components_by_level"],
+        ),
+        "descendants_lookup": _build_reserving_descendants_lookup_by_level(
+            inputs["parent_to_components_by_level"]
+        ),
+    }
+    inputs["_matchers"] = matchers
+    return matchers
+
+
+def _reserving_path_tree_child_names(
+    inputs: Dict[str, Any],
+    prefix_parts: List[str],
+    prefix_keys: List[str],
+) -> Tuple[List[str], List[str]]:
+    """Return (child names, display form of the prefix parts) for one prefix."""
+
+    level_numbers = inputs["level_numbers"]
+    prefix_parts_display = list(prefix_parts)
+    child_level_index = len(prefix_parts) + 1
+    if child_level_index > len(level_numbers):
+        return [], prefix_parts_display
+
+    matchers = _reserving_path_tree_matchers(inputs)
+    display_by_level = matchers["display_by_level"]
+    descendants_lookup = matchers["descendants_lookup"]
+    rules_by_level = inputs["rules_by_level"]
+    parent_to_components_by_level = inputs["parent_to_components_by_level"]
+
+    for idx, part in enumerate(prefix_parts):
+        level_num = level_numbers[idx] if idx < len(level_numbers) else (idx + 1)
+        prefix_parts_display[idx] = display_by_level.get(level_num, {}).get(prefix_keys[idx], part)
+
+    matched_child_raw_keys: set[str] = set()
+    child_idx0 = child_level_index - 1
+    for row_keys in matchers["base_key_rows"]:
+        if len(row_keys) <= child_idx0:
+            continue
+        matched = True
+        for idx, prefix_key_part in enumerate(prefix_keys):
+            level_num = level_numbers[idx] if idx < len(level_numbers) else (idx + 1)
+            parent_map = parent_to_components_by_level.get(level_num, {})
+            if prefix_key_part in parent_map:
+                allowed_values = descendants_lookup.get(level_num, {}).get(prefix_key_part, {prefix_key_part})
+                if row_keys[idx] not in allowed_values:
+                    matched = False
+                    break
+            elif row_keys[idx] != prefix_key_part:
+                matched = False
+                break
+        if matched:
+            matched_child_raw_keys.add(row_keys[child_idx0])
+
+    child_level_num = level_numbers[child_idx0]
+    expanded_child_keys = _expand_reserving_keys_with_parents_for_level(
+        matched_child_raw_keys,
+        rules_by_level.get(child_level_num, {}),
+    )
+    child_display = display_by_level.get(child_level_num, {})
+    child_names = _canonicalize_reserving_name_list([child_display.get(k, k) for k in expanded_child_keys])
+    return child_names, prefix_parts_display
+
+
+def get_reserving_class_path_tree_children(
+    project_name: str,
+    prefix: str = "",
+    force: bool = False,
+) -> Dict[str, Any]:
+    """Children of one prefix, from the combinations and types as they stand.
+
+    A read: it never refreshes the values (the source refresh job, a field
+    mapping save and a table summary refresh do) and never writes the tree
+    cache. It answers from a current cache that already holds the prefix and
+    computes the children otherwise, which on the server host is a
+    sub-millisecond match per prefix; ``force`` skips the cache.
+    """
+
+    project_name_clean = str(project_name or "").strip()
+    if not project_name_clean:
+        raise ValueError("project_name is required")
+
+    inputs = _load_reserving_path_tree_inputs(project_name_clean)
+    level_numbers = inputs["level_numbers"]
+    level_labels = inputs["level_labels"]
+
     prefix_norm = _norm_tree_path(prefix)
     prefix_parts: List[str] = []
     if prefix_norm:
         prefix_parts = _split_reserving_combo_parts(prefix_norm)
         if not prefix_parts:
             raise ValueError("Invalid reserving class prefix path.")
-
     prefix_keys: List[str] = []
     for part in prefix_parts:
         key = _canon_reserving_class_type_name(part)
@@ -2101,294 +2353,38 @@ def get_reserving_class_path_tree_children(
     child_level_label = level_labels[child_level_index - 1] if child_level_index - 1 < len(level_labels) else f"Level {child_level_index}"
     has_children = child_level_index < len(level_numbers)
 
-    reserving_raw = _load_reserving_class_types_raw_data(project_name_clean)
-    reserving_rows = reserving_raw.get("rows", []) if isinstance(reserving_raw, dict) else []
-    rules_by_level, rule_count, parent_to_components_by_level = _extract_reserving_class_level_rules(
-        reserving_rows if isinstance(reserving_rows, list) else [],
-    )
-
-    rct_path = get_reserving_class_types_path(project_name_clean)
-    rct_mtime: Optional[float] = None
-    try:
-        if os.path.exists(rct_path):
-            rct_mtime = os.stat(rct_path).st_mtime
-    except Exception:
-        rct_mtime = None
-
-    cache_path = get_reserving_class_path_tree_path(project_name_clean)
-    field_signature = str(combo_payload.get("field_signature", "") if isinstance(combo_payload, dict) else "").strip()
-    table_path = str(combo_payload.get("table_path", "") if isinstance(combo_payload, dict) else "").strip()
-    table_path_norm = _norm_path_for_compare(table_path)
-    source_csv_mtime = combo_payload.get("source_csv_mtime") if isinstance(combo_payload, dict) else None
-    source_csv_size = combo_payload.get("source_csv_size") if isinstance(combo_payload, dict) else None
+    cache = _load_reserving_path_tree_cache_payload(inputs["cache_path"])
+    cache_valid = _reserving_path_tree_cache_is_current(cache, inputs)
+    children_cache = _normalize_reserving_children_cache(cache.get("children_cache")) if cache_valid else {}
+    cached_paths = cache.get("paths", []) if cache_valid else []
     prefix_key = _canonical_reserving_parts_key(prefix_parts) if prefix_parts else ""
 
-    existing_payload: Dict[str, Any] = {}
-    cache_valid = False
-    children_cache: Dict[str, List[str]] = {}
-    existing_paths_raw: List[str] = []
-    with _RESERVING_CLASS_PATH_TREE_LOCK:
-        existing_payload = _load_reserving_path_tree_cache_payload(cache_path)
-        if existing_payload and _payload_matches_reserving_snapshot(
-            existing_payload,
-            field_signature=field_signature,
-            table_path_norm=table_path_norm,
-            source_csv_mtime=source_csv_mtime,
-            source_csv_size=source_csv_size,
-        ) and _is_same_optional_mtime(existing_payload.get("reserving_class_types_mtime"), rct_mtime):
-            cache_valid = True
-            children_cache = _normalize_reserving_children_cache(existing_payload.get("children_cache"))
-            existing_paths = existing_payload.get("paths", [])
-            if isinstance(existing_paths, list):
-                existing_paths_raw = [str(v if v is not None else "").strip() for v in existing_paths]
-
-    if (
-        not force
-        and cache_valid
-        and prefix_key in children_cache
-    ):
-        child_names_cached = children_cache.get(prefix_key, [])
-        child_nodes_cached = _build_reserving_child_nodes(
-            child_names=child_names_cached,
-            prefix_parts_display=prefix_parts,
-            child_level_index=child_level_index,
-            child_level_label=child_level_label,
-            has_children=has_children,
-        )
-        return {
-            "project_name": project_name_clean,
-            "prefix": prefix_norm,
-            "levels": levels_payload,
-            "child_level_index": child_level_index,
-            "child_level_label": child_level_label,
-            "children": child_nodes_cached,
-            "from_cache": True,
-            "cache_path": cache_path,
-            "combination_path": combinations_path,
-            "table_path": table_path,
-            "base_path_count": len(base_paths),
-            "generated_path_count": len(existing_paths_raw),
-            "rule_count": rule_count,
-            "cached_prefix_count": len(children_cache),
-        }
-
-    child_names: List[str] = []
-    prefix_parts_display = list(prefix_parts)
-    if child_level_index <= len(level_numbers):
-        base_parts_list: List[List[str]] = []
-        base_key_rows: List[List[str]] = []
-        for raw in base_paths:
-            parts = _split_reserving_combo_parts(raw)
-            if not parts:
-                continue
-            keys: List[str] = []
-            skip_row = False
-            for part in parts:
-                key = _canon_reserving_class_type_name(part)
-                if not key:
-                    skip_row = True
-                    break
-                keys.append(key)
-            if skip_row:
-                continue
-            base_parts_list.append(parts)
-            base_key_rows.append(keys)
-
-        display_by_level = _build_reserving_level_display_lookup_by_level(
-            base_parts_list,
-            level_numbers,
-            rules_by_level,
-            parent_to_components_by_level,
-        )
-
-        for idx, part in enumerate(prefix_parts):
-            level_num = level_numbers[idx] if idx < len(level_numbers) else (idx + 1)
-            key = prefix_keys[idx] if idx < len(prefix_keys) else ""
-            if not key:
-                continue
-            if level_num not in display_by_level:
-                display_by_level[level_num] = {}
-            if key not in display_by_level[level_num]:
-                display_by_level[level_num][key] = part
-            prefix_parts_display[idx] = display_by_level[level_num].get(key, part)
-
-        descendants_lookup = _build_reserving_descendants_lookup_by_level(parent_to_components_by_level)
-        matched_child_raw_keys: set[str] = set()
-        child_idx0 = child_level_index - 1
-        for row_keys in base_key_rows:
-            if len(row_keys) <= child_idx0:
-                continue
-            matched = True
-            for idx, prefix_key_part in enumerate(prefix_keys):
-                if idx >= len(row_keys):
-                    matched = False
-                    break
-                level_num = level_numbers[idx] if idx < len(level_numbers) else (idx + 1)
-                parent_map = parent_to_components_by_level.get(level_num, {})
-                if prefix_key_part in parent_map:
-                    allowed_values = descendants_lookup.get(level_num, {}).get(prefix_key_part, {prefix_key_part})
-                    if row_keys[idx] not in allowed_values:
-                        matched = False
-                        break
-                else:
-                    if row_keys[idx] != prefix_key_part:
-                        matched = False
-                        break
-            if not matched:
-                continue
-            matched_child_raw_keys.add(row_keys[child_idx0])
-
-        child_level_num = level_numbers[child_idx0]
-        expanded_child_keys = _expand_reserving_keys_with_parents_for_level(
-            matched_child_raw_keys,
-            rules_by_level.get(child_level_num, {}),
-        )
-        child_display = display_by_level.get(child_level_num, {})
-        child_names = _canonicalize_reserving_name_list([child_display.get(k, k) for k in expanded_child_keys])
-
-    child_nodes = _build_reserving_child_nodes(
-        child_names=child_names,
-        prefix_parts_display=prefix_parts_display,
-        child_level_index=child_level_index,
-        child_level_label=child_level_label,
-        has_children=has_children,
-    )
-
-    paths_for_cache: List[str] = []
-    seen_path_keys: set[str] = set()
-    for raw in existing_paths_raw:
-        parts = _split_reserving_combo_parts(raw)
-        key = _canonical_reserving_parts_key(parts)
-        if not key or key in seen_path_keys:
-            continue
-        seen_path_keys.add(key)
-        paths_for_cache.append("\\".join(parts))
-
-    new_paths_added = 0
-    for node in child_nodes:
-        path = str(node.get("path", "") or "").strip()
-        parts = _split_reserving_combo_parts(path)
-        key = _canonical_reserving_parts_key(parts)
-        if not key or key in seen_path_keys:
-            continue
-        if len(paths_for_cache) >= RESERVING_CLASS_PATH_TREE_MAX_GENERATED:
-            break
-        seen_path_keys.add(key)
-        paths_for_cache.append(path)
-        new_paths_added += 1
-
-    existing_cached_child_names = children_cache.get(prefix_key) if cache_valid else None
-    children_cache[prefix_key] = child_names
-
-    root_tree = {"name": "All", "path": "", "level_index": 0, "level_label": "All", "children": []}
-    existing_tree = existing_payload.get("tree")
-    if isinstance(existing_tree, dict):
-        root_tree = existing_tree
-    if len(paths_for_cache) <= 20000:
-        root_tree = _build_path_tree_structure(paths_for_cache, level_labels)
-
-    payload_out = {
-        "project_name": project_name_clean,
-        "mode": "lazy",
-        "table_path": table_path,
-        "updated_at": utc_now_text(),
-        "source_csv_mtime": source_csv_mtime,
-        "source_csv_size": source_csv_size,
-        "field_signature": field_signature,
-        "levels": levels_payload,
-        "rule_count": rule_count,
-        "base_path_count": len(base_paths),
-        "generated_path_count": len(paths_for_cache),
-        "paths": paths_for_cache,
-        "children_cache": children_cache,
-        "tree": root_tree,
-        "reserving_class_types_path": rct_path,
-        "reserving_class_types_mtime": rct_mtime,
-        "combination_path": combinations_path,
-    }
-
-    should_write = (
-        force
-        or (not cache_valid)
-        or (new_paths_added > 0)
-        or (existing_cached_child_names != child_names)
-    )
-
-    if should_write:
-        with _RESERVING_CLASS_PATH_TREE_LOCK:
-            latest_payload = _load_reserving_path_tree_cache_payload(cache_path)
-            latest_valid = latest_payload and _payload_matches_reserving_snapshot(
-                latest_payload,
-                field_signature=field_signature,
-                table_path_norm=table_path_norm,
-                source_csv_mtime=source_csv_mtime,
-                source_csv_size=source_csv_size,
-            ) and _is_same_optional_mtime(latest_payload.get("reserving_class_types_mtime"), rct_mtime)
-
-            latest_children_cache = _normalize_reserving_children_cache(latest_payload.get("children_cache")) if latest_valid else {}
-            latest_children_cache[prefix_key] = child_names
-
-            latest_paths_raw = latest_payload.get("paths", []) if latest_valid else []
-            latest_paths: List[str] = []
-            latest_seen: set[str] = set()
-            for raw in latest_paths_raw if isinstance(latest_paths_raw, list) else []:
-                parts = _split_reserving_combo_parts(raw)
-                key = _canonical_reserving_parts_key(parts)
-                if not key or key in latest_seen:
-                    continue
-                latest_seen.add(key)
-                latest_paths.append("\\".join(parts))
-            for node in child_nodes:
-                path = str(node.get("path", "") or "").strip()
-                parts = _split_reserving_combo_parts(path)
-                key = _canonical_reserving_parts_key(parts)
-                if not key or key in latest_seen:
-                    continue
-                if len(latest_paths) >= RESERVING_CLASS_PATH_TREE_MAX_GENERATED:
-                    break
-                latest_seen.add(key)
-                latest_paths.append(path)
-
-            latest_tree = latest_payload.get("tree") if isinstance(latest_payload.get("tree"), dict) else root_tree
-            if len(latest_paths) <= 20000:
-                latest_tree = _build_path_tree_structure(latest_paths, level_labels)
-
-            payload_out = {
-                "project_name": project_name_clean,
-                "mode": "lazy",
-                "table_path": table_path,
-                "updated_at": utc_now_text(),
-                "source_csv_mtime": source_csv_mtime,
-                "source_csv_size": source_csv_size,
-                "field_signature": field_signature,
-                "levels": levels_payload,
-                "rule_count": rule_count,
-                "base_path_count": len(base_paths),
-                "generated_path_count": len(latest_paths),
-                "paths": latest_paths,
-                "children_cache": latest_children_cache,
-                "tree": latest_tree,
-                "reserving_class_types_path": rct_path,
-                "reserving_class_types_mtime": rct_mtime,
-                "combination_path": combinations_path,
-            }
-            _write_reserving_path_tree_cache_payload(cache_path, payload_out)
-            paths_for_cache = latest_paths
-            children_cache = latest_children_cache
+    from_cache = not force and prefix_key in children_cache
+    if from_cache:
+        child_names = children_cache[prefix_key]
+        prefix_parts_display = list(prefix_parts)
+    else:
+        child_names, prefix_parts_display = _reserving_path_tree_child_names(inputs, prefix_parts, prefix_keys)
 
     return {
         "project_name": project_name_clean,
         "prefix": prefix_norm,
-        "levels": levels_payload,
+        "levels": inputs["levels_payload"],
         "child_level_index": child_level_index,
         "child_level_label": child_level_label,
-        "children": child_nodes,
-        "from_cache": False,
-        "cache_path": cache_path,
-        "combination_path": combinations_path,
-        "table_path": table_path,
-        "base_path_count": len(base_paths),
-        "generated_path_count": len(paths_for_cache),
-        "rule_count": rule_count,
+        "children": _build_reserving_child_nodes(
+            child_names=child_names,
+            prefix_parts_display=prefix_parts_display,
+            child_level_index=child_level_index,
+            child_level_label=child_level_label,
+            has_children=has_children,
+        ),
+        "from_cache": from_cache,
+        "cache_path": inputs["cache_path"],
+        "combination_path": inputs["combinations_path"],
+        "table_path": inputs["table_path"],
+        "base_path_count": len(inputs["base_paths"]),
+        "generated_path_count": len(cached_paths) if isinstance(cached_paths, list) else 0,
+        "rule_count": inputs["rule_count"],
         "cached_prefix_count": len(children_cache),
     }

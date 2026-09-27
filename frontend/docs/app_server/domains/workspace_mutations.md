@@ -22,6 +22,11 @@ No new browser-facing route. This existing route selects the transport per reque
 | (no route; the ResQ sync and export macros call `run_workspace_mutation` directly through `arcrho_api.resq_sync_queue.submit_sync_request`) | `resq_sync_request_publish` | `resq_sync_queue_service.publish_resq_sync_request` |
 | (no route; the two ResQ import macros call `run_workspace_mutation` directly through `arcrho_api.resq_import_backup.back_up_reserving_class`) | `resq_import_backup` | `resq_import_backup_service.back_up_reserving_class_for_import` |
 | `POST /audit_log`, and every client-process caller of `audit_service.safe_append_project_audit_log` (see [`audit_log`](audit_log.md)) | `project_audit_log_append` | `audit_service.append_project_audit_log` |
+| `POST /reserving_class_hidden_paths` | `reserving_class_hidden_paths_save` | `reserving_class_service.save_hidden_paths` |
+| `POST /reserving_class_filter_spec` | `reserving_class_filter_spec_save` | `reserving_class_service.save_filter_spec` |
+| `POST /project-user-preferences` | `project_user_preferences_update` | `project_user_preferences_service.update_preferences` |
+
+The three preference writes (step 8 of [client_smb_retirement.md](../../../../docs/plans/client_smb_retirement.md)) change only the signed-in user's own `users/<login>/preferences.json`: the login is the acting identity of the signed request, never an argument. Each is Gateway-required. They are idempotent because each is a whole-value write: the hidden-path list and the filter spec (with the tree preferences when sent) replace the stored value outright, and a preferences patch sets each value it names, so a repeat lands the same state and only `updated_at` moves.
 
 The review-status set is the Project Instance `Mark For Review` / `Set
 Reviewed` action, shared by the dataset table and Dependency Graph context

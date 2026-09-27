@@ -404,6 +404,49 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         ("project_name",),
         ("data",),
     ),
+    # The reserving-class picker, path tree and types table. Each is one
+    # route's whole answer read where the project files are local disk, and
+    # none writes: the combinations, the types file and the path-tree cache
+    # are rebuilt by their writers (the source refresh job, a field mapping or
+    # types save), never by a read.
+    "reserving_class_combinations": WorkspaceReadKind(
+        "reserving_class_service",
+        "read_reserving_class_combinations",
+        ("project_name",),
+    ),
+    "reserving_class_path_tree": WorkspaceReadKind(
+        "reserving_class_service",
+        "read_reserving_class_path_tree",
+        ("project_name",),
+    ),
+    "reserving_class_path_tree_children": WorkspaceReadKind(
+        "reserving_class_service",
+        "read_reserving_class_path_tree_children",
+        ("project_name",),
+        ("prefix", "force"),
+    ),
+    "reserving_class_types": WorkspaceReadKind(
+        "reserving_class_service",
+        "read_reserving_class_types",
+        ("project_name",),
+    ),
+    # The signed-in user's own preferences: the login is the one the request
+    # is signed with, never an argument.
+    "reserving_class_hidden_paths": WorkspaceReadKind(
+        "reserving_class_service",
+        "read_hidden_paths",
+        ("project_name",),
+    ),
+    "reserving_class_filter_spec": WorkspaceReadKind(
+        "reserving_class_service",
+        "read_filter_spec",
+        ("project_name",),
+    ),
+    "project_user_preferences": WorkspaceReadKind(
+        "project_user_preferences_service",
+        "get_preferences",
+        ("project_name",),
+    ),
 }
 
 HTTP_WORKSPACE_READ_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_READ_KINDS))

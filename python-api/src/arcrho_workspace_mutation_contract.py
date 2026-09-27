@@ -262,6 +262,32 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ("project_name", "action", "entry_id"),
         ("user_name",),
     ),
+    # The signed-in user's own project preferences. The login is the one the
+    # request is signed with, never an argument, so a user can only write
+    # their own file. Idempotent because each is a whole-value write: hidden
+    # paths and the filter spec (with the tree preferences when sent) replace
+    # the stored value outright, and a preferences patch sets each value it
+    # names, so a repeat lands the same state and only ``updated_at`` moves.
+    # The lists and objects may be empty (the user cleared them), so they are
+    # optional rather than required.
+    "reserving_class_hidden_paths_save": WorkspaceMutationKind(
+        "reserving_class_service",
+        "save_hidden_paths",
+        ("project_name",),
+        ("hidden_paths",),
+    ),
+    "reserving_class_filter_spec_save": WorkspaceMutationKind(
+        "reserving_class_service",
+        "save_filter_spec",
+        ("project_name",),
+        ("filter_spec", "preferences"),
+    ),
+    "project_user_preferences_update": WorkspaceMutationKind(
+        "project_user_preferences_service",
+        "update_preferences",
+        ("project_name",),
+        ("patch",),
+    ),
 }
 
 HTTP_WORKSPACE_MUTATION_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_MUTATION_KINDS))

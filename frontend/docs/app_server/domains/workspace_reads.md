@@ -46,8 +46,17 @@ No new browser-facing route. These existing routes select the transport per requ
 | `GET /app/user-identity` | `user_identity` | `user_identity_service.get_current_identity` (under the signed user's acting identity) |
 | `GET /data_processing_rules` | `data_processing_rules` | `data_processing_rules_service.read_data_processing_rules` |
 | `POST /data_processing_rules/validate` | `data_processing_rules_validate` | `data_processing_rules_service.check_data_processing_rules` |
+| `GET /reserving_class_combinations` | `reserving_class_combinations` | `reserving_class_service.read_reserving_class_combinations` |
+| `GET /reserving_class_path_tree` | `reserving_class_path_tree` | `reserving_class_service.read_reserving_class_path_tree` |
+| `GET /reserving_class_path_tree/children` | `reserving_class_path_tree_children` | `reserving_class_service.read_reserving_class_path_tree_children` (writes nothing) |
+| `GET /reserving_class_types` | `reserving_class_types` | `reserving_class_service.read_reserving_class_types` (writes nothing) |
+| `GET /reserving_class_hidden_paths` | `reserving_class_hidden_paths` | `reserving_class_service.read_hidden_paths` (the signed user's file) |
+| `GET /reserving_class_filter_spec` | `reserving_class_filter_spec` | `reserving_class_service.read_filter_spec` (the signed user's file) |
+| `GET /project-user-preferences` | `project_user_preferences` | `project_user_preferences_service.get_preferences` (the signed user's file) |
 
 The project configuration reads from `project_settings_sources` down were added by step 7 of [client_smb_retirement.md](../../../../docs/plans/client_smb_retirement.md). Each is called with `gateway_required=True`, so a Client PC answers `503` rather than reading the share, and each service returns the route's whole answer, refusals included, so the two transports answer alike.
+
+The reserving-class and project-user-preference reads from `reserving_class_combinations` down were added by step 8, on the same terms; step 8 also made the existing `reserving_classes_with_data` read Gateway-required.
 
 Gateway side: `POST /api/workspace-reads` on the Gateway (`arcrho_workspace_read_contract.WORKSPACE_READ_PATH`), authenticated with the same per-user HMAC headers as hosted saves. `GET /api/capabilities` advertises `workspace_read_kinds`.
 <!-- MANUAL:END -->

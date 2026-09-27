@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "reserving class picker",
+  "audience": "user",
+  "summary": "The reserving-class picker, its filters, hidden paths and favorites, and your per-project preferences now load and save on the server. Clearing a filter level or removing your last favorite now stays cleared the next time the picker opens."
+}
