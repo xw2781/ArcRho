@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import re
+import csv
 import json
 import time
 import uuid
@@ -119,6 +120,11 @@ def read_dataset_csv(path: Any, **overrides: Any) -> pd.DataFrame:
     expected 40" a Result Selection reported -- and silently shifts every row
     after a gap in the middle. Each reader passing its own options had the same
     omission, so the whole read lives here instead.
+
+    Pandas takes the column count from the first line, so a file whose first
+    origin is empty (a Result Selection with nothing selected for its oldest
+    year) fails with "No columns to parse from file". Such a file is read with
+    its width taken from its widest line instead.
     """
 
     options: Dict[str, Any] = {
@@ -126,8 +132,33 @@ def read_dataset_csv(path: Any, **overrides: Any) -> pd.DataFrame:
         "float_precision": "round_trip",
         "skip_blank_lines": False,
     }
+    if "names" not in overrides:
+        width = _width_behind_leading_blank_line(path)
+        if width:
+            options["names"] = list(range(width))
     options.update(overrides)
     return pd.read_csv(path, **options)
+
+
+def _width_behind_leading_blank_line(path: Any) -> int:
+    """Field count of the widest line when ``path`` starts with a blank line, else 0.
+
+    A file that starts with data, an empty file, or anything that is not a
+    readable path keeps pandas' own handling.
+    """
+
+    try:
+        with open(path, "r", encoding="utf-8-sig", newline="") as handle:
+            first = handle.readline()
+            if not first or first.strip():
+                return 0
+            width = 1
+            for row in csv.reader(handle):
+                if any(cell.strip() for cell in row):
+                    width = max(width, len(row))
+            return width
+    except (OSError, TypeError, ValueError):
+        return 0
 
 
 def build_dataset_cache_file_name(
