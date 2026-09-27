@@ -13,7 +13,7 @@ import {
   normalizeTreePath,
   pathEqualsCI,
   splitProjectTreePath,
-} from "/ui/project_settings/project_settings_project_map.js?v=20260927src1";
+} from "/ui/project_settings/project_settings_project_map.js?v=20260927src2";
 import {
   clearPendingDuplicateJob,
   createDuplicateRequestId,
@@ -22,7 +22,7 @@ import {
   readDuplicateResponseError,
   savePendingDuplicateJob,
   waitForDuplicateProjectJob,
-} from "/ui/project_settings/project_settings_duplicate_job.js?v=20260927src1";
+} from "/ui/project_settings/project_settings_duplicate_job.js?v=20260927src2";
 
 function getLocalStorageSafely() {
   try {

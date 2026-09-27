@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Import Data now uploads a SQL Server table or a CSV only your PC can open to the server, which writes the project table, and the progress window shows how many megabytes and rows have been sent. A CSV upload interrupted part way picks up where it stopped when you import again, and a failed upload never replaces the table already there."
+}

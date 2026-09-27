@@ -452,6 +452,27 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ("server",),
         ("database",),
     ),
+    # Uploading a source table only the client can read (a SQL Server import
+    # run as the user's own login, or a CSV on a drive only that PC has). Each
+    # chunk is stored as its numbered part of the upload, so a resent chunk
+    # overwrites the same part. The commit checks the chunk count, byte total
+    # and row count, swaps the master table in atomically and keeps its
+    # outcome with the upload, so a repeated commit answers from it rather
+    # than importing twice. ``index`` and ``row_count`` may be 0, which the
+    # required check reads as absent, so they are optional here and the
+    # service requires them.
+    "source_table_upload_chunk": WorkspaceMutationKind(
+        "source_table_upload_service",
+        "receive_source_table_chunk",
+        ("project_name", "upload_id", "data"),
+        ("index",),
+    ),
+    "source_table_upload_commit": WorkspaceMutationKind(
+        "source_table_upload_service",
+        "commit_source_table_upload",
+        ("project_name", "upload_id", "source_type", "chunk_count", "byte_count"),
+        ("row_count", "csv_path", "csv_mtime_ns", "csv_size"),
+    ),
 }
 
 HTTP_WORKSPACE_MUTATION_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_MUTATION_KINDS))

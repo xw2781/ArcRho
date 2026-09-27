@@ -12,7 +12,7 @@ import {
   datasetTypesRowsSignature,
   describeDatasetTypesChangeResult,
   waitForDatasetTypesChangeJob,
-} from "/ui/project_settings/project_settings_dataset_types_job.js?v=20260927src1";
+} from "/ui/project_settings/project_settings_dataset_types_job.js?v=20260927src2";
 import { createDatasetTypeCategoryCombo } from "/ui/project_settings/project_settings_dataset_type_category_combo.js?v=20260811dtcategory1";
 import { createDatasetTypeFormatSelect } from "/ui/project_settings/project_settings_dataset_type_format_select.js?v=20260812dtformat2";
 import { formatDetailsFormulaText } from "/ui/shared/tabs/details/details_dependencies.js?v=20260820b";

@@ -1105,9 +1105,9 @@ test("Import Data rebuilds the master table from whichever method is selected", 
   assert.match(moduleSource, /Select a table or view to import\./);
   assert.match(moduleSource, /Choose a CSV file to import\./);
 
-  // SQL streams the table; CSV forces a re-copy of the external file.
+  // A source only this PC can read is read here and uploaded, SQL or CSV.
   assert.match(projectSettingsJs, /isSql \? "\/source_table\/import" : "\/source_table\/refresh"/);
-  assert.match(projectSettingsJs, /\{ project_name: name, force: true \}/);
+  assert.match(projectSettingsJs, /body: JSON\.stringify\(\{ project_name: name \}\)/);
   // A finished import refreshes everything derived from the table.
   assert.match(projectSettingsJs, /forceReservingClassTypesReload: true/);
 });
@@ -1172,6 +1172,11 @@ test("Import Data is preceded by an Import Scope step that narrows the refresh",
   assert.match(importFlow, /if \(!plan\) return \{ ok: false, error: "Could not reach Arco Server/);
   assert.match(importFlow, /if \(job\.unavailable\) \{[\s\S]*?if \(importOnServer\) \{\s*return \{\s*ok: false,/);
   assert.equal(importFlow.match(/importSourceDataLocally\(/g).length, 1, "a second local import came back");
+  // A client-only source is uploaded; the page shows how far it has got.
+  assert.match(projectSettingsJs, /fetch\(`\/source_table\/upload_progress\?\$\{query\}`\)/);
+  assert.match(projectSettingsJs, /if \(!finished && progress\?\.active\)/);
+  assert.match(sourceTableRouter, /upload_source_table\(req\.project_name, SOURCE_TYPE_MSSQL\)/);
+  assert.match(sourceTableRouter, /upload_source_table\(req\.project_name, SOURCE_TYPE_CSV\)/);
   // The rebuild a client-only import still asks for runs on the server.
   assert.match(summaryRouter, /"table_summary_rebuild"/);
   assert.match(summaryRouter, /gateway_required=True/);

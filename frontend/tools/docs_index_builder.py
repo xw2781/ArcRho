@@ -878,6 +878,10 @@ BACKEND_DOMAIN_META: Mapping[str, Dict[str, object]] = {
         "files": [
             ("app_server/api/source_table_router.py", "Import source profile, connection test, and import routes."),
             ("app_server/services/source_table_service.py", "Project-owned master table copy and SQL Server import."),
+            (
+                "app_server/services/source_table_upload_service.py",
+                "Upload of a source only the client can read, and its server-side commit.",
+            ),
             ("app_server/schemas/source_table.py", "Import source request schemas."),
             (
                 "../python-api/src/arcrho_api/source_table_contract.py",

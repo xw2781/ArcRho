@@ -65,6 +65,7 @@ No new browser-facing route. These existing routes select the transport per requ
 | `GET /dataset_types/change_job/status` | `dataset_types_change_status` | `dataset_types_change_service.get_dataset_types_change_status` |
 | `GET /project_settings/{source}/duplicate_project_folder/status/{request_id}` | `project_duplication_status` | `project_settings_service.get_duplicate_project_folder_status` |
 | `GET /source_table/refresh_job/status`, and the busy check of `GET /source_table/refresh_job/plan` | `source_refresh_status` | `source_refresh_service.get_source_table_refresh_status` |
+| `POST /source_table/refresh` (before resuming an interrupted upload) | `source_table_upload_status` | `source_table_upload_service.get_source_table_upload_status` |
 | `GET /scripting/macro-library`, `POST /scripting/macro-library/sync` | `macro_library_listing` | `macro_library_service.read_library_files` |
 | `POST /scripting/macro-library/install`, and the check before `POST /scripting/run-macro` | `macro_library_file` | `macro_library_service.read_library_file` |
 | `GET /arcbot/prompt-files` (called by the Electron host's ArcBot) | `arcbot_prompt_files` | `arcbot_prompt_service.read_arcbot_prompt_files` |

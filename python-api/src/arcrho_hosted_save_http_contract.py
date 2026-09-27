@@ -304,8 +304,17 @@ def mutation_receipt_path(
     token = str(request_id or "").strip()
     if not login or not token or not token.replace("-", "").replace("_", "").isalnum():
         raise HostedSaveHttpContractError("Gateway mutation receipt key is invalid.")
-    segment = "".join(
+    return receipts_root(server_root) / "mutations" / user_path_segment(login) / f"{token}.json"
+
+
+def user_path_segment(user: str) -> str:
+    """One folder name for a signed login, so each user's server files stay apart.
+
+    Letters, digits, ``.``, ``_`` and ``-`` are kept and any other character
+    is written as ``%XX``.
+    """
+
+    return "".join(
         character if character.isalnum() or character in "._-" else f"%{ord(character):02X}"
-        for character in login
+        for character in normalize_user(user)
     )
-    return receipts_root(server_root) / "mutations" / segment / f"{token}.json"

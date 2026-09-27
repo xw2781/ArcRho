@@ -5,9 +5,9 @@ connection list and the refresh job are read and written on the server host
 through the Gateway; a Client PC refuses rather than touching the share. What
 stays here is what only this PC can do: translate its own drive letters, stat
 an external CSV on a drive only it has, and talk to SQL Server as the user's
-Windows login. The client-side import of such a source (``/source_table/import``
-and ``/source_table/refresh``) still writes the master table over the share
-until step 22 of docs/plans/client_smb_retirement.md uploads it instead.
+Windows login. A source only this PC can read (``/source_table/import`` for SQL
+Server, ``/source_table/refresh`` for a CSV) is read here and uploaded to the
+Gateway, which writes the master table.
 """
 from __future__ import annotations
 
@@ -15,7 +15,11 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 
-from arcrho_api.source_table_contract import normalize_import_source_path
+from arcrho_api.source_table_contract import (
+    SOURCE_TYPE_CSV,
+    SOURCE_TYPE_MSSQL,
+    normalize_import_source_path,
+)
 
 from app_server.schemas.source_table import (
     MssqlConnectionForgetRequest,
@@ -29,6 +33,7 @@ from app_server.schemas.source_table import (
 from app_server.services import (
     source_refresh_service,
     source_table_service,
+    source_table_upload_service,
     workspace_mutation_client,
     workspace_read_client,
 )
@@ -167,32 +172,20 @@ def list_source_table_candidates(req: MssqlTableListRequest) -> Dict[str, Any]:
 
 @router.post("/source_table/import")
 def import_source_table(req: SourceTableImportRequest) -> Dict[str, Any]:
-    try:
-        return {"ok": True, **source_table_service.import_from_mssql(req.project_name)}
-    except HTTPException:
-        raise
-    except Exception as error:
-        raise HTTPException(500, f"Failed to import the source table: {str(error)}")
+    """Read the SQL Server table as this user's login and upload it to the server."""
+    return source_table_upload_service.upload_source_table(req.project_name, SOURCE_TYPE_MSSQL)
 
 
 @router.post("/source_table/refresh")
 def refresh_source_table(req: SourceTableRefreshRequest) -> Dict[str, Any]:
-    """Re-copy the configured external CSV into the project master table."""
-    try:
-        return {
-            "ok": True,
-            **source_table_service.ensure_master_table(req.project_name, force=bool(req.force)),
-        }
-    except source_table_service.SourceTableNotConfiguredError as error:
-        raise HTTPException(400, str(error))
-    except source_table_service.SourceTableMissingError as error:
-        raise HTTPException(409, str(error))
-    except FileNotFoundError as error:
-        raise HTTPException(404, str(error))
-    except HTTPException:
-        raise
-    except Exception as error:
-        raise HTTPException(500, f"Failed to refresh the imported source table: {str(error)}")
+    """Read the configured CSV on this PC and upload it as the master table."""
+    return source_table_upload_service.upload_source_table(req.project_name, SOURCE_TYPE_CSV)
+
+
+@router.get("/source_table/upload_progress")
+def get_source_table_upload_progress(project_name: str) -> Dict[str, Any]:
+    """Bytes and rows this app's open import has uploaded so far, from memory."""
+    return source_table_upload_service.get_upload_progress(project_name)
 
 
 @router.get("/source_table/refresh_job/plan")

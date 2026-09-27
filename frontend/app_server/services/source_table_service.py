@@ -1,15 +1,17 @@
 """Project-owned imported source table: master copy, import record, SQL Server import.
 
 Every project folder owns one imported table at `source/master_table.csv`. This
-module is the only writer of that copy and the only resolver every reader goes
-through, so no consumer ever reads an external CSV path or a SQL Server table
-directly.
+module owns that copy's writers, which the upload of a source only a Client PC
+can read (`source_table_upload_service`) reuses, and it is the only resolver
+every reader goes through, so no consumer ever reads an external CSV path or a
+SQL Server table directly.
 
 Two import sources produce the same master copy:
   * `csv`   - copied from the external path in `field_mapping.json::table_path`,
-              refreshed automatically whenever that file's identity changes.
-  * `mssql` - streamed from SQL Server using the caller's Windows identity.
-              Never re-read automatically; an explicit import writes the copy.
+              refreshed automatically whenever that file's identity changes; a
+              path only the client can open is uploaded by the client instead.
+  * `mssql` - read from SQL Server using the caller's Windows identity on the
+              client and uploaded. Never re-read automatically.
 
 The SQL Server profile lives with the project and is shared by every user of
 that project. No credentials are stored: Windows authentication only.
@@ -599,7 +601,7 @@ def ensure_master_table(project_name: str, *, force: bool = False) -> Dict[str, 
     A `csv` project re-copies whenever the external file's identity changed (or
     `force` is set), so existing projects keep working without an explicit
     import. An `mssql` project is never re-read implicitly; its master copy is
-    only written by `import_from_mssql`.
+    only written by an explicit import.
     """
     name = _require_project_name(project_name)
     master_path = resolve_master_table_path(name)
@@ -667,7 +669,12 @@ def ensure_master_table(project_name: str, *, force: bool = False) -> Dict[str, 
 
 
 def import_from_mssql(project_name: str) -> Dict[str, Any]:
-    """Replace the master copy with the configured SQL Server table."""
+    """Replace the master copy with the configured SQL Server table, in this process.
+
+    The app's own import reads on the client and uploads
+    (`source_table_upload_service`); this runs only when an Engine refresh job
+    is asked to import a SQL Server project.
+    """
     name = _require_project_name(project_name)
     master_path = resolve_master_table_path(name)
 

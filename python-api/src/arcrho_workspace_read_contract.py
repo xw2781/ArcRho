@@ -388,6 +388,13 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "load_mssql_connections",
         (),
     ),
+    # Which parts of a client-only source upload the server holds, so an
+    # interrupted upload resumes where it stopped.
+    "source_table_upload_status": WorkspaceReadKind(
+        "source_table_upload_service",
+        "get_source_table_upload_status",
+        ("project_name", "upload_id"),
+    ),
     "dataset_number_format_defaults": WorkspaceReadKind(
         "dataset_number_format_service",
         "get_preferences",

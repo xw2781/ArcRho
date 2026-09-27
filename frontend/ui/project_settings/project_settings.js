@@ -11,8 +11,8 @@
  *   - shared table column sizing              -> project_settings_table_columns.js
  */
 import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=20260901dup1";
-import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260927src1";
-import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260927src1";
+import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260927src2";
+import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260927src2";
 import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260901dup1";
 import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260905rules2";
 import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260905scope1";
@@ -23,17 +23,17 @@ import {
   normalizeTableColumnPreferenceKey,
   resizeCellTextarea,
   wireProjectSettingsTableScrollbarActivity,
-} from "/ui/project_settings/project_settings_table_columns.js?v=20260927src1";
+} from "/ui/project_settings/project_settings_table_columns.js?v=20260927src2";
 import {
   createGeneralSettingsFeature,
   formatBoundaryYmDisplay,
   normalizeBoundaryYmCanonical,
-} from "/ui/project_settings/project_settings_general_settings.js?v=20260927src1";
-import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260927src1";
-import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260927src1";
-import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260927src1";
+} from "/ui/project_settings/project_settings_general_settings.js?v=20260927src2";
+import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260927src2";
+import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260927src2";
+import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260927src2";
 import { createAutoSaveScheduler } from "/ui/project_settings/project_settings_auto_save.js?v=20260901dup1";
-import { createSourceRefreshFeature } from "/ui/project_settings/project_settings_source_refresh.js?v=20260927src1";
+import { createSourceRefreshFeature } from "/ui/project_settings/project_settings_source_refresh.js?v=20260927src2";
 import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260816a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
@@ -961,14 +961,43 @@ async function loadImportScopeOptions() {
   }
 }
 
-/** Copy the external source into the project master table, in this process. */
+/** How far the upload has got, for the progress window's title. */
+function describeSourceUploadProgress(progress) {
+  if (progress?.phase === "committing") return "Writing the table on Arco Server...";
+  const mb = (bytes) => (Number(bytes || 0) / (1024 * 1024)).toFixed(1);
+  const sent = progress?.total_bytes
+    ? `${mb(progress.bytes_sent)} of ${mb(progress.total_bytes)} MB`
+    : `${mb(progress?.bytes_sent)} MB`;
+  return `${sent}, ${Number(progress?.rows_sent || 0).toLocaleString("en-US")} rows`;
+}
+
+/**
+ * Read a source only this PC can open - a SQL Server table, as the user's own
+ * login, or a CSV on a drive only this PC has - and upload it to Arco Server,
+ * which writes the project master table. An interrupted CSV upload resumes on
+ * the next try while the file is unchanged.
+ */
 async function importSourceDataLocally(name, isSql) {
-  showProjectOperationProgress(isSql ? "Importing table from SQL Server..." : "Importing CSV file...");
+  const title = isSql ? "Uploading table from SQL Server..." : "Uploading CSV file...";
+  showProjectOperationProgress(title);
+  let finished = false;
+  const query = new URLSearchParams({ project_name: name }).toString();
+  const timer = setInterval(async () => {
+    try {
+      const res = await fetch(`/source_table/upload_progress?${query}`);
+      const progress = res.ok ? await res.json() : null;
+      if (!finished && progress?.active) {
+        showProjectOperationProgress(`${title} ${describeSourceUploadProgress(progress)}`);
+      }
+    } catch {
+      // The import's own answer reports a failure.
+    }
+  }, 500);
   try {
     const res = await fetch(isSql ? "/source_table/import" : "/source_table/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(isSql ? { project_name: name } : { project_name: name, force: true }),
+      body: JSON.stringify({ project_name: name }),
     });
     if (!res.ok) return { ok: false, error: await readResponseErrorDetail(res) };
     const out = await res.json();
@@ -977,6 +1006,8 @@ async function importSourceDataLocally(name, isSql) {
   } catch (err) {
     return { ok: false, error: err.message || "The import failed." };
   } finally {
+    finished = true;
+    clearInterval(timer);
     hideProjectOperationProgress();
   }
 }
@@ -1000,8 +1031,8 @@ async function reloadSourceDataViews(name, { forceRefresh }) {
  * into the project's dependency graph, regenerating every engine-built dataset
  * and re-running the methods that depend on them. Only when the server cannot
  * reach the configured source - a SQL Server profile, which authenticates as
- * the caller, or a CSV path only this machine can open - does the copy stay
- * here, and even then the dependent refresh still runs on the server.
+ * the caller, or a CSV path only this machine can open - is it read here and
+ * uploaded, and even then the dependent refresh still runs on the server.
  *
  * `scope` is what the Import Scope step chose: the engine-built dataset types
  * to regenerate and the reserving class types whose classes are refreshed.
