@@ -174,7 +174,11 @@ class OrchestratorPerUserBridgeTests(unittest.TestCase):
 class AdminFolderAccessTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from arcrho_admin import main as admin_main  # noqa: E402
+        # Admin Control logs to <root>\runtime\logs as it loads and again as the
+        # process exits, and with no root set it falls back to production's.
+        # Its root is fixed at import, so the import runs against a test root.
+        with patch.dict(os.environ, {"ARCRHO_ROOT": str(TEST_TMP_ROOT / "admin_root")}):
+            from arcrho_admin import main as admin_main  # noqa: E402
 
         cls.admin_main = admin_main
 
