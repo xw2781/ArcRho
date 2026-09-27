@@ -291,6 +291,8 @@ class HostedExecutionTests(unittest.TestCase):
         self.assertEqual(response["data_path"], str(self.output_path))
         self.assertTrue(response["request_file"].startswith(str(self.request_dir)))
         self.assertGreaterEqual(response["wait_ms"], 0)
+        # The CSV's exact text travels back, so the client never reads its drive.
+        self.assertEqual(response["csv_text"], self.output_path.read_bytes().decode("utf-8"))
         self.assertEqual(len(engine.claimed), 1)
         claimed = engine.claimed[0]
         self.assertEqual(claimed["UserName"], "alice")
@@ -307,6 +309,7 @@ class HostedExecutionTests(unittest.TestCase):
             )
         self.assertEqual(response["ok"], False)
         self.assertEqual(response["status"], "timeout")
+        self.assertNotIn("csv_text", response)
         self.assertFalse(self.output_path.exists())
 
     def test_temporary_view_variant_targets_the_temporary_cache(self) -> None:
@@ -506,10 +509,9 @@ class EngineCalculationHttpRoundTripTests(unittest.TestCase):
         self.patches = [
             patch.object(app_config, "load_gateway_config", return_value=self.client_config),
             patch.object(app_config, "get_root_path", return_value=str(self.client_root)),
+            # The temporary paths live on local disk: the transport depends on
+            # the process, never on where the workspace root sits.
             patch.object(workspace_read_client, "_is_server_process", return_value=False),
-            # The temporary paths live on local disk; the transport must
-            # believe they are on the mapped drive.
-            patch.object(engine_calculation_service, "is_network_path", return_value=True),
             patch.object(engine_calculation_service, "wait_for_file", side_effect=visible),
             patch.object(engine_calculation_service, "send_request_like_vba", side_effect=local_publish),
             patch.object(
@@ -554,6 +556,7 @@ class EngineCalculationHttpRoundTripTests(unittest.TestCase):
                     "data_path": self.server_csv,
                     "request_file": str(self.server_root / "requests" / "request-1.json"),
                     "wait_ms": 12.5,
+                    "csv_text": "\n1.5,2\n3,\n",
                 }
             )
 
@@ -575,9 +578,12 @@ class EngineCalculationHttpRoundTripTests(unittest.TestCase):
         )
         self.assertEqual(seen["pairs"], TRI_PAIRS)
         self.assertEqual(seen["timeout_sec"], 15.0)
-        # The client never publishes; it only checks the result is visible here.
+        # The result travels in the reply: the client never publishes, never
+        # waits for the CSV on its drive, and the file need not exist there.
+        self.assertEqual(outcome["csv_text"], "\n1.5,2\n3,\n")
         self.assertEqual(self.local_publishes, [])
-        self.assertEqual(self.visibility_waits, [self.client_csv])
+        self.assertEqual(self.visibility_waits, [])
+        self.assertFalse(Path(self.client_csv).exists())
         record = self.records[-1]
         self.assertEqual(record["read_kind"], "engine_calculation")
         self.assertEqual(record["engine_function"], "ArcRhoTri")
@@ -616,15 +622,28 @@ class EngineCalculationHttpRoundTripTests(unittest.TestCase):
         self.assertEqual(self.local_publishes, [])
         self.assertEqual(self.visibility_waits, [])
 
-    def test_invisible_result_is_a_timeout(self) -> None:
-        _seen, hosted = self._hosted()
-        with hosted, patch.object(engine_calculation_service, "wait_for_file", return_value=False):
+    def test_a_success_without_its_result_is_an_error_not_a_drive_read(self) -> None:
+        # A Gateway older than the body in the reply: the client does not fall
+        # back to waiting for the file on its drive.
+        _seen, hosted = self._hosted(
+            response={
+                "ok": True,
+                "status": "completed",
+                "data_path": self.server_csv,
+                "request_file": "r",
+                "wait_ms": 1.0,
+            }
+        )
+        with hosted:
             outcome = engine_calculation_service.run_engine_calculation(
                 TRI_PAIRS, self.client_csv, 15.0
             )
         self.assertEqual(outcome["ok"], False)
-        self.assertEqual(outcome["status"], "timeout")
-        self.assertIn("not yet visible", outcome["message"])
+        self.assertEqual(outcome["status"], "gateway_error")
+        self.assertIn("needs updating", outcome["message"])
+        self.assertNotIn("csv_text", outcome)
+        self.assertEqual(self.visibility_waits, [])
+        self.assertEqual(self.local_publishes, [])
 
     def test_service_refusal_passes_through_with_its_status(self) -> None:
         _seen, hosted = self._hosted(error=HTTPException(404, "Project folder not found under projects: Demo Project"))
@@ -663,13 +682,13 @@ class EngineCalculationHttpRoundTripTests(unittest.TestCase):
         self.assertTrue(self.local_publishes[0].endswith(f"DataPath = {self.client_csv}"))
         self.assertEqual(self.records[-1]["reason"], "function_not_advertised")
 
-    def test_local_path_never_leaves_the_machine(self) -> None:
-        with patch.object(engine_calculation_service, "is_network_path", return_value=False):
+    def test_a_disabled_gateway_publishes_locally(self) -> None:
+        with patch.object(app_config, "load_gateway_config", return_value={"enabled": False}):
             outcome = engine_calculation_service.run_engine_calculation(
                 TRI_PAIRS, self.client_csv, 15.0
             )
         self.assertEqual(outcome["transport"], "smb")
-        self.assertEqual(self.records[-1]["reason"], "local_path")
+        self.assertEqual(self.records[-1]["reason"], "gateway_disabled")
 
     def test_unhostable_request_publishes_locally(self) -> None:
         pairs = TRI_PAIRS + [["StoredPeriodLength", "-1"]]
@@ -722,7 +741,6 @@ class EngineCalculationHttpRoundTripTests(unittest.TestCase):
             payload = engine_calculation_service.run_hosted_dataset_operation(
                 OPERATION_DATASET_RUN,
                 TRI_PAIRS,
-                self.client_csv,
                 options,
                 timeout_sec=15.0,
                 local=lambda: self.fail("the run must not execute locally"),
@@ -749,7 +767,6 @@ class EngineCalculationHttpRoundTripTests(unittest.TestCase):
             payload = engine_calculation_service.run_hosted_dataset_operation(
                 OPERATION_DATASET_PRECHECK,
                 TRI_PAIRS,
-                self.client_csv,
                 {"local_only": False},
                 timeout_sec=15.0,
                 local=lambda: self.fail("the precheck must not execute locally"),
@@ -762,7 +779,7 @@ class EngineCalculationHttpRoundTripTests(unittest.TestCase):
         with hosted:
             with self.assertRaises(HTTPException) as caught:
                 engine_calculation_service.run_hosted_dataset_operation(
-                    OPERATION_DATASET_RUN, TRI_PAIRS, self.client_csv, {}, timeout_sec=15.0,
+                    OPERATION_DATASET_RUN, TRI_PAIRS, {}, timeout_sec=15.0,
                     local=lambda: self.fail("a hosted refusal must not fall back"),
                 )
         self.assertEqual(caught.exception.status_code, 423)
@@ -770,7 +787,7 @@ class EngineCalculationHttpRoundTripTests(unittest.TestCase):
     def test_dataset_run_uses_local_route_when_operation_not_advertised(self) -> None:
         with patch.object(engine_calculation_service, "gateway_supports_operation", return_value=False):
             payload = engine_calculation_service.run_hosted_dataset_operation(
-                OPERATION_DATASET_RUN, TRI_PAIRS, self.client_csv, {}, timeout_sec=15.0,
+                OPERATION_DATASET_RUN, TRI_PAIRS, {}, timeout_sec=15.0,
                 local=lambda: {"ok": True, "from": "local"},
             )
         self.assertEqual(payload["from"], "local")
@@ -784,7 +801,7 @@ class EngineCalculationHttpRoundTripTests(unittest.TestCase):
         ):
             with self.assertRaises(HTTPException) as caught:
                 engine_calculation_service.run_hosted_dataset_operation(
-                    OPERATION_DATASET_RUN, TRI_PAIRS, self.client_csv, {}, timeout_sec=15.0,
+                    OPERATION_DATASET_RUN, TRI_PAIRS, {}, timeout_sec=15.0,
                     local=lambda: self.fail("an accepted request must not re-run locally"),
                 )
         self.assertEqual(caught.exception.status_code, 504)

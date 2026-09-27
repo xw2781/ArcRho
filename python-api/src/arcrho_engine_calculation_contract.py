@@ -13,9 +13,11 @@ A Client PC may instead POST the same logical request to the machine-wide
 Arco Gateway. The Gateway runs the very same ``app_server`` publish-and-wait
 helpers on the server host — the request lands in the local ``requests`` root
 the Engine already watches, and the CSV wait is a local file-system event —
-then answers with the completion. Nothing about the Engine changes: it still
-claims the same request file and writes the same CSV to the same location, and
-Excel, ``arcrho_api``, and the migration keep publishing over SMB.
+then answers with the completion and the CSV's own text, so the client never
+waits for the file to appear on its mapped drive or reads it there. Nothing
+about the Engine changes: it still claims the same request file and writes the
+same CSV to the same location, and Excel, ``arcrho_api``, and the migration
+keep publishing over SMB.
 
 The request carries only the legacy request-file keys as ordered pairs. The
 server derives the output ``DataPath`` itself with the canonical
@@ -408,9 +410,10 @@ def validate_engine_calculation_request(payload: Mapping[str, Any]) -> dict[str,
     }
 
 
-# Response field carrying the CSV text for ``dataset_csv`` -- a dataset's
-# figures, a project's period headings, or its settings table. Present only
-# when the run succeeded; a failure answers with its status and message alone.
+# Response field carrying the CSV text: for ``dataset_csv`` a dataset's
+# figures, a project's period headings, or its settings table; for
+# ``exchange`` the exact text of the CSV the Engine wrote. Present only when
+# the run succeeded; a failure answers with its status and message alone.
 ENGINE_CALCULATION_CSV_FIELD = "csv_text"
 
 # Response status values the Gateway returns for a request it ran.
@@ -424,11 +427,15 @@ def build_engine_calculation_response(
     data_path: str,
     request_file: str,
     wait_ms: float,
+    csv_text: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    response = {
         "ok": bool(ok),
         "status": ENGINE_CALCULATION_STATUS_COMPLETED if ok else ENGINE_CALCULATION_STATUS_TIMEOUT,
         "data_path": str(data_path),
         "request_file": str(request_file),
         "wait_ms": round(float(wait_ms), 3),
     }
+    if ok and csv_text is not None:
+        response[ENGINE_CALCULATION_CSV_FIELD] = str(csv_text)
+    return response

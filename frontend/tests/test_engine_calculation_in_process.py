@@ -39,7 +39,8 @@ class InProcessCalculatorTests(unittest.TestCase):
 
     def _run(self):
         with (
-            patch.object(service, "is_network_path", return_value=False),
+            # The hosting Engine is a server process; it never asks a Gateway.
+            patch.object(service.workspace_read_client, "_is_server_process", return_value=True),
             patch.object(service.client_save_latency_log_service, "append_client_read_latency"),
             patch.object(
                 service,

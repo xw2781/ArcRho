@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "calculations",
+  "audience": "user",
+  "summary": "Period headings load from the server, and a calculation hands its result straight back instead of through the shared drive, so datasets whose headings or figures need recalculating open faster."
+}

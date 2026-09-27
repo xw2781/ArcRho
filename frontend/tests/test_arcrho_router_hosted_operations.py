@@ -44,12 +44,11 @@ class ArcRhoRouterHostedOperationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.calls: list[dict] = []
 
-        def fake_operation(operation, pairs, data_path, options, *, timeout_sec, local):
+        def fake_operation(operation, pairs, options, *, timeout_sec, local):
             self.calls.append(
                 {
                     "operation": operation,
                     "pairs": list(pairs),
-                    "data_path": data_path,
                     "options": dict(options),
                     "timeout_sec": timeout_sec,
                 }

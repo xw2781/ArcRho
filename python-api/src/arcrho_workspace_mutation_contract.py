@@ -296,6 +296,14 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         "rebuild_index",
         ("project_name", "reserving_class"),
     ),
+    # Deleting a project's period-heading caches so the Engine rebuilds them.
+    # Idempotent: a repeat finds the files already gone.
+    "arcrho_headers_cache_clear": WorkspaceMutationKind(
+        "arcrho_runtime_service",
+        "clear_arcrho_headers_cache",
+        ("project_name",),
+        ("origin_length", "development_length"),
+    ),
 }
 
 HTTP_WORKSPACE_MUTATION_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_MUTATION_KINDS))

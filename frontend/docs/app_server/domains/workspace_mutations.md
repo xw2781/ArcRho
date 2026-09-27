@@ -26,10 +26,13 @@ No new browser-facing route. This existing route selects the transport per reque
 | `POST /reserving_class_filter_spec` | `reserving_class_filter_spec_save` | `reserving_class_service.save_filter_spec` |
 | `POST /project-user-preferences` | `project_user_preferences_update` | `project_user_preferences_service.update_preferences` |
 | `POST /dfm/method-index/refresh` | `dataset_index_rebuild` | `dataset_instance_index_service.rebuild_index` |
+| `POST /arcrho/headers/cache/clear` | `arcrho_headers_cache_clear` | `arcrho_runtime_service.clear_arcrho_headers_cache` |
 
 The three preference writes (step 8 of [client_smb_retirement.md](../../../../docs/plans/client_smb_retirement.md)) change only the signed-in user's own `users/<login>/preferences.json`: the login is the acting identity of the signed request, never an argument. Each is Gateway-required. They are idempotent because each is a whole-value write: the hidden-path list and the filter spec (with the tree preferences when sent) replace the stored value outright, and a preferences patch sets each value it names, so a repeat lands the same state and only `updated_at` moves.
 
 The index rebuild (step 9) is Gateway-required. It is idempotent because `index.json` is derived from the class folders alone and an unchanged index is not rewritten, so a repeat leaves the same file.
+
+The header cache clear (step 11) is Gateway-required. It deletes the project's period-heading CSVs so the Engine rebuilds them; it is idempotent because a repeat finds the files already gone and answers `cleared_count: 0`.
 
 The review-status set is the Project Instance `Mark For Review` / `Set
 Reviewed` action, shared by the dataset table and Dependency Graph context

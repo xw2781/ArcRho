@@ -503,6 +503,15 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "get_cached_dataset_index_signature",
         ("project_name", "reserving_class"),
     ),
+    # A project's period headings. The settings check, the cache lookup and,
+    # on a miss, the Engine run all happen on the server host, so a Client PC
+    # neither publishes a request file nor reads the heading CSV.
+    "arcrho_headers": WorkspaceReadKind(
+        "arcrho_runtime_service",
+        "get_project_headers",
+        ("project_name", "period_length", "timeout_sec"),
+        ("period_type", "transposed", "calendar", "stored_period_length"),
+    ),
 }
 
 HTTP_WORKSPACE_READ_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_READ_KINDS))

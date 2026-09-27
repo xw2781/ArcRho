@@ -13,7 +13,12 @@ from app_server.schemas.arcrho import (
 from arcrho_engine_calculation_contract import OPERATION_DATASET_PRECHECK, OPERATION_DATASET_RUN
 
 from app_server.helpers import set_data_path_like_vba
-from app_server.services import arcrho_runtime_service, engine_calculation_service, workspace_read_client
+from app_server.services import (
+    arcrho_runtime_service,
+    engine_calculation_service,
+    workspace_mutation_client,
+    workspace_read_client,
+)
 
 router = APIRouter()
 
@@ -61,7 +66,6 @@ def _arcrho_vec_pairs(req: ArcRhoVecRequest) -> list:
 
 
 def _arcrho_precheck_response(req: ArcRhoTriRequest | ArcRhoVecRequest, pairs: list) -> Dict[str, Any]:
-    data_path = set_data_path_like_vba(pairs)
     options = {
         "local_only": bool(req.LocalOnly),
         "allow_derived": bool(req.AllowDerived),
@@ -71,20 +75,22 @@ def _arcrho_precheck_response(req: ArcRhoTriRequest | ArcRhoVecRequest, pairs: l
     # The precheck and the run below are Server-hosted engine-calculation
     # operations: the whole route runs on the Arco Server host when the
     # Gateway advertises it, otherwise the same service function runs here.
+    # The CSV location is resolved only for a local run: resolving it looks
+    # the project folder up on the workspace drive.
     return engine_calculation_service.run_hosted_dataset_operation(
         OPERATION_DATASET_PRECHECK,
         pairs,
-        data_path,
         options,
         timeout_sec=float(req.timeout_sec),
-        local=lambda: arcrho_runtime_service.arcrho_precheck(data_path, pairs, **options),
+        local=lambda: arcrho_runtime_service.arcrho_precheck(
+            set_data_path_like_vba(pairs), pairs, **options
+        ),
     )
 
 
 def _arcrho_run_response(
     req: ArcRhoTriRequest | ArcRhoVecRequest, pairs: list, *, force_refresh: bool
 ) -> Dict[str, Any]:
-    data_path = set_data_path_like_vba(pairs)
     timeout_sec = max(0.1, float(req.timeout_sec))
     options = {
         "force_refresh": bool(force_refresh),
@@ -96,35 +102,47 @@ def _arcrho_run_response(
     return engine_calculation_service.run_hosted_dataset_operation(
         OPERATION_DATASET_RUN,
         pairs,
-        data_path,
         options,
         timeout_sec=timeout_sec,
         local=lambda: arcrho_runtime_service.run_arcrho_tri(
-            pairs, data_path, timeout_sec=timeout_sec, **options
+            pairs, set_data_path_like_vba(pairs), timeout_sec=timeout_sec, **options
         ),
     )
 
 
 @router.post("/arcrho/headers")
 def arcrho_headers(req: ArcRhoHeadersRequest) -> Dict[str, Any]:
-    pairs = [
-        ("Function", "ArcRhoHeaders"),
-        ("periodType", str(req.periodType)),
-        ("Transposed", str(req.Transposed)),
-        ("Calendar", str(req.Calendar)),
-        ("PeriodLength", str(req.PeriodLength)),
-        ("ProjectName", req.ProjectName),
-        ("StoredPeriodLength", str(req.StoredPeriodLength)),
-    ]
-    return arcrho_runtime_service.arcrho_headers(pairs, timeout_sec=max(0.1, float(req.timeout_sec)))
+    # The period headings, resolved on the server host: its settings check,
+    # cache lookup and any Engine run are local disk there.
+    kwargs = {
+        "project_name": req.ProjectName,
+        "period_length": req.PeriodLength,
+        "timeout_sec": max(0.1, float(req.timeout_sec)),
+        "period_type": req.periodType,
+        "transposed": req.Transposed,
+        "calendar": req.Calendar,
+        "stored_period_length": req.StoredPeriodLength,
+    }
+    return workspace_read_client.run_workspace_read(
+        "arcrho_headers",
+        kwargs,
+        local=lambda: arcrho_runtime_service.get_project_headers(**kwargs),
+        gateway_required=True,
+    )
 
 
 @router.post("/arcrho/headers/cache/clear")
 def clear_arcrho_headers_cache(req: ArcRhoHeadersCacheClearRequest) -> Dict[str, Any]:
-    return arcrho_runtime_service.clear_arcrho_headers_cache(
-        req.ProjectName,
-        origin_length=req.OriginLength,
-        development_length=req.DevelopmentLength,
+    kwargs = {
+        "project_name": req.ProjectName,
+        "origin_length": req.OriginLength,
+        "development_length": req.DevelopmentLength,
+    }
+    return workspace_mutation_client.run_workspace_mutation(
+        "arcrho_headers_cache_clear",
+        kwargs,
+        local=lambda: arcrho_runtime_service.clear_arcrho_headers_cache(**kwargs),
+        gateway_required=True,
     )
 
 

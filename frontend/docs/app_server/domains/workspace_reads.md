@@ -61,6 +61,7 @@ No new browser-facing route. These existing routes select the transport per requ
 | `POST /object_change/fingerprint` | `object_change_fingerprint` | `object_change_watch_service.object_change_fingerprint` |
 | `POST /object_change/attribution` | `object_change_attribution` | `object_change_watch_service.object_change_attribution` |
 | `GET /datasets/cached/index-signature` | `dataset_index_signature` | `dataset_service.get_cached_dataset_index_signature` |
+| `POST /arcrho/headers` | `arcrho_headers` | `arcrho_runtime_service.get_project_headers` |
 
 The project configuration reads from `project_settings_sources` down were added by step 7 of [client_smb_retirement.md](../../../../docs/plans/client_smb_retirement.md). Each is called with `gateway_required=True`, so a Client PC answers `503` rather than reading the share, and each service returns the route's whole answer, refusals included, so the two transports answer alike.
 
@@ -69,6 +70,8 @@ The reserving-class and project-user-preference reads from `reserving_class_comb
 The dataset and method side reads from `dataset_sidecar_load` down were added by step 9, on the same terms. The dependents preview sends the whole edited grid, so a workspace-read request may be as large as a hosted save request (`MAX_WORKSPACE_READ_REQUEST_BYTES` is the hosted save contract's `MAX_REQUEST_BYTES`).
 
 The three change-detection reads from `object_change_fingerprint` down were added by step 10. They are polled on a timer, so they go through `workspace_read_client.run_polled_workspace_read`: Gateway-required, but a `503` or `504` becomes the route's answer with `unknown: true` rather than an error, and the window asks again on its next poll. The server's stat is authoritative; a Client PC never stats the share for them.
+
+The period headings (`arcrho_headers`) were added by step 11 and are Gateway-required. The settings check, the heading cache lookup and, on a miss, the Engine run all happen on the server host, so a Client PC neither publishes a request file nor reads the heading CSV; the route's pairs, including `StoredPeriodLength`, reach the service unchanged. See [`engine_calculations`](engine_calculations.md).
 
 Gateway side: `POST /api/workspace-reads` on the Gateway (`arcrho_workspace_read_contract.WORKSPACE_READ_PATH`), authenticated with the same per-user HMAC headers as hosted saves. `GET /api/capabilities` advertises `workspace_read_kinds`.
 <!-- MANUAL:END -->

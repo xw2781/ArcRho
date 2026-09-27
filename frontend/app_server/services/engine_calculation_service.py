@@ -6,14 +6,14 @@ CSV it writes to the caller's ``DataPath``. ``publish_and_wait`` is that
 exchange; it is the same code whether it runs on a Client PC over the mapped
 drive or inside the Arco Gateway on the server host against local disk.
 
-``run_engine_calculation`` is what the runtime service calls. When the output
-CSV lives on a network drive and the Gateway advertises the Engine function, it
-POSTs the logical request (``arcrho_engine_calculation_contract``) and lets
-the server publish and wait locally, so the Client PC pays one HTTP round trip
-instead of the request-file write plus a probe-and-poll loop over SMB. In every
-other case — a local workspace, a server process, a disabled or unreachable
-gateway, a function the gateway does not host, or a refusal before the request
-was accepted — it runs the exchange here exactly as before.
+``run_engine_calculation`` is what the runtime service calls. On a Client PC
+whose Gateway advertises the Engine function, it POSTs the logical request
+(``arcrho_engine_calculation_contract``) and lets the server publish and wait
+locally; the answer carries the CSV's own text, so the Client PC pays one HTTP
+round trip and never waits for the file on its drive or reads it there. In
+every other case — a server process, a disabled or unreachable gateway, a
+function the gateway does not host, or a refusal before the request was
+accepted — it runs the exchange here exactly as before.
 
 Once the Gateway has accepted a request the outcome is never retried over SMB:
 a second request file would make the Engine compute the same CSV twice.
@@ -35,6 +35,7 @@ from fastapi import HTTPException
 
 from arcrho_engine_calculation_contract import (
     ENGINE_CALCULATION_CAPABILITY_FIELD,
+    ENGINE_CALCULATION_CSV_FIELD,
     ENGINE_CALCULATION_HTTP_TIMEOUT_MARGIN_SECONDS,
     ENGINE_CALCULATION_OPERATION_FIELD,
     ENGINE_CALCULATION_PATH,
@@ -60,14 +61,12 @@ from app_server import config
 from app_server.helpers import (
     build_engine_request_info,
     engine_request_payload,
-    is_network_path,
     send_request_like_vba,
     set_data_path_like_vba,
     wait_for_file,
 )
 from app_server.services import (
     client_save_latency_log_service,
-    user_identity_service,
     workspace_read_client,
 )
 from app_server.services.workspace_read_client import (
@@ -82,11 +81,6 @@ from app_server.services.workspace_read_client import (
 
 # Diagnostics record kind in ``client_read_latency.jsonl``.
 LATENCY_LOG_KIND = "engine_calculation"
-# After the Gateway reports the CSV written on the server, this PC's SMB
-# redirector may still hold a cached "not found" for the path the caller
-# checked before requesting; ``wait_for_file`` busts that cache with a probe
-# write, and a result that stays invisible this long is reported as a timeout.
-ENGINE_OUTPUT_VISIBILITY_TIMEOUT_SECONDS = 10.0
 STATUS_GATEWAY_ERROR = "gateway_error"
 # The Engine hosting this runtime ran the calculation itself and it failed.
 STATUS_ENGINE_ERROR = "engine_error"
@@ -206,14 +200,18 @@ def execute_hosted_engine_calculation(
         except OSError as exc:
             raise HTTPException(500, f"Failed to create the Arco data folder: {exc}") from exc
         result = publish_and_wait(pairs, data_path, clamp_engine_calculation_wait(timeout_sec))
+        # The runtime service is the module that calls this one for the
+        # exchange; import it here for the routes and the reader it owns.
+        from app_server.services import arcrho_runtime_service
+
         return build_engine_calculation_response(
             ok=result["ok"],
             data_path=data_path,
             request_file=result["request_file"],
             wait_ms=result["wait_ms"],
+            # The client reads the result from the reply, never from its drive.
+            csv_text=arcrho_runtime_service._csv_file_text(data_path) if result["ok"] else None,
         )
-    # The runtime service is the module that calls this one for the exchange;
-    # import it here for the routes it owns.
     from app_server.services import arcrho_runtime_service
 
     normalized_pairs = [(str(key), str(value)) for key, value in pairs]
@@ -308,16 +306,16 @@ def _pair(pairs: Sequence[Sequence[str]], wanted: str) -> str:
     return ""
 
 
-def _select_transport(
-    data_path: str, function: str, operation: str, context: Dict[str, Any]
-) -> Mapping[str, Any]:
-    """Fill ``context['reason']`` when the operation must run locally; return the gateway config."""
+def _select_transport(function: str, operation: str, context: Dict[str, Any]) -> Mapping[str, Any]:
+    """Fill ``context['reason']`` when the operation must run locally; return the gateway config.
+
+    Like a workspace read, the choice depends on the process, not on where the
+    workspace root sits: a Client PC whose root is on its own disk (the local
+    test server) still asks its Gateway, which is the Engine's host.
+    """
 
     gateway_config: Mapping[str, Any] = {"enabled": False}
-    if not is_network_path(data_path):
-        # A local CSV wait is a file-system event; nothing to gain remotely.
-        context["reason"] = "local_path"
-    elif workspace_read_client._is_server_process():
+    if workspace_read_client._is_server_process():
         context["reason"] = "server_process"
     else:
         try:
@@ -360,7 +358,8 @@ def run_engine_calculation(
 
     Returns ``ok``, ``status`` (``completed`` / ``timeout`` / ``gateway_error``),
     ``request_file``, ``transport``, and — for a failure the caller should show
-    — ``message``. A refusal raised by the hosted exchange itself (a project the
+    — ``message``. A hosted success also carries ``csv_text``, the CSV's exact
+    text, which the caller reads instead of ``data_path``. A refusal raised by the hosted exchange itself (a project the
     server cannot find, an invalid variant) is raised as the same
     ``HTTPException`` the local exchange would have raised.
     """
@@ -390,7 +389,7 @@ def run_engine_calculation(
         return result
 
     try:
-        gateway_config = _select_transport(data_path, function, OPERATION_EXCHANGE, context)
+        gateway_config = _select_transport(function, OPERATION_EXCHANGE, context)
         if not context["reason"]:
             request_id = uuid.uuid4().hex
             context["request_id"] = request_id
@@ -401,7 +400,9 @@ def run_engine_calculation(
                     pairs=[[str(key), str(value)] for key, value in pairs],
                     timeout_sec=wait_seconds,
                     user_name=str(gateway_config["user"]),
-                    user_display_name=user_identity_service.get_current_identity()["display_name"],
+                    # The server resolves the signed login's display name; the
+                    # client's own lookup would read the username index here.
+                    user_display_name="",
                     output_variant=str(output_variant or OUTPUT_VARIANT_CANONICAL),
                 )
             except EngineCalculationContractError:
@@ -465,17 +466,21 @@ def run_engine_calculation(
                         "request_file": payload.get("request_file"),
                         "transport": TRANSPORT_HTTP,
                     }
-                    if result["ok"] and not wait_for_file(
-                        data_path, timeout_sec=ENGINE_OUTPUT_VISIBILITY_TIMEOUT_SECONDS
-                    ):
-                        result.update(
-                            ok=False,
-                            status=ENGINE_CALCULATION_STATUS_TIMEOUT,
-                            message=(
-                                "The Arco Server finished this calculation but its output is "
-                                "not yet visible on this PC's network drive. Try again."
-                            ),
-                        )
+                    if result["ok"]:
+                        # The result travels in the reply: this PC neither
+                        # waits for the CSV on its drive nor reads it there.
+                        csv_text = payload.get(ENGINE_CALCULATION_CSV_FIELD)
+                        if isinstance(csv_text, str):
+                            result[ENGINE_CALCULATION_CSV_FIELD] = csv_text
+                        else:
+                            result.update(
+                                ok=False,
+                                status=STATUS_GATEWAY_ERROR,
+                                message=(
+                                    "The Arco Server finished this calculation but did not "
+                                    "return its result. The server needs updating."
+                                ),
+                            )
                     return _finish(result)
         in_process = calculate_in_process(pairs, data_path)
         if in_process is not None:
@@ -515,7 +520,6 @@ def _register_hosted_dataset_handle(payload: Mapping[str, Any]) -> None:
 def run_hosted_dataset_operation(
     operation: str,
     pairs: Sequence[Sequence[str]],
-    data_path: str,
     options: Mapping[str, Any],
     *,
     timeout_sec: float,
@@ -524,7 +528,9 @@ def run_hosted_dataset_operation(
     """Serve one ``dataset_run`` / ``dataset_precheck`` on the Gateway when possible, else locally.
 
     ``local`` runs the canonical ``arcrho_runtime_service`` route in this
-    process. A hosted response is returned verbatim with its server paths
+    process, and is the only place the CSV location is resolved on this PC,
+    since resolving it looks the project folder up on the workspace drive. A
+    hosted response is returned verbatim with its server paths
     rebased onto this PC's workspace root; a successful run's dataset handle is
     registered here so the id-addressed grid routes keep working. A refusal
     the hosted route raised passes through with its own status. Once the
@@ -557,7 +563,7 @@ def run_hosted_dataset_operation(
         return result
 
     try:
-        gateway_config = _select_transport(data_path, function, operation, context)
+        gateway_config = _select_transport(function, operation, context)
         if not context["reason"]:
             request_id = uuid.uuid4().hex
             context["request_id"] = request_id
@@ -568,7 +574,7 @@ def run_hosted_dataset_operation(
                     pairs=[[str(key), str(value)] for key, value in pairs],
                     timeout_sec=wait_seconds,
                     user_name=str(gateway_config["user"]),
-                    user_display_name=user_identity_service.get_current_identity()["display_name"],
+                    user_display_name="",
                     operation=operation,
                     options=options,
                 )

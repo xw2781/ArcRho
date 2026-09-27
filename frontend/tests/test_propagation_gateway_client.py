@@ -17,6 +17,7 @@ from app_server.services import (
     dependent_propagation_service as service,
     engine_hosted_save_service,
     propagation_gateway_client as client,
+    user_identity_service,
     workspace_read_client as reads,
 )
 
@@ -38,7 +39,7 @@ class PropagationGatewayTests(unittest.TestCase):
             patch.object(reads.config, "get_root_path", return_value="Z:/not-mounted"),
             patch.object(reads, "_log"),
             patch.object(service, "_workspace_server_root", side_effect=AssertionError("client filesystem access")),
-            patch.object(reads.user_identity_service, "get_current_identity",
+            patch.object(user_identity_service, "get_current_identity",
                          side_effect=AssertionError("client display-name share read")),
         )
         for patcher in patches:

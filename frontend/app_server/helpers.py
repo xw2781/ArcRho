@@ -4,6 +4,7 @@ Imports only from ``app_server.config`` (and stdlib).
 """
 from __future__ import annotations
 
+import io
 import os
 import re
 import csv
@@ -127,17 +128,33 @@ def read_dataset_csv(path: Any, **overrides: Any) -> pd.DataFrame:
     its width taken from its widest line instead.
     """
 
+    options = _dataset_csv_options(overrides, lambda: _width_behind_leading_blank_line(path))
+    return pd.read_csv(path, **options)
+
+
+def read_dataset_csv_text(text: str, **overrides: Any) -> pd.DataFrame:
+    """``read_dataset_csv`` for the text of one dataset CSV rather than its file.
+
+    A hosted calculation answers with the CSV's own text; this reads that text
+    exactly as the file would have been read, blank origins included.
+    """
+
+    options = _dataset_csv_options(overrides, lambda: _leading_blank_width(io.StringIO(text)))
+    return pd.read_csv(io.StringIO(text), **options)
+
+
+def _dataset_csv_options(overrides: Dict[str, Any], leading_blank_width: Any) -> Dict[str, Any]:
     options: Dict[str, Any] = {
         "header": None,
         "float_precision": "round_trip",
         "skip_blank_lines": False,
     }
     if "names" not in overrides:
-        width = _width_behind_leading_blank_line(path)
+        width = leading_blank_width()
         if width:
             options["names"] = list(range(width))
     options.update(overrides)
-    return pd.read_csv(path, **options)
+    return options
 
 
 def _width_behind_leading_blank_line(path: Any) -> int:
@@ -149,16 +166,20 @@ def _width_behind_leading_blank_line(path: Any) -> int:
 
     try:
         with open(path, "r", encoding="utf-8-sig", newline="") as handle:
-            first = handle.readline()
-            if not first or first.strip():
-                return 0
-            width = 1
-            for row in csv.reader(handle):
-                if any(cell.strip() for cell in row):
-                    width = max(width, len(row))
-            return width
+            return _leading_blank_width(handle)
     except (OSError, TypeError, ValueError):
         return 0
+
+
+def _leading_blank_width(handle: Any) -> int:
+    first = handle.readline()
+    if not first or first.strip():
+        return 0
+    width = 1
+    for row in csv.reader(handle):
+        if any(cell.strip() for cell in row):
+            width = max(width, len(row))
+    return width
 
 
 def build_dataset_cache_file_name(

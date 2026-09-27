@@ -1597,6 +1597,9 @@ def arcrho_headers(pairs: list, timeout_sec: float) -> Dict[str, Any]:
     settings = _require_valid_header_project_settings(pairs)
     data_path = set_data_path_like_vba(pairs)
     request_file = None
+    # A hosted exchange answers with the CSV's text; read the file only when
+    # the Engine was not asked or ran beside this process.
+    csv_text = None
 
     _drop_project_csv_cache_older_than_settings(
         data_path, str(settings.get("path") or "").strip(), "headers"
@@ -1620,8 +1623,9 @@ def arcrho_headers(pairs: list, timeout_sec: float) -> Dict[str, Any]:
                 "request_file": request_file,
                 "data_path": data_path,
             }
+        csv_text = outcome.get(ENGINE_CALCULATION_CSV_FIELD)
 
-    raw = file_read_cache.read_text_file_cached(data_path).strip()
+    raw = (csv_text if csv_text is not None else file_read_cache.read_text_file_cached(data_path)).strip()
 
     parts = [x.strip() for x in raw.replace("\n", ",").split(",") if x.strip()]
 
@@ -1716,7 +1720,14 @@ def _with_csv_text(result: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def _header_cache_pairs(project_name: str, period_type: int, transposed: bool, period_length: int, calendar: bool = False) -> list:
+def _header_cache_pairs(
+    project_name: str,
+    period_type: int,
+    transposed: bool,
+    period_length: int,
+    calendar: bool = False,
+    stored_period_length: int = -1,
+) -> list:
     return [
         ("Function", "ArcRhoHeaders"),
         ("periodType", str(period_type)),
@@ -1724,7 +1735,7 @@ def _header_cache_pairs(project_name: str, period_type: int, transposed: bool, p
         ("Calendar", str(calendar)),
         ("PeriodLength", str(period_length)),
         ("ProjectName", project_name),
-        ("StoredPeriodLength", str(-1)),
+        ("StoredPeriodLength", str(stored_period_length)),
     ]
 
 
@@ -1736,8 +1747,13 @@ def get_project_headers(
     period_type: int = 0,
     transposed: bool = False,
     calendar: bool = False,
+    stored_period_length: int = -1,
 ) -> Dict[str, Any]:
-    """Load ArcRho headers for a project without exposing request-pair details."""
+    """Load ArcRho headers for a project without exposing request-pair details.
+
+    This is also the ``arcrho_headers`` workspace read, so a Client PC gets
+    the labels from the server host in one round trip.
+    """
     project = str(project_name or "").strip()
     if not project:
         raise HTTPException(400, "ProjectName is required")
@@ -1747,7 +1763,9 @@ def get_project_headers(
         raise HTTPException(400, "PeriodLength must be a positive integer")
     if length <= 0:
         raise HTTPException(400, "PeriodLength must be a positive integer")
-    pairs = _header_cache_pairs(project, int(period_type), bool(transposed), length, bool(calendar))
+    pairs = _header_cache_pairs(
+        project, int(period_type), bool(transposed), length, bool(calendar), int(stored_period_length)
+    )
     return arcrho_headers(pairs, timeout_sec=max(0.1, float(timeout_sec)))
 
 
@@ -1776,6 +1794,11 @@ def _target_header_cache_paths(project_name: str, origin_length: Any, developmen
 
 
 def clear_arcrho_headers_cache(project_name: str, origin_length: Any = None, development_length: Any = None) -> Dict[str, Any]:
+    """Delete the project's period-heading caches so the Engine rebuilds them.
+
+    The ``arcrho_headers_cache_clear`` workspace mutation: a repeat finds the
+    files already gone and leaves the same end state.
+    """
     project_name_clean = str(project_name or "").strip()
     if not project_name_clean:
         raise HTTPException(400, "ProjectName is required")

@@ -50,7 +50,6 @@ from app_server import config
 from app_server.services import (
     client_save_latency_log_service,
     hosted_save_http_client,
-    user_identity_service,
 )
 
 
@@ -339,9 +338,9 @@ def run_workspace_read(
                 read_kind=read_kind,
                 kwargs=kwargs,
                 user_name=str(gateway_config["user"]),
-                user_display_name=(
-                    "" if gateway_required else user_identity_service.get_current_identity()["display_name"]
-                ),
+                # The server resolves the signed login's display name; the
+                # client's own lookup would read the username index here.
+                user_display_name="",
             )
             remote_started_ns = time.perf_counter_ns()
             try:

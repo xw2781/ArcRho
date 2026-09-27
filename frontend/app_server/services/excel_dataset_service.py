@@ -25,7 +25,11 @@ from fastapi import HTTPException
 from arcrho_api import triangle_rollup
 from arcrho_api.sidecar_core_contract import is_vector_format, stored_length_fields, stored_lengths
 from arcrho_engine_calculation_contract import ENGINE_CALCULATION_CSV_FIELD, OUTPUT_VARIANT_CANONICAL
-from app_server.helpers import _canon_dataset_name, read_dataset_csv as read_numeric_csv
+from app_server.helpers import (
+    _canon_dataset_name,
+    read_dataset_csv as read_numeric_csv,
+    read_dataset_csv_text,
+)
 from app_server.services import (
     arcrho_runtime_service as runtime,
     calculated_dataset_service as calculated,
@@ -92,7 +96,7 @@ def _csv(values: Any) -> str:
 def _validated_csv_text(path: str) -> str:
     """Preserve CSV spelling, but refuse Engine error text masquerading as data."""
     text = runtime._csv_file_text(path)
-    pd.read_csv(io.StringIO(text), header=None, dtype="float64")
+    read_dataset_csv_text(text, dtype="float64")
     return text
 
 
@@ -253,8 +257,8 @@ class _Reader:
             response = self.read(dependency_pairs)
             if not response.get("ok"):
                 return _failure(data_path, str(response.get("message") or f"Cannot read dependency '{name}'."), "calculation_failed")
-            components[_canon_dataset_name(name)] = pd.read_csv(
-                io.StringIO(response[ENGINE_CALCULATION_CSV_FIELD]), header=None, dtype="float64"
+            components[_canon_dataset_name(name)] = read_dataset_csv_text(
+                response[ENGINE_CALCULATION_CSV_FIELD], dtype="float64"
             ).to_numpy()
         try:
             values = calculated.evaluate_formula(contract["formula"], [row["name"] for row in rows], components)
