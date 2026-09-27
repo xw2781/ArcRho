@@ -32,7 +32,7 @@ router = APIRouter()
 
 def _mutate(kind: str, kwargs: Dict[str, Any], local, request_id: str | None = None) -> Dict[str, Any]:
     return workspace_mutation_client.run_workspace_mutation(
-        kind, kwargs, local=local, gateway_required=True, request_id=request_id
+        kind, kwargs, local=local, request_id=request_id
     )
 
 
@@ -42,7 +42,6 @@ def list_project_settings_sources() -> Dict[str, Any]:
         "project_settings_sources",
         {},
         local=project_settings_service.list_project_settings_sources,
-        gateway_required=True,
     )
 
 
@@ -52,7 +51,6 @@ def get_project_folders(source: str) -> Dict[str, Any]:
         "project_folders",
         {"source": source},
         local=lambda: project_settings_service.get_project_folders(source),
-        gateway_required=True,
     )
 
 
@@ -174,7 +172,6 @@ def get_project_settings(source: str) -> Dict[str, Any]:
         "project_registry",
         {"source": source},
         local=lambda: project_settings_service.get_project_settings(source),
-        gateway_required=True,
     )
 
 
@@ -202,7 +199,6 @@ def get_general_settings(project_name: str) -> Dict[str, Any]:
         "general_settings",
         {"project_name": project_name},
         local=lambda: project_settings_service.get_general_settings(project_name),
-        gateway_required=True,
     )
 
 

@@ -14,6 +14,7 @@ import sys
 import tempfile
 import types
 import unittest
+import unittest.mock
 from datetime import datetime
 from pathlib import Path
 
@@ -93,7 +94,10 @@ class BackupTransportTests(unittest.TestCase):
         )
 
     def test_outside_the_app_the_copy_is_taken_here(self):
-        result = backup.back_up_reserving_class(self.server_root, "Demo", "Auto/PP")
+        # Outside the app the app server cannot be imported, whatever an
+        # earlier test in the same run imported.
+        with unittest.mock.patch.dict(sys.modules, {"app_server.services": None}):
+            result = backup.back_up_reserving_class(self.server_root, "Demo", "Auto/PP")
 
         self.assertEqual(result["error"], "")
         self.assertEqual(result["methods"], 1)
@@ -119,9 +123,8 @@ class BackupTransportTests(unittest.TestCase):
         self.assertFalse((self.server_root / "backups").exists())
 
     def test_the_local_fallback_the_transport_owns_takes_the_same_copy(self):
-        # ``run_workspace_mutation`` calls ``local`` itself when the gateway is
-        # unreachable or does not advertise the kind; the service it names is
-        # the one that runs.
+        # ``run_workspace_mutation`` calls ``local`` itself in a server process
+        # (the Bridge worker); the service it names is the one that runs.
         taken: list[dict] = []
 
         def service(**kwargs):

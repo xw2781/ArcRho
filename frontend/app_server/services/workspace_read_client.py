@@ -1,12 +1,13 @@
-"""Client-PC transport selection for Server-hosted workspace reads.
+"""Client-PC transport for Server-hosted workspace reads.
 
-A registered read (``arcrho_workspace_read_contract``) runs on the ArcRho
-Server host through the Gateway when the gateway advertises it, and
-locally over the mapped drive otherwise. Reads are pure functions of the
-workspace, so — unlike hosted saves — an uncertain HTTP outcome may safely
-fall back to the local path; the transport actually used is recorded in the
-client read-latency log so the two can be compared like for like.
-Gateway-required operations disable that fallback on Client PCs.
+A registered read (``arcrho_workspace_read_contract``) runs on the Arco
+Server host through the Gateway. A Client PC has no other way to the
+workspace: when the Gateway is not signed in, does not answer, or does not
+offer the read, the user is told so (:func:`require_client_gateway`) and
+nothing is read over the share. Only a server process (Engine, Gateway,
+Bridge), which runs these very service functions against its own disk, runs
+the read in place. The transport used is recorded in the client read-latency
+log.
 
 A gateway response carries the workspace root the read ran against. Any
 machine-local path in the payload (index folder paths, the cached CSV path,
@@ -50,6 +51,12 @@ from app_server import config
 from app_server.services import (
     client_save_latency_log_service,
     hosted_save_http_client,
+)
+from app_server.services.hosted_save_http_client import (
+    NOT_SIGNED_IN_MESSAGE,
+    SERVER_UNREACHABLE_MESSAGE,
+    SERVER_UPDATE_MESSAGE,
+    SIGN_IN_MESSAGE,
 )
 
 
@@ -107,7 +114,7 @@ def cached_gateway_capabilities(gateway_config: Mapping[str, Any]) -> Dict[str, 
         payload: Dict[str, Any] | None = hosted_save_http_client.probe_gateway(gateway_config)
         ttl = CAPABILITY_CACHE_SECONDS
     except hosted_save_http_client.GatewayServerMismatch:
-        # Never an "unreachable" Gateway: that would send the request to the share.
+        # A different server, not an unreachable one: the user must see why.
         raise
     except HTTPException:
         payload = None
@@ -181,10 +188,10 @@ class GatewayTransportFailure(Exception):
     """The gateway itself, not the operation it hosts, could not serve the request.
 
     ``accepted`` is True when the server may already have acted on the request
-    (the answer timed out or the connection dropped after it was sent); a
-    caller whose operation is not safely repeatable must not retry it
-    elsewhere. It is False when the failure came before the server could have
-    acted, so the caller may run the operation locally instead.
+    (the answer timed out or the connection dropped after it was sent), which
+    the caller reports as an unconfirmed outcome. It is False when the failure
+    came before the server could have acted; :func:`failure_error` is then
+    the error the user sees.
     """
 
     def __init__(self, reason: str, *, timed_out: bool = False, accepted: bool = False) -> None:
@@ -192,6 +199,20 @@ class GatewayTransportFailure(Exception):
         self.reason = reason
         self.timed_out = timed_out
         self.accepted = accepted or timed_out
+
+
+def failure_error(failure: GatewayTransportFailure) -> HTTPException:
+    """The error for a request the Gateway refused or never received.
+
+    A refused signature (a secret the server no longer knows, another
+    server's credential, a clock far off) asks the user to sign in again.
+    """
+
+    if failure.reason in ("gateway_rejected:401", "gateway_rejected:403"):
+        return HTTPException(401, SIGN_IN_MESSAGE)
+    if failure.reason == "gateway_rejected:404":
+        return HTTPException(503, SERVER_UPDATE_MESSAGE)
+    return HTTPException(503, SERVER_UNREACHABLE_MESSAGE)
 
 
 def post_signed_json(
@@ -276,19 +297,52 @@ def _is_server_process() -> bool:
     return bool(str(os.environ.get(api_config.RUNTIME_SERVER_ROOT_ENV) or "").strip())
 
 
+def require_client_gateway(
+    context: Dict[str, Any], supports: Callable[[Mapping[str, Any]], bool]
+) -> Mapping[str, Any] | None:
+    """The Gateway credential a Client PC sends this operation with.
+
+    Returns ``None`` in a server process, which runs the operation itself.
+    On a Client PC every reason the Gateway cannot take it is raised as the
+    error the user sees: not signed in or a credential that cannot be read
+    (401), no answer (503), or a Gateway that does not offer it (503).
+    ``context['reason']`` records which, for the latency log.
+    """
+
+    if _is_server_process():
+        context["reason"] = "server_process"
+        return None
+    try:
+        gateway_config = config.load_gateway_config()
+    except HostedSaveHttpContractError as error:
+        context["reason"] = "gateway_config_invalid"
+        raise HTTPException(401, NOT_SIGNED_IN_MESSAGE) from error
+    if gateway_config.get("enabled") is not True:
+        context["reason"] = "gateway_disabled"
+        raise HTTPException(401, NOT_SIGNED_IN_MESSAGE)
+    capabilities = cached_gateway_capabilities(gateway_config)
+    if capabilities is None:
+        context["reason"] = "gateway_unreachable"
+        raise HTTPException(503, SERVER_UNREACHABLE_MESSAGE)
+    if not supports(capabilities):
+        context["reason"] = "kind_not_advertised"
+        raise HTTPException(503, SERVER_UPDATE_MESSAGE)
+    return gateway_config
+
+
 def run_workspace_read(
     read_kind: str,
     kwargs: Mapping[str, Any],
     *,
     local: Callable[[], Dict[str, Any]],
     finalize: Callable[[Dict[str, Any]], Dict[str, Any]] | None = None,
-    gateway_required: bool = False,
 ) -> Dict[str, Any]:
-    """Serve one registered read over the gateway when possible, else locally.
+    """Serve one registered read over the Gateway, or in place in a server process.
 
-    ``local`` runs the canonical service function in this process. ``finalize``
-    runs on a payload that arrived over HTTP so the local process can adopt any
-    per-process state the service would have registered had it run here.
+    ``local`` runs the canonical service function and is called only in a
+    server process. ``finalize`` runs on a payload that arrived over HTTP so
+    the local process can adopt any per-process state the service would have
+    registered had it run here.
     """
 
     started_ns = time.perf_counter_ns()
@@ -313,68 +367,48 @@ def run_workspace_read(
         return result
 
     try:
-        gateway_config: Mapping[str, Any] = {"enabled": False}
-        if _is_server_process():
-            context["reason"] = "server_process"
-        else:
-            try:
-                gateway_config = config.load_gateway_config()
-            except HostedSaveHttpContractError:
-                context["reason"] = "gateway_config_invalid"
-            else:
-                if gateway_config.get("enabled") is not True:
-                    context["reason"] = "gateway_disabled"
-        if not context["reason"]:
-            capabilities = cached_gateway_capabilities(gateway_config)
-            if capabilities is None:
-                context["reason"] = "gateway_unreachable"
-            elif not gateway_supports_read_kind(capabilities, read_kind):
-                context["reason"] = "kind_not_advertised"
-        if not context["reason"]:
-            request_id = uuid.uuid4().hex
-            context["request_id"] = request_id
-            request_payload = build_workspace_read_request(
-                request_id=request_id,
-                read_kind=read_kind,
-                kwargs=kwargs,
-                user_name=str(gateway_config["user"]),
-                # The server resolves the signed login's display name; the
-                # client's own lookup would read the username index here.
-                user_display_name="",
+        gateway_config = require_client_gateway(
+            context, lambda capabilities: gateway_supports_read_kind(capabilities, read_kind)
+        )
+        if gateway_config is None:
+            return _finish(local())
+        request_id = uuid.uuid4().hex
+        context["request_id"] = request_id
+        request_payload = build_workspace_read_request(
+            request_id=request_id,
+            read_kind=read_kind,
+            kwargs=kwargs,
+            user_name=str(gateway_config["user"]),
+            # The server resolves the signed login's display name.
+            user_display_name="",
+        )
+        remote_started_ns = time.perf_counter_ns()
+        try:
+            payload, server_root, response_bytes = post_signed_json(
+                gateway_config,
+                WORKSPACE_READ_PATH,
+                request_payload,
+                timeout=WORKSPACE_READ_TIMEOUT_SECONDS,
             )
-            remote_started_ns = time.perf_counter_ns()
-            try:
-                payload, server_root, response_bytes = post_signed_json(
-                    gateway_config,
-                    WORKSPACE_READ_PATH,
-                    request_payload,
-                    timeout=WORKSPACE_READ_TIMEOUT_SECONDS,
-                )
-            except GatewayTransportFailure as failure:
-                remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
-                if failure.timed_out or gateway_required:
-                    context["transport"] = TRANSPORT_HTTP
-                    context["reason"] = failure.reason
-                    raise HTTPException(
-                        504 if failure.timed_out else 503,
-                        "The Arco Server took too long to answer this read. Try again in a moment."
-                        if failure.timed_out else "Arco Gateway could not answer this request.",
-                    ) from failure
-                context["reason"] = failure.reason
-            except HTTPException:
-                remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
-                context["transport"] = TRANSPORT_HTTP
-                raise
-            else:
-                remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
-                context["transport"] = TRANSPORT_HTTP
-                payload = rebase_workspace_paths(payload, server_root, _client_workspace_root())
-                if finalize is not None:
-                    payload = finalize(payload)
-                return _finish(payload)
-        if gateway_required and context["reason"] != "server_process":
-            raise HTTPException(503, "Arco Gateway is required for this operation and is unavailable or needs updating.")
-        return _finish(local())
+        except GatewayTransportFailure as failure:
+            remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
+            context["transport"] = TRANSPORT_HTTP
+            context["reason"] = failure.reason
+            if failure.timed_out:
+                raise HTTPException(
+                    504, "The Arco Server took too long to answer this read. Try again in a moment."
+                ) from failure
+            raise failure_error(failure) from failure
+        except HTTPException:
+            remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
+            context["transport"] = TRANSPORT_HTTP
+            raise
+        remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
+        context["transport"] = TRANSPORT_HTTP
+        payload = rebase_workspace_paths(payload, server_root, _client_workspace_root())
+        if finalize is not None:
+            payload = finalize(payload)
+        return _finish(payload)
     except WorkspaceReadContractError as error:
         http_status = 400
         raise HTTPException(400, str(error)) from error
@@ -402,17 +436,18 @@ def run_polled_workspace_read(
     local: Callable[[], Dict[str, Any]],
     unknown: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Serve a Gateway-required read that a window polls on a timer.
+    """Serve a read that a window polls on a timer.
 
     The change watches ask whether something moved; when the server cannot be
-    asked (503) or does not answer in time (504) the honest answer is
-    ``unknown``, which the window treats as "ask again next poll" and never
-    as an alert or an error.
+    asked (not signed in, 401; unreachable, 503) or does not answer in time
+    (504) the honest answer is ``unknown``, which the window treats as "ask
+    again next poll" and never as an alert or an error. The window's own
+    actions show the reason.
     """
 
     try:
-        return run_workspace_read(read_kind, kwargs, local=local, gateway_required=True)
+        return run_workspace_read(read_kind, kwargs, local=local)
     except HTTPException as error:
-        if error.status_code in (503, 504):
+        if error.status_code in (401, 503, 504):
             return {**unknown, "unknown": True}
         raise

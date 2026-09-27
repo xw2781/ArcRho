@@ -349,44 +349,39 @@ class WorkspaceReadHttpRoundTripTests(unittest.TestCase):
         self.assertEqual(self.records[-1]["transport"], "http_gateway")
         self.assertEqual(self.records[-1]["http_status"], 409)
 
-    def test_kind_not_advertised_runs_locally(self) -> None:
-        with patch.object(
-            workspace_read_client,
-            "gateway_supports_read_kind",
-            return_value=False,
-        ):
-            response = workspace_read_client.run_workspace_read(
+    def _refused(self) -> HTTPException:
+        with self.assertRaises(HTTPException) as caught:
+            workspace_read_client.run_workspace_read(
                 "table_summary",
                 {"project_name": "Demo"},
-                local=lambda: {"ok": True, "from": "local"},
+                local=lambda: self.fail("a Client PC must not read the share"),
             )
-        self.assertEqual(response["from"], "local")
-        self.assertEqual(self.records[-1]["transport"], "smb")
+        return caught.exception
+
+    def test_a_kind_not_advertised_needs_a_server_update(self) -> None:
+        with patch.object(workspace_read_client, "gateway_supports_read_kind", return_value=False):
+            refused = self._refused()
+        self.assertEqual(refused.status_code, 503)
+        self.assertIn("needs updating", refused.detail)
         self.assertEqual(self.records[-1]["reason"], "kind_not_advertised")
 
-    def test_unreachable_gateway_runs_locally(self) -> None:
+    def test_an_unreachable_gateway_is_reported(self) -> None:
         unreachable = dict(self.client_config, url="http://127.0.0.1:9")
         self.addCleanup(allow_test_gateway(unreachable["url"]))
         with patch.object(app_config, "load_gateway_config", return_value=unreachable):
-            response = workspace_read_client.run_workspace_read(
-                "table_summary",
-                {"project_name": "Demo"},
-                local=lambda: {"ok": True, "from": "local"},
-            )
-        self.assertEqual(response["from"], "local")
+            refused = self._refused()
+        self.assertEqual(refused.status_code, 503)
+        self.assertIn("can't be reached", refused.detail)
         self.assertEqual(self.records[-1]["reason"], "gateway_unreachable")
 
-    def test_gateway_layer_rejection_runs_locally(self) -> None:
+    def test_a_refused_signature_asks_the_user_to_sign_in_again(self) -> None:
         """A wrong secret is a gateway refusal without the workspace-root header."""
 
         wrong_secret = dict(self.client_config, secret="not-alice")
         with patch.object(app_config, "load_gateway_config", return_value=wrong_secret):
-            response = workspace_read_client.run_workspace_read(
-                "table_summary",
-                {"project_name": "Demo"},
-                local=lambda: {"ok": True, "from": "local"},
-            )
-        self.assertEqual(response["from"], "local")
+            refused = self._refused()
+        self.assertEqual(refused.status_code, 401)
+        self.assertIn("Sign in to the server again", refused.detail)
         self.assertEqual(self.records[-1]["reason"], "gateway_rejected:401")
 
     def test_server_process_never_routes_to_itself(self) -> None:

@@ -11,6 +11,8 @@ from unittest.mock import patch
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
+TEST_TEMP_ROOT = FRONTEND_ROOT.parent / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 
 from app_server import config
 from app_server.services import user_identity_service
@@ -19,12 +21,16 @@ from app_server.services import user_identity_service
 class UserIdentityServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         user_identity_service.clear_display_name_cache()
+        # The username index is read only where the workspace is local disk.
+        server = patch.dict("os.environ", {config.RUNTIME_SERVER_ROOT_ENV: str(TEST_TEMP_ROOT)})
+        server.start()
+        self.addCleanup(server.stop)
 
     def tearDown(self) -> None:
         user_identity_service.clear_display_name_cache()
 
     def test_resolves_full_name_case_insensitively(self) -> None:
-        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT)) as temp_dir:
             index_path = Path(temp_dir) / "username_index.json"
             index_path.write_text(
                 json.dumps({"users": [{"login_name": "XWei.PRCINS", "full_name": "Wei, Xiao"}]}),
@@ -38,7 +44,7 @@ class UserIdentityServiceTests(unittest.TestCase):
             self.assertEqual(user_identity_service.resolve_display_name("unmapped.user"), "unmapped.user")
 
     def test_current_display_name_reads_the_index_once_per_session(self) -> None:
-        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT)) as temp_dir:
             index_path = Path(temp_dir) / "username_index.json"
             index_path.write_text(
                 json.dumps({"users": [{"login_name": "xwei", "full_name": "Wei, Xiao"}]}),
@@ -56,6 +62,18 @@ class UserIdentityServiceTests(unittest.TestCase):
                 user_identity_service.clear_display_name_cache()
                 self.assertEqual(user_identity_service.get_current_display_name(), "xwei")
 
+    def test_a_client_process_never_opens_the_index(self) -> None:
+        with tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT)) as temp_dir:
+            index_path = Path(temp_dir) / "username_index.json"
+            index_path.write_text(
+                json.dumps({"users": [{"login_name": "xwei", "full_name": "Wei, Xiao"}]}),
+                encoding="utf-8",
+            )
+            with patch.dict("os.environ", {config.RUNTIME_SERVER_ROOT_ENV: ""}), patch.object(
+                config, "get_username_index_path", return_value=str(index_path)
+            ), patch("builtins.open", side_effect=AssertionError("opened the index")):
+                self.assertEqual(user_identity_service.resolve_display_name("xwei"), "xwei")
+
     def test_current_display_name_is_empty_without_a_login(self) -> None:
         with patch.object(user_identity_service, "get_windows_login_name", return_value=""):
             self.assertEqual(user_identity_service.get_current_display_name(), "")
@@ -66,6 +84,10 @@ class ActingIdentityTests(unittest.TestCase):
 
     def setUp(self) -> None:
         user_identity_service.clear_display_name_cache()
+        # The username index is read only where the workspace is local disk.
+        server = patch.dict("os.environ", {config.RUNTIME_SERVER_ROOT_ENV: str(TEST_TEMP_ROOT)})
+        server.start()
+        self.addCleanup(server.stop)
 
     def tearDown(self) -> None:
         user_identity_service.clear_display_name_cache()
@@ -87,7 +109,7 @@ class ActingIdentityTests(unittest.TestCase):
             )
 
     def test_a_login_without_a_display_name_resolves_through_the_index(self) -> None:
-        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT)) as temp_dir:
             index_path = Path(temp_dir) / "username_index.json"
             index_path.write_text(
                 json.dumps({"users": [{"login_name": "xwei", "full_name": "Wei, Xiao"}]}),

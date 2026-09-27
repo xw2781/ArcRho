@@ -168,7 +168,7 @@ test("an Engine save reports the datasets and methods it refreshed", () => {
     describeDataProcessingRulesSaveResult({ refresh: { classes_total: 0, failures: [] } }),
     { text: "", failed: false },
   );
-  // A direct save (no Engine) only counted the caches it made stale.
+  // A result that refreshed nothing only counts the caches it made stale.
   assert.deepEqual(
     describeDataProcessingRulesSaveResult({ impact: { generated_caches_rejected: 5 } }),
     { text: "5 generated cache file(s) will refresh when next opened.", failed: false },
@@ -181,11 +181,13 @@ test("an Engine save reports the datasets and methods it refreshed", () => {
   );
 });
 
-test("the rules editor saves through the Engine job and falls back without one", () => {
+test("the rules editor saves only through the Engine job", () => {
   assert.match(
     rulesFeatureSource,
-    /async function saveRulesOnEngine\([\s\S]*fetchImpl\("\/data_processing_rules\/save_job"[\s\S]*response\.status === 503[\s\S]*return saveRulesDirectly\(/,
+    /async function saveRulesOnEngine\([\s\S]*fetchImpl\("\/data_processing_rules\/save_job"/,
   );
+  // No Engine or no server is an error the page shows, never a direct save.
+  assert.doesNotMatch(rulesFeatureSource, /saveRulesDirectly|fetchImpl\("\/data_processing_rules",/);
   assert.match(rulesFeatureSource, /waitForDataProcessingRulesJob\(\{[\s\S]*jobId: submitted\?\.job_id/);
   assert.match(rulesFeatureSource, /return terminal\?\.result \|\| \{\}/);
   // A stale revision reloads the document on both paths, as it always did.
@@ -210,9 +212,9 @@ test("the rules module and its job module carry one fresh version stamp", () => 
   const [, stamp] = coordinatorSource.match(
     /project_settings_data_processing_rules\.js\?v=([A-Za-z0-9]+)"/u,
   );
-  assert.equal(stamp, "20260905rules2");
+  assert.equal(stamp, "20260927smb18");
   assert.match(
     rulesFeatureSource,
-    /from "\.\/project_settings_data_processing_rules_job\.js\?v=20260905rules2"/u,
+    /from "\.\/project_settings_data_processing_rules_job\.js\?v=20260927smb18"/u,
   );
 });

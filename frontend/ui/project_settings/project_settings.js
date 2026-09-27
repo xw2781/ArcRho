@@ -11,10 +11,10 @@
  *   - shared table column sizing              -> project_settings_table_columns.js
  */
 import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=20260901dup1";
-import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260927src2";
-import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260927src2";
+import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260927smb18";
+import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260927smb18";
 import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260901dup1";
-import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260905rules2";
+import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260927smb18";
 import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260905scope1";
 import {
   applyProjectSettingsTablePreferences,
@@ -23,17 +23,17 @@ import {
   normalizeTableColumnPreferenceKey,
   resizeCellTextarea,
   wireProjectSettingsTableScrollbarActivity,
-} from "/ui/project_settings/project_settings_table_columns.js?v=20260927src2";
+} from "/ui/project_settings/project_settings_table_columns.js?v=20260927smb18";
 import {
   createGeneralSettingsFeature,
   formatBoundaryYmDisplay,
   normalizeBoundaryYmCanonical,
-} from "/ui/project_settings/project_settings_general_settings.js?v=20260927src2";
-import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260927src2";
-import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260927src2";
-import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260927src2";
+} from "/ui/project_settings/project_settings_general_settings.js?v=20260927smb18";
+import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260927smb18";
+import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260927smb18";
+import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260927smb18";
 import { createAutoSaveScheduler } from "/ui/project_settings/project_settings_auto_save.js?v=20260901dup1";
-import { createSourceRefreshFeature } from "/ui/project_settings/project_settings_source_refresh.js?v=20260927src2";
+import { createSourceRefreshFeature } from "/ui/project_settings/project_settings_source_refresh.js?v=20260927smb18";
 import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260816a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 

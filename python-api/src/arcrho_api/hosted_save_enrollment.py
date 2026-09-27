@@ -44,6 +44,7 @@ from arcrho_hosted_save_http_contract import (
     server_config_path,
 )
 
+from .config import SERVER_ID_KEY, read_server_id
 from .gateway_test_guard import gateway_opener, refuse_unless_allowed_url
 from .io import write_json_atomic
 
@@ -173,8 +174,27 @@ def provision_gateway_user(
             raise HostedSaveHttpContractError(
                 "Gateway automatic enrollment has no configured client URL."
             )
-        write_json_atomic(local_path, client_credential(effective_url, user, secret))
+        write_json_atomic(
+            local_path,
+            client_credential(effective_url, user, secret, read_server_id(server_root)),
+        )
     return server_config_path(server_root), local_path
+
+
+def remember_server_id(client_output: str | os.PathLike[str], server_id: str) -> None:
+    """Store ``server_id`` in a credential signed up before sign-up stored one.
+
+    The client calls this once, with the id of the first Gateway the
+    credential is used against; a credential that already names one is left
+    alone.
+    """
+
+    local_path = Path(client_output).expanduser()
+    with _exclusive_file_lock(local_path.with_name(f".{local_path.name}.lock")):
+        credential = _read_object(local_path)
+        if credential and not str(credential.get(SERVER_ID_KEY) or "").strip():
+            credential[SERVER_ID_KEY] = str(server_id).strip()
+            write_json_atomic(local_path, credential)
 
 
 def probe_gateway_url(client_url: str) -> dict[str, Any]:
@@ -279,9 +299,10 @@ def enroll_once(
     and the caller asks for it. Every failure leaves the local file absent, so
     the next launch simply tries again.
 
-    ``probe`` is how the caller reaches the Gateway's capabilities. The app
-    server passes its own, which also refuses a Gateway serving another
-    server's folder; every other caller takes :func:`probe_gateway_url`.
+    ``probe`` is how the caller reaches the Gateway's capabilities; every
+    caller but the app server takes :func:`probe_gateway_url`. The server id
+    they report is stored in the credential, so later requests can refuse a
+    different server at the same address without reading its folder.
     ``enroll`` is the sign-up itself, :func:`request_windows_enrollment`
     unless a test replaces it.
     """
@@ -302,7 +323,13 @@ def enroll_once(
         answer = (enroll or request_windows_enrollment)(client_url)
         with _exclusive_file_lock(local_path.with_name(f".{local_path.name}.lock")):
             write_json_atomic(
-                local_path, client_credential(client_url, answer["user"], answer["secret"])
+                local_path,
+                client_credential(
+                    client_url,
+                    answer["user"],
+                    answer["secret"],
+                    str(capabilities.get(SERVER_ID_KEY) or ""),
+                ),
             )
     except Exception as exc:  # noqa: BLE001 - any failure must leave no credential
         return {"status": "unavailable", "reason": str(exc)}

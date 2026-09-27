@@ -509,10 +509,11 @@ def back_up_reserving_class(
     The mapped drive is used only where the app server cannot be imported at
     all, which is a script outside the app, never a Client PC inside it.
 
-    A gateway failure that proves nothing was written falls back to the drive;
-    one the server may already have acted on is reported as unknown instead,
-    because a second copy taken from here would be reasoning about a workspace
-    the first one already wrote to.
+    Inside the app a Client PC never copies over the drive: a Gateway that
+    cannot take the request is reported, and one the server may already have
+    acted on is reported as unknown, because a second copy taken from here
+    would be reasoning about a workspace the first one already wrote to. A
+    server process (the Bridge worker) takes the copy on its own disk.
     """
 
     identifier = str(backup_id or "").strip().casefold() or new_backup_id(now)

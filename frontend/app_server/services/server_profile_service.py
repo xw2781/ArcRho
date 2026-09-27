@@ -209,10 +209,9 @@ def server_component_status() -> Dict[str, Any]:
             COMPONENT_STATUS_READ_KIND,
             {},
             local=server_component_status_service.get_server_component_status,
-            gateway_required=True,
         )
     except HTTPException as exc:
-        if exc.status_code not in (503, 504):
+        if exc.status_code not in (401, 503, 504):
             raise
         return {
             "ok": True, "source": "gateway", "answering": False, "detail": _silent_gateway_detail(), "roles": [],

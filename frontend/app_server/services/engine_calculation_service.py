@@ -7,21 +7,18 @@ exchange; it is the same code whether it runs on a Client PC over the mapped
 drive or inside the Arco Gateway on the server host against local disk.
 
 ``run_engine_calculation`` is what the runtime service calls. On a Client PC
-whose Gateway advertises the Engine function, it POSTs the logical request
-(``arcrho_engine_calculation_contract``) and lets the server publish and wait
-locally; the answer carries the CSV's own text, so the Client PC pays one HTTP
-round trip and never waits for the file on its drive or reads it there. In
-every other case — a server process, a disabled or unreachable gateway, a
-function the gateway does not host, or a refusal before the request was
-accepted — it runs the exchange here exactly as before.
-
-Once the Gateway has accepted a request the outcome is never retried over SMB:
-a second request file would make the Engine compute the same CSV twice.
+it POSTs the logical request (``arcrho_engine_calculation_contract``) to the
+Gateway and lets the server publish and wait locally; the answer carries the
+CSV's own text, so the Client PC pays one HTTP round trip and never waits for
+the file on its drive or reads it there. A Client PC never writes a request
+file: a Gateway that is not signed in, does not answer, or does not host the
+function is reported to the user. Only a server process runs the exchange in
+place (in process when it hosts an Engine).
 
 ``run_hosted_dataset_operation`` moves the whole ``/arcrho/tri*`` and
 ``/arcrho/vec*`` route — cache validation, the exchange, the sidecar write, the
 dependent enqueue, and the index refresh — to the server host under the same
-rules; the client keeps only the dataset-handle registration.
+rule; the client keeps only the dataset-handle registration.
 """
 
 from __future__ import annotations
@@ -55,8 +52,6 @@ from arcrho_engine_calculation_contract import (
     clamp_engine_calculation_wait,
     engine_function_of,
 )
-from arcrho_hosted_save_http_contract import HostedSaveHttpContractError
-
 from app_server import config
 from app_server.helpers import (
     build_engine_request_info,
@@ -65,17 +60,15 @@ from app_server.helpers import (
     set_data_path_like_vba,
     wait_for_file,
 )
-from app_server.services import (
-    client_save_latency_log_service,
-    workspace_read_client,
-)
+from app_server.services import client_save_latency_log_service
 from app_server.services.workspace_read_client import (
     TRANSPORT_HTTP,
     TRANSPORT_LOCAL,
     GatewayTransportFailure,
-    cached_gateway_capabilities,
+    failure_error,
     post_signed_json,
     rebase_workspace_paths,
+    require_client_gateway,
 )
 
 
@@ -306,36 +299,20 @@ def _pair(pairs: Sequence[Sequence[str]], wanted: str) -> str:
     return ""
 
 
-def _select_transport(function: str, operation: str, context: Dict[str, Any]) -> Mapping[str, Any]:
-    """Fill ``context['reason']`` when the operation must run locally; return the gateway config.
+def _select_transport(function: str, operation: str, context: Dict[str, Any]) -> Mapping[str, Any] | None:
+    """The Gateway a Client PC sends this calculation to; ``None`` in a server process.
 
     Like a workspace read, the choice depends on the process, not on where the
     workspace root sits: a Client PC whose root is on its own disk (the local
     test server) still asks its Gateway, which is the Engine's host.
     """
 
-    gateway_config: Mapping[str, Any] = {"enabled": False}
-    if workspace_read_client._is_server_process():
-        context["reason"] = "server_process"
-    else:
-        try:
-            gateway_config = config.load_gateway_config()
-        except HostedSaveHttpContractError:
-            context["reason"] = "gateway_config_invalid"
-        else:
-            if gateway_config.get("enabled") is not True:
-                context["reason"] = "gateway_disabled"
-    if not context["reason"]:
-        capabilities = cached_gateway_capabilities(gateway_config)
-        if capabilities is None:
-            context["reason"] = "gateway_unreachable"
-        elif not gateway_supports_engine_function(capabilities, function):
-            context["reason"] = "function_not_advertised"
-        elif operation != OPERATION_EXCHANGE and not gateway_supports_operation(
-            capabilities, operation
-        ):
-            context["reason"] = "operation_not_advertised"
-    return gateway_config
+    def supports(capabilities: Mapping[str, Any]) -> bool:
+        return gateway_supports_engine_function(capabilities, function) and (
+            operation == OPERATION_EXCHANGE or gateway_supports_operation(capabilities, operation)
+        )
+
+    return require_client_gateway(context, supports)
 
 
 def _local_outcome(result: Mapping[str, Any]) -> Dict[str, Any]:
@@ -390,104 +367,100 @@ def run_engine_calculation(
 
     try:
         gateway_config = _select_transport(function, OPERATION_EXCHANGE, context)
-        if not context["reason"]:
-            request_id = uuid.uuid4().hex
-            context["request_id"] = request_id
-            wait_seconds = clamp_engine_calculation_wait(max(0.1, float(timeout_sec)))
-            try:
-                request_payload = build_engine_calculation_request(
-                    request_id=request_id,
-                    pairs=[[str(key), str(value)] for key, value in pairs],
-                    timeout_sec=wait_seconds,
-                    user_name=str(gateway_config["user"]),
-                    # The server resolves the signed login's display name; the
-                    # client's own lookup would read the username index here.
-                    user_display_name="",
-                    output_variant=str(output_variant or OUTPUT_VARIANT_CANONICAL),
-                )
-            except EngineCalculationContractError:
-                # This request cannot travel; the local exchange still can.
-                context["reason"] = "request_not_hostable"
+        if gateway_config is None:
+            in_process = calculate_in_process(pairs, data_path)
+            if in_process is not None:
+                context["transport"] = TRANSPORT_IN_PROCESS
+                wait_ms = in_process.get("wait_ms")
+                return _finish(in_process)
+            return _finish(_local_outcome(publish_and_wait(pairs, data_path, timeout_sec)))
+        request_id = uuid.uuid4().hex
+        context["request_id"] = request_id
+        wait_seconds = clamp_engine_calculation_wait(max(0.1, float(timeout_sec)))
+        try:
+            request_payload = build_engine_calculation_request(
+                request_id=request_id,
+                pairs=[[str(key), str(value)] for key, value in pairs],
+                timeout_sec=wait_seconds,
+                user_name=str(gateway_config["user"]),
+                # The server resolves the signed login's display name.
+                user_display_name="",
+                output_variant=str(output_variant or OUTPUT_VARIANT_CANONICAL),
+            )
+        except EngineCalculationContractError as error:
+            context["reason"] = "request_not_hostable"
+            raise HTTPException(400, str(error)) from error
+        remote_started_ns = time.perf_counter_ns()
+        try:
+            payload, server_root, response_bytes = post_signed_json(
+                gateway_config,
+                ENGINE_CALCULATION_PATH,
+                request_payload,
+                timeout=wait_seconds + ENGINE_CALCULATION_HTTP_TIMEOUT_MARGIN_SECONDS,
+            )
+        except GatewayTransportFailure as failure:
+            remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
+            context["transport"] = TRANSPORT_HTTP
+            context["reason"] = failure.reason
+            if not failure.accepted:
+                raise failure_error(failure) from failure
+            # The server may already have published the request.
+            return _finish(
+                {
+                    "ok": False,
+                    "status": (
+                        ENGINE_CALCULATION_STATUS_TIMEOUT
+                        if failure.timed_out
+                        else STATUS_GATEWAY_ERROR
+                    ),
+                    "request_file": None,
+                    "transport": TRANSPORT_HTTP,
+                    "message": (
+                        "The Arco Server took too long to finish this calculation. "
+                        "Verify the data engine is running, then try again."
+                        if failure.timed_out
+                        else "The Arco Server connection failed while waiting for "
+                        "this calculation. Try again in a moment."
+                    ),
+                }
+            )
+        except HTTPException:
+            remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
+            context["transport"] = TRANSPORT_HTTP
+            raise
+        remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
+        context["transport"] = TRANSPORT_HTTP
+        payload = rebase_workspace_paths(payload, server_root, _client_workspace_root())
+        wait_ms = payload.get("wait_ms")
+        server_data_path = str(payload.get("data_path") or "")
+        if not _same_path(server_data_path, data_path):
+            raise HTTPException(
+                500,
+                "The Arco Server resolved this calculation to a different output "
+                "location than this PC. Check that both use the same workspace.",
+            )
+        result = {
+            "ok": bool(payload.get("ok")),
+            "status": str(payload.get("status") or STATUS_GATEWAY_ERROR),
+            "request_file": payload.get("request_file"),
+            "transport": TRANSPORT_HTTP,
+        }
+        if result["ok"]:
+            # The result travels in the reply: this PC neither waits for the
+            # CSV on its drive nor reads it there.
+            csv_text = payload.get(ENGINE_CALCULATION_CSV_FIELD)
+            if isinstance(csv_text, str):
+                result[ENGINE_CALCULATION_CSV_FIELD] = csv_text
             else:
-                remote_started_ns = time.perf_counter_ns()
-                try:
-                    payload, server_root, response_bytes = post_signed_json(
-                        gateway_config,
-                        ENGINE_CALCULATION_PATH,
-                        request_payload,
-                        timeout=wait_seconds + ENGINE_CALCULATION_HTTP_TIMEOUT_MARGIN_SECONDS,
-                    )
-                except GatewayTransportFailure as failure:
-                    remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
-                    if failure.accepted:
-                        # The server may already have published the request;
-                        # a second request file must not be written.
-                        context["transport"] = TRANSPORT_HTTP
-                        context["reason"] = failure.reason
-                        return _finish(
-                            {
-                                "ok": False,
-                                "status": (
-                                    ENGINE_CALCULATION_STATUS_TIMEOUT
-                                    if failure.timed_out
-                                    else STATUS_GATEWAY_ERROR
-                                ),
-                                "request_file": None,
-                                "transport": TRANSPORT_HTTP,
-                                "message": (
-                                    "The Arco Server took too long to finish this calculation. "
-                                    "Verify the data engine is running, then try again."
-                                    if failure.timed_out
-                                    else "The Arco Server connection failed while waiting for "
-                                    "this calculation. Try again in a moment."
-                                ),
-                            }
-                        )
-                    context["reason"] = failure.reason
-                except HTTPException:
-                    remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
-                    context["transport"] = TRANSPORT_HTTP
-                    raise
-                else:
-                    remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
-                    context["transport"] = TRANSPORT_HTTP
-                    payload = rebase_workspace_paths(payload, server_root, _client_workspace_root())
-                    wait_ms = payload.get("wait_ms")
-                    server_data_path = str(payload.get("data_path") or "")
-                    if not _same_path(server_data_path, data_path):
-                        raise HTTPException(
-                            500,
-                            "The Arco Server resolved this calculation to a different output "
-                            "location than this PC. Check that both use the same workspace.",
-                        )
-                    result = {
-                        "ok": bool(payload.get("ok")),
-                        "status": str(payload.get("status") or STATUS_GATEWAY_ERROR),
-                        "request_file": payload.get("request_file"),
-                        "transport": TRANSPORT_HTTP,
-                    }
-                    if result["ok"]:
-                        # The result travels in the reply: this PC neither
-                        # waits for the CSV on its drive nor reads it there.
-                        csv_text = payload.get(ENGINE_CALCULATION_CSV_FIELD)
-                        if isinstance(csv_text, str):
-                            result[ENGINE_CALCULATION_CSV_FIELD] = csv_text
-                        else:
-                            result.update(
-                                ok=False,
-                                status=STATUS_GATEWAY_ERROR,
-                                message=(
-                                    "The Arco Server finished this calculation but did not "
-                                    "return its result. The server needs updating."
-                                ),
-                            )
-                    return _finish(result)
-        in_process = calculate_in_process(pairs, data_path)
-        if in_process is not None:
-            context["transport"] = TRANSPORT_IN_PROCESS
-            wait_ms = in_process.get("wait_ms")
-            return _finish(in_process)
-        return _finish(_local_outcome(publish_and_wait(pairs, data_path, timeout_sec)))
+                result.update(
+                    ok=False,
+                    status=STATUS_GATEWAY_ERROR,
+                    message=(
+                        "The Arco Server finished this calculation but did not "
+                        "return its result. The server needs updating."
+                    ),
+                )
+        return _finish(result)
     except HTTPException as error:
         http_status = int(error.status_code)
         raise
@@ -525,17 +498,17 @@ def run_hosted_dataset_operation(
     timeout_sec: float,
     local: Callable[[], Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """Serve one ``dataset_run`` / ``dataset_precheck`` on the Gateway when possible, else locally.
+    """Serve one ``dataset_run`` / ``dataset_precheck`` on the Gateway, or in place in a server process.
 
-    ``local`` runs the canonical ``arcrho_runtime_service`` route in this
-    process, and is the only place the CSV location is resolved on this PC,
-    since resolving it looks the project folder up on the workspace drive. A
-    hosted response is returned verbatim with its server paths
-    rebased onto this PC's workspace root; a successful run's dataset handle is
-    registered here so the id-addressed grid routes keep working. A refusal
-    the hosted route raised passes through with its own status. Once the
-    Gateway may have accepted the request the route is not re-run locally: a
-    timeout or lost connection surfaces as ``504`` and the user retries.
+    ``local`` runs the canonical ``arcrho_runtime_service`` route and is called
+    only in a server process; it is the only place the CSV location is
+    resolved, since resolving it looks the project folder up on disk. A hosted
+    response is returned verbatim with its server paths rebased onto this PC's
+    workspace root; a successful run's dataset handle is registered here so
+    the id-addressed grid routes keep working. A refusal the hosted route
+    raised passes through with its own status. A timeout or lost connection
+    after the Gateway may have accepted the request surfaces as ``504`` and
+    the user retries.
     """
 
     started_ns = time.perf_counter_ns()
@@ -564,57 +537,56 @@ def run_hosted_dataset_operation(
 
     try:
         gateway_config = _select_transport(function, operation, context)
-        if not context["reason"]:
-            request_id = uuid.uuid4().hex
-            context["request_id"] = request_id
-            wait_seconds = clamp_engine_calculation_wait(max(0.1, float(timeout_sec)))
-            try:
-                request_payload = build_engine_calculation_request(
-                    request_id=request_id,
-                    pairs=[[str(key), str(value)] for key, value in pairs],
-                    timeout_sec=wait_seconds,
-                    user_name=str(gateway_config["user"]),
-                    user_display_name="",
-                    operation=operation,
-                    options=options,
-                )
-            except EngineCalculationContractError:
-                context["reason"] = "request_not_hostable"
-            else:
-                remote_started_ns = time.perf_counter_ns()
-                try:
-                    payload, server_root, response_bytes = post_signed_json(
-                        gateway_config,
-                        ENGINE_CALCULATION_PATH,
-                        request_payload,
-                        # A run may chain several Engine exchanges plus the
-                        # sidecar and dependent work; allow the route its
-                        # own budget on top of one exchange wait.
-                        timeout=WORKSPACE_OPERATION_TIMEOUT_SECONDS,
-                    )
-                except GatewayTransportFailure as failure:
-                    remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
-                    if failure.accepted:
-                        context["transport"] = TRANSPORT_HTTP
-                        context["reason"] = failure.reason
-                        raise HTTPException(
-                            504,
-                            "The Arco Server took too long to finish this dataset request. "
-                            "Reload the dataset before retrying.",
-                        ) from failure
-                    context["reason"] = failure.reason
-                except HTTPException:
-                    remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
-                    context["transport"] = TRANSPORT_HTTP
-                    raise
-                else:
-                    remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
-                    context["transport"] = TRANSPORT_HTTP
-                    payload = rebase_workspace_paths(payload, server_root, _client_workspace_root())
-                    if operation == OPERATION_DATASET_RUN:
-                        _register_hosted_dataset_handle(payload)
-                    return _finish(payload)
-        return _finish(local())
+        if gateway_config is None:
+            return _finish(local())
+        request_id = uuid.uuid4().hex
+        context["request_id"] = request_id
+        wait_seconds = clamp_engine_calculation_wait(max(0.1, float(timeout_sec)))
+        try:
+            request_payload = build_engine_calculation_request(
+                request_id=request_id,
+                pairs=[[str(key), str(value)] for key, value in pairs],
+                timeout_sec=wait_seconds,
+                user_name=str(gateway_config["user"]),
+                user_display_name="",
+                operation=operation,
+                options=options,
+            )
+        except EngineCalculationContractError as error:
+            context["reason"] = "request_not_hostable"
+            raise HTTPException(400, str(error)) from error
+        remote_started_ns = time.perf_counter_ns()
+        try:
+            payload, server_root, response_bytes = post_signed_json(
+                gateway_config,
+                ENGINE_CALCULATION_PATH,
+                request_payload,
+                # A run may chain several Engine exchanges plus the sidecar
+                # and dependent work; allow the route its own budget on top
+                # of one exchange wait.
+                timeout=WORKSPACE_OPERATION_TIMEOUT_SECONDS,
+            )
+        except GatewayTransportFailure as failure:
+            remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
+            context["transport"] = TRANSPORT_HTTP
+            context["reason"] = failure.reason
+            if not failure.accepted:
+                raise failure_error(failure) from failure
+            raise HTTPException(
+                504,
+                "The Arco Server took too long to finish this dataset request. "
+                "Reload the dataset before retrying.",
+            ) from failure
+        except HTTPException:
+            remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
+            context["transport"] = TRANSPORT_HTTP
+            raise
+        remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
+        context["transport"] = TRANSPORT_HTTP
+        payload = rebase_workspace_paths(payload, server_root, _client_workspace_root())
+        if operation == OPERATION_DATASET_RUN:
+            _register_hosted_dataset_handle(payload)
+        return _finish(payload)
     except HTTPException as error:
         http_status = int(error.status_code)
         raise

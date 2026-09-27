@@ -231,6 +231,9 @@ class QueueBridgeAvailabilityTests(unittest.TestCase):
         self._patches = [
             patch.object(queue, "BRIDGE_SILENCE_LIMIT_SEC", 0.05),
             patch.object(queue, "POLL_INTERVAL_SEC", 0.01),
+            # These run outside the app: the queue is on this machine's disk,
+            # whatever an earlier test in the same run imported.
+            patch.dict(sys.modules, {"app_server.services": None}),
         ]
         for item in self._patches:
             item.start()

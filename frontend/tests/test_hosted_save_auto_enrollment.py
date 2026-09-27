@@ -53,7 +53,7 @@ class HostedSaveAutoEnrollmentTests(unittest.TestCase):
             patch.object(config, "get_root_path", side_effect=AssertionError("the share was read")),
             patch.object(
                 client,
-                "probe_gateway_identity",
+                "fetch_gateway_capabilities",
                 side_effect=probe or (lambda _url: {"windows_enrollment": True}),
             ) as probed,
             patch.object(
@@ -93,16 +93,14 @@ class HostedSaveAutoEnrollmentTests(unittest.TestCase):
         self.assertEqual(self.signed_up, [])
         self.assertFalse(self.local_path.exists())
 
-    def test_a_gateway_serving_another_server_is_refused_before_sign_up(self) -> None:
-        def mismatch(_url):
-            raise hosted_save_enrollment_service.hosted_save_http_client.GatewayServerMismatch()
+    def test_sign_up_stores_the_server_id_the_gateway_reports(self) -> None:
+        result, _ = self._auto_enroll(
+            probe=lambda _url: {"windows_enrollment": True, "server_id": "server-a"}
+        )
 
-        result, _ = self._auto_enroll(probe=mismatch)
-
-        self.assertEqual(result["status"], "unavailable")
-        self.assertIn("different server", result["reason"])
-        self.assertEqual(self.signed_up, [])
-        self.assertFalse(self.local_path.exists())
+        self.assertEqual(result["status"], "enrolled")
+        local = normalize_client_config(json.loads(self.local_path.read_text(encoding="utf-8")))
+        self.assertEqual(local["server_id"], "server-a")
 
     def test_a_gateway_without_sign_up_is_reported_as_needing_an_update(self) -> None:
         result, _ = self._auto_enroll(probe=lambda _url: {"hosted_save_http": True})

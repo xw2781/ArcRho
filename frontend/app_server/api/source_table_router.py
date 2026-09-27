@@ -49,7 +49,6 @@ def _source_table_settings(project_name: str) -> Dict[str, Any]:
         "source_table_settings",
         {"project_name": project_name},
         local=lambda: source_table_service.read_source_table_settings(project_name),
-        gateway_required=True,
     )
 
 
@@ -82,7 +81,7 @@ def get_source_table_file_status(project_name: str) -> Dict[str, Any]:
 
 def _mutate(kind: str, kwargs: Dict[str, Any], local) -> Dict[str, Any]:
     return workspace_mutation_client.run_workspace_mutation(
-        kind, kwargs, local=local, gateway_required=True
+        kind, kwargs, local=local
     )
 
 
@@ -130,7 +129,6 @@ def get_source_table_connections() -> Dict[str, Any]:
             "mssql_connections",
             {},
             local=source_table_service.load_mssql_connections,
-            gateway_required=True,
         )
     except HTTPException:
         raise
@@ -215,7 +213,6 @@ def get_source_refresh_plan(project_name: str) -> Dict[str, Any]:
             "source_refresh_status",
             {"project_name": project_name},
             local=lambda: source_refresh_service.get_source_table_refresh_status(project_name),
-            gateway_required=True,
         )
         return source_refresh_service.describe_source_refresh_plan(
             project_name,

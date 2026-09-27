@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
+TEST_TEMP_ROOT = FRONTEND_ROOT.parent / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
 
@@ -29,7 +31,7 @@ class ArcRhoTemporaryViewCacheTests(unittest.TestCase):
     later_session_id = "c3c0deae-055f-4c79-80d3-9d8781f6533a"
 
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
         self.root = Path(self.temp_dir.name)
         self.project_data_dir = self.root / "Example Project" / "data"
         self.canonical_path = (
@@ -74,6 +76,8 @@ class ArcRhoTemporaryViewCacheTests(unittest.TestCase):
             "local_source_found": False,
         }
 
+    # The runtime route runs where the workspace is local disk: a server process.
+    @patch("app_server.services.workspace_read_client._is_server_process", new=lambda: True)
     def test_temporary_generation_persists_and_reuses_the_hidden_cache(self) -> None:
         self.canonical_path.parent.mkdir(parents=True, exist_ok=True)
         self.canonical_path.write_text("durable cache without a sidecar\n", encoding="utf-8")
@@ -238,7 +242,7 @@ class ArcRhoTemporarySessionSchemaTests(unittest.TestCase):
 
 class DatasetIndexTemporaryViewCacheTests(unittest.TestCase):
     def test_index_scan_ignores_nested_temporary_view_csv_caches(self) -> None:
-        with tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT)) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT)) as temp_dir:
             data_dir = Path(temp_dir)
             temporary_cache_dir = data_dir / config.DATASET_CACHE_DIR / config.TEMPORARY_VIEW_DATASET_CACHE_DIR
             temporary_cache_dir.mkdir(parents=True)

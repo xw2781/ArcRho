@@ -138,7 +138,7 @@ class AuditLogHostedTests(unittest.TestCase):
                 audit_log_router.write_audit_log(AuditLogWriteRequest(project_name="Demo", action="Saved"))
             audit_service.safe_append_project_audit_log("Demo", "Saved")
 
-        self.assertEqual((read.exception.status_code, write.exception.status_code), (503, 503))
+        self.assertEqual((read.exception.status_code, write.exception.status_code), (401, 401))
         self.assertFalse(self.path.exists())
 
 

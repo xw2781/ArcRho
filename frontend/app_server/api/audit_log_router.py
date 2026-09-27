@@ -28,7 +28,6 @@ def get_audit_log(project_name: str, limit: int = 500) -> Dict[str, Any]:
             audit_service.AUDIT_LOG_READ_KIND,
             {"project_name": project_name_clean, "limit": limit},
             local=lambda: audit_service.read_audit_log(project_name_clean, limit=limit),
-            gateway_required=True,
         )
         return {"ok": True, **out}
     except ValueError as e:

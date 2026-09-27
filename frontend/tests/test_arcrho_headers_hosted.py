@@ -179,16 +179,16 @@ class ArcRhoHeadersHostedTests(unittest.TestCase):
     def test_without_the_gateway_the_headings_are_refused_not_read_from_the_drive(self) -> None:
         self._write_headers()
         cases = {
-            "disabled": patch.object(config, "load_gateway_config", return_value={"enabled": False}),
-            "unreachable": patch.object(workspace_read_client, "cached_gateway_capabilities", return_value=None),
+            "disabled": (401, patch.object(config, "load_gateway_config", return_value={"enabled": False})),
+            "unreachable": (503, patch.object(workspace_read_client, "cached_gateway_capabilities", return_value=None)),
         }
-        for label, gateway_patch in cases.items():
+        for label, (status, gateway_patch) in cases.items():
             with self.subTest(gateway=label), gateway_patch, patch.object(
                 arcrho_runtime_service, "arcrho_headers", side_effect=AssertionError("ran on a Client PC")
             ):
                 with self.assertRaises(HTTPException) as refused:
                     arcrho_router.arcrho_headers(ArcRhoHeadersRequest(ProjectName=PROJECT, PeriodLength=12))
-                self.assertEqual(refused.exception.status_code, 503)
+                self.assertEqual(refused.exception.status_code, status)
         self.assertEqual(self.requests, [])
 
     def test_the_cache_clear_runs_on_the_server_and_a_repeat_changes_nothing(self) -> None:
@@ -208,7 +208,7 @@ class ArcRhoHeadersHostedTests(unittest.TestCase):
         with patch.object(config, "load_gateway_config", return_value={"enabled": False}):
             with self.assertRaises(HTTPException) as refused:
                 arcrho_router.clear_arcrho_headers_cache(ArcRhoHeadersCacheClearRequest(ProjectName=PROJECT))
-        self.assertEqual(refused.exception.status_code, 503)
+        self.assertEqual(refused.exception.status_code, 401)
         self.assertTrue(path.exists())
 
     def test_a_hosted_exchange_answer_is_read_from_the_reply_not_the_drive(self) -> None:

@@ -18,11 +18,11 @@ def _refuse_local() -> dict:
 
 def read(kind: str, kwargs: Mapping[str, Any]) -> dict:
     return workspace_read_client.run_workspace_read(
-        kind, kwargs, local=_refuse_local, gateway_required=True,
+        kind, kwargs, local=_refuse_local,
     )
 
 
 def submit(kwargs: Mapping[str, Any]) -> dict:
     return workspace_mutation_client.run_workspace_mutation(
-        "propagation_submit", kwargs, local=_refuse_local, gateway_required=True,
+        "propagation_submit", kwargs, local=_refuse_local,
     )

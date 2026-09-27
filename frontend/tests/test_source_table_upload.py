@@ -273,7 +273,7 @@ class SourceTableUploadTests(unittest.TestCase):
         with patch.object(config, "load_gateway_config", return_value={"enabled": False}):
             with self.assertRaises(HTTPException) as refused:
                 self._refresh()
-        self.assertEqual(refused.exception.status_code, 503)
+        self.assertEqual(refused.exception.status_code, 401)
         self.assertEqual(self.requests, [])
         self.assertEqual(self.master.read_text(encoding="utf-8"), OLD_TABLE)
         self.assertEqual(self._uploads(), [])

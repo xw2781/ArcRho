@@ -20,17 +20,17 @@ def auto_enroll_current_user() -> dict[str, Any]:
 
     The policy lives in ``arcrho_api.hosted_save_enrollment``, because the
     Excel add-in's credential helper installs a credential the same way. This
-    only says where the credential goes, which address to sign up at, and how
-    this process checks that the Gateway serves its server. The server's
-    registry is never read: the Gateway proves who is asking by Windows
-    sign-in and answers with that user's secret.
+    only says where the credential goes and which address to sign up at. The
+    server's registry is never read: the Gateway proves who is asking by
+    Windows sign-in and answers with that user's secret, and the server id it
+    reports is stored beside it.
     """
 
     local_path = Path(config.get_gateway_config_path())
     result = enroll_once(
         gateway_url=config.get_gateway_url(),
         client_output=local_path,
-        probe=hosted_save_http_client.probe_gateway_identity,
+        probe=hosted_save_http_client.fetch_gateway_capabilities,
     )
 
     if result["status"] == "unavailable":

@@ -32,23 +32,24 @@ GATEWAY_HEALTH_TIMEOUT_SECONDS = 2.0
 GATEWAY_PROGRESS_TIMEOUT_SECONDS = 2.0
 GATEWAY_RETRY_DELAY_SECONDS = 0.5
 _DIRECT_HTTP_OPENER = gateway_opener()
-# A root's server id is written once, so a found id is kept for the process;
-# a root without one is asked again after this long.
-ROOT_SERVER_ID_RETRY_SECONDS = 30.0
-_ROOT_SERVER_IDS: dict[str, tuple[float, str]] = {}
+# What a Client PC shows when the Gateway cannot take a request. The Gateway
+# is its only way to the server's files, so there is nothing to fall back to.
+SERVER_UNREACHABLE_MESSAGE = "The server can't be reached. Try again once it is back."
+SIGN_IN_MESSAGE = "The server did not accept this PC's sign-in. Sign in to the server again."
+NOT_SIGNED_IN_MESSAGE = "This PC is not signed in to the server. Sign in to the server again."
+SERVER_UPDATE_MESSAGE = "The server needs updating before it can do this."
 SERVER_MISMATCH_MESSAGE = (
-    "This app is signed in to a different server than the folder it is pointed at. "
+    "The server at this address is not the one this PC signed in to. "
     "Open the Server tab and switch servers again."
 )
 
 
 class GatewayServerMismatch(HTTPException):
-    """The Gateway serves a different server from the folder this app uses.
+    """The Gateway is a different server from the one this PC's credential belongs to.
 
     Every hosted read, mutation, save and calculation learns the Gateway's
     capabilities through :func:`probe_gateway`, so this is raised there and
-    nowhere else. Callers must let it through rather than fall back to the
-    share: the folder and the Gateway disagree about which server is meant.
+    nowhere else. The credential is never sent to that Gateway.
     """
 
     def __init__(self) -> None:
@@ -74,29 +75,26 @@ def _error_detail(error: HTTPError) -> str:
     return f"Gateway returned HTTP {error.code}."
 
 
-def root_server_id(root: str) -> str:
-    key = str(root).casefold()
-    cached = _ROOT_SERVER_IDS.get(key)
-    if cached is not None and (cached[1] or cached[0] > time.monotonic()):
-        return cached[1]
-    server_id = api_config.read_server_id(root)
-    _ROOT_SERVER_IDS[key] = (time.monotonic() + ROOT_SERVER_ID_RETRY_SECONDS, server_id)
-    return server_id
+def require_same_server(capabilities: Mapping[str, Any], gateway_config: Mapping[str, Any]) -> None:
+    """Refuse a Gateway whose server id differs from the one the credential signed up with.
 
-
-def require_same_server(capabilities: Mapping[str, Any]) -> None:
-    """Refuse a Gateway whose server id differs from the active root's.
-
-    Both sides lacking an id is the one agreement allowed without one: it is a
-    server whose Gateway predates server ids. A Gateway reporting no id for a
-    root that has one is a different server or a stale Gateway, and refused.
+    Sign-up stores the Gateway's server id in the credential, so the check
+    needs nothing from the server's folder. A credential signed up before ids
+    were stored adopts the id of the first Gateway it probes; a wrong server
+    then refuses its signature, which the user sees as a request to sign in
+    again. Both sides lacking an id is a Gateway that predates server ids.
     Server processes run against their own root and skip the check.
     """
 
     if str(os.environ.get(api_config.RUNTIME_SERVER_ROOT_ENV) or "").strip():
         return
     reported = str(capabilities.get(api_config.SERVER_ID_KEY) or "").strip()
-    if reported != root_server_id(config.get_root_path()):
+    expected = str(gateway_config.get(api_config.SERVER_ID_KEY) or "").strip()
+    if not expected:
+        if reported:
+            config.remember_gateway_server_id(reported)
+        return
+    if reported != expected:
         raise GatewayServerMismatch()
 
 
@@ -109,11 +107,10 @@ def probe_gateway_health(url: str) -> None:
             raise ValueError("Gateway health check did not report ok.")
 
 
-def probe_gateway_identity(url: str) -> dict[str, Any]:
-    """The Gateway's capabilities, refused unless it serves this app's server.
+def fetch_gateway_capabilities(url: str) -> dict[str, Any]:
+    """The Gateway's unauthenticated capabilities; 503 when it does not answer.
 
-    Sign-up probes with this: it needs the same server check as every other
-    use, but not a Gateway that already has users.
+    Sign-up probes with this and stores the server id it reports.
     """
 
     request = Request(f"{url}{CAPABILITIES_PATH}", method="GET", headers={"Accept": "application/json"})
@@ -121,20 +118,16 @@ def probe_gateway_identity(url: str) -> dict[str, Any]:
         with _DIRECT_HTTP_OPENER.open(
             request, timeout=GATEWAY_HEALTH_TIMEOUT_SECONDS
         ) as response:
-            payload = _response_json(response)
+            return _response_json(response)
     except (OSError, URLError, ValueError) as exc:
-        raise HTTPException(
-            503,
-            "Arco Gateway is unavailable. The dataset remains unsaved.",
-        ) from exc
-    require_same_server(payload)
-    return payload
+        raise HTTPException(503, SERVER_UNREACHABLE_MESSAGE) from exc
 
 
 def probe_gateway(gateway_config: Mapping[str, Any]) -> dict[str, Any]:
-    payload = probe_gateway_identity(gateway_config["url"])
+    payload = fetch_gateway_capabilities(gateway_config["url"])
+    require_same_server(payload, gateway_config)
     if payload.get("hosted_save_http") is not True:
-        raise HTTPException(503, "Arco Gateway is not ready for dataset saves.")
+        raise HTTPException(503, SERVER_UPDATE_MESSAGE)
     return payload
 
 
@@ -252,6 +245,8 @@ def submit_hosted_save(
                 "request_bytes": len(body),
             }
         except HTTPError as exc:
+            if exc.code == 401:
+                raise HTTPException(401, SIGN_IN_MESSAGE) from exc
             raise HTTPException(int(exc.code), _error_detail(exc)) from exc
         except (OSError, URLError, ValueError) as exc:
             last_error = exc

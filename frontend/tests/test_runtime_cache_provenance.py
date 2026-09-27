@@ -12,6 +12,8 @@ from fastapi import HTTPException
 
 
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
+TEST_TEMP_ROOT = FRONTEND_ROOT.parent / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
 
@@ -28,7 +30,7 @@ class RuntimeCacheProvenanceTests(unittest.TestCase):
     reserving_class = "Example Reserving Class"
 
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
         self.root = Path(self.temp_dir.name)
         self.data_path = (
             self.root
@@ -491,6 +493,8 @@ class RuntimeCacheProvenanceTests(unittest.TestCase):
                 )
             )
 
+    # The runtime route runs where the workspace is local disk: a server process.
+    @patch("app_server.services.workspace_read_client._is_server_process", new=lambda: True)
     def test_background_generation_records_provenance_and_next_run_reuses_the_csv(self) -> None:
         def write_generated_csv(path: str, timeout_sec: float) -> bool:
             del timeout_sec

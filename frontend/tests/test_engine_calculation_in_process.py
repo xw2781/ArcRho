@@ -12,8 +12,11 @@ from unittest.mock import patch
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
+TEST_TEMP_ROOT = FRONTEND_ROOT.parent / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 
 from app_server.services import engine_calculation_service as service  # noqa: E402
+from app_server.services import workspace_read_client  # noqa: E402
 
 
 PAIRS = [
@@ -32,7 +35,7 @@ PAIRS = [
 
 class InProcessCalculatorTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.temp = tempfile.TemporaryDirectory()
+        self.temp = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         self.addCleanup(self.temp.cleanup)
         self.addCleanup(service.set_in_process_calculator, None)
         self.data_path = str(Path(self.temp.name) / "Claim Counts--CWP@3@3@cum@dev.csv")
@@ -40,7 +43,7 @@ class InProcessCalculatorTests(unittest.TestCase):
     def _run(self):
         with (
             # The hosting Engine is a server process; it never asks a Gateway.
-            patch.object(service.workspace_read_client, "_is_server_process", return_value=True),
+            patch.object(workspace_read_client, "_is_server_process", return_value=True),
             patch.object(service.client_save_latency_log_service, "append_client_read_latency"),
             patch.object(
                 service,

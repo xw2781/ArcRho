@@ -201,7 +201,7 @@ class ReviewStatusTransportTests(unittest.TestCase):
                 patch.object(dataset_service, "set_dataset_review_status") as local:
                 with self.assertRaises(HTTPException) as caught:
                     set_dataset_review_status(request)
-                self.assertEqual(caught.exception.status_code, 503)
+                self.assertEqual(caught.exception.status_code, 503 if enabled else 401)
                 local.assert_not_called()
 
     def test_server_process_uses_the_canonical_review_service(self):

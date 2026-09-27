@@ -1178,8 +1178,7 @@ test("Import Data is preceded by an Import Scope step that narrows the refresh",
   assert.match(sourceTableRouter, /upload_source_table\(req\.project_name, SOURCE_TYPE_MSSQL\)/);
   assert.match(sourceTableRouter, /upload_source_table\(req\.project_name, SOURCE_TYPE_CSV\)/);
   // The rebuild a client-only import still asks for runs on the server.
-  assert.match(summaryRouter, /"table_summary_rebuild"/);
-  assert.match(summaryRouter, /gateway_required=True/);
+  assert.match(summaryRouter, /run_workspace_mutation\(\s*"table_summary_rebuild"/);
 });
 
 test("the Import Scope step opens on the project's last refresh scope, shared by every user", () => {

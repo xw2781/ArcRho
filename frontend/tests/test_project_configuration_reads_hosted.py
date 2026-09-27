@@ -243,7 +243,7 @@ class ProjectConfigurationReadsTests(unittest.TestCase):
                 with self.subTest(route=kind):
                     with self.assertRaises(HTTPException) as refused:
                         route()
-                    self.assertEqual(refused.exception.status_code, 503)
+                    self.assertEqual(refused.exception.status_code, 401)
         self.assertEqual(self.kinds, [])
 
     def test_a_missing_project_name_is_refused_before_the_gateway(self) -> None:

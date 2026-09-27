@@ -62,8 +62,8 @@ The Source Data writes (step 15) are Gateway-required. The field mapping, import
 
 The review-status set is the Project Instance `Mark For Review` / `Set
 Reviewed` action, shared by the dataset table and Dependency Graph context
-menu. It requires the Gateway on Client PCs and never falls back to SMB when
-the Gateway is disabled, unsupported, or unavailable. Server processes retain
+menu. Like every mutation it requires the Gateway on Client PCs and is refused
+when the Gateway is not signed in, does not offer it, or does not answer. Server processes retain
 the canonical local service. It rewrites one sidecar per selected method output
 on the server's local disk. It is a human sign-off on values nobody
 touched: it writes `status`, `updated_at` and `modified_by`, appends the one
@@ -133,7 +133,7 @@ Gateway side: `POST /api/workspace-mutations` on the Gateway (`arcrho_workspace_
 ## Key Files
 <!-- MANUAL:BEGIN -->
 - `python-api/src/arcrho_workspace_mutation_contract.py` - The canonical `WORKSPACE_MUTATION_KINDS` registry (kind → service module, function, required/optional keyword arguments, and which of them are name lists), request validation, route path, and timeout.
-- `app_server/services/workspace_mutation_client.py` - Client transport selection and the no-fallback-after-acceptance rule. It reuses the read transport's signing, capability probe cache, `post_signed_json`, and path rebasing rather than repeating them.
+- `app_server/services/workspace_mutation_client.py` - Client transport and the unconfirmed-after-acceptance rule. It reuses the read transport's signing, capability probe cache, `post_signed_json`, and path rebasing rather than repeating them.
 - `server-components/src/arcrho_gateway/workspace_mutations.py` - Server-side executor: authenticates, validates against the registry, imports the bundled service, runs it under `acting_identity`, and maps a service `HTTPException` to the same status while preserving a structured refusal detail.
 - `server-components/src/arcrho_gateway/receipts.py` - The Gateway's one receipt store (atomic write, read, per-receipt lock, startup expiry), shared with hosted saves.
 - `server-components/src/arcrho_gateway/main.py` - Route dispatch and the capability field; the handler is the one `_handle_hosted_execution` shared with reads and calculations.
@@ -142,12 +142,12 @@ Gateway side: `POST /api/workspace-mutations` on the Gateway (`arcrho_workspace_
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- Transport selection matches workspace reads exactly: a process running with `ARCRHO_RUNTIME_SERVER_ROOT` set (Engine, Bridge, Gateway) always runs locally so the gateway can never route back to itself; otherwise the local `%APPDATA%\ArcRho\arcrho_gateway.json` credential must be enabled and the gateway's `/api/capabilities` must list the mutation kind.
-- Fallback rule, and the one real difference from reads: the client falls back to the mapped drive **only** when the failure proves the server never acted (`GatewayTransportFailure.accepted` is false — unreachable, authentication refused, an older gateway without the route). A timeout or a connection lost after the request was sent surfaces as `504` telling the user to refresh and look, because a local re-run would be reasoning about a workspace the server has already changed.
+- Transport selection matches workspace reads exactly (`require_client_gateway`): a process running with `ARCRHO_RUNTIME_SERVER_ROOT` set (Engine, Bridge, Gateway) always runs in place so the gateway can never route back to itself; a Client PC always sends the mutation to its Gateway and never writes the workspace itself. Not signed in, a silent Gateway, a Gateway without the kind, and a refused signature are the same `401` / `503` answers a read gives.
+- The one real difference from reads: a timeout or a connection lost after the request was sent surfaces as `504` telling the user to refresh and look, because the server may already have applied it.
 - A refusal raised by the hosted service itself is recognized by the `X-ArcRho-Workspace-Root` header the gateway sets whenever the operation ran, and passes through with the status the local path would have raised.
 - Structured refusals survive the wire. `POST /datasets/cached/delete` answers `409` with an object (`error`, `message`, `blocked_datasets`) that Project Instance renders as the dependents window, so the transport preserves a mapping `detail` instead of flattening it to text; only its free text is redacted for server paths.
 - Path rebasing is the read transport's: every string in the response that starts with the server's workspace root is rewritten onto this PC's own root, so `deleted_files[].path` and the returned `index.folder_paths` look exactly as a local delete would have produced them.
-- Identity: the request carries the enrolled `UserName` and the client's resolved display name, and the gateway binds `user_identity_service.acting_identity` around the mutation so anything it stamps on disk names the person who asked.
+- Identity: the request carries the enrolled `UserName` and an empty display name, which the server resolves from the signed login; the gateway binds `user_identity_service.acting_identity` around the mutation so anything it stamps on disk names the person who asked.
 - Receipts: a kind marked `receipt` (`WorkspaceMutationKind.receipt`) is not idempotent, so the Gateway writes `runtime\arcrho_gateway\receipts\mutations\<user>\<request id>.json` (`mutation_receipt_path`) before running it and records the outcome — the response, or the refusal's status and detail — when it finishes, holding one lock per receipt for the whole run. A repeat of the same request under that id waits on the lock and answers from the receipt without running the service; a different request under the same id is refused with `409`; a receipt left `accepted` by a Gateway that stopped part way answers `409` telling the user to refresh. Keying by the signed user means two users never meet each other's outcome. A route may take the request id from its body (`request_id`) so a caller's repeat of one action reuses it; otherwise the client makes one per call, and when the answer is lost after the server had the request (a dropped connection or an unreadable reply, not a timeout) the client sends that same request once more and reports the replayed outcome. Receipts share the hosted-save receipt store and its retention: the Gateway removes terminal receipts older than `receipt_retention_hours` (24 by default) when it starts. Idempotent kinds keep no receipt.
 - Diagnostics: one record per mutation in `client_read_latency.jsonl`, keyed `read_kind: "mutation:<kind>"`, with the same `transport` / `reason` / timing fields the reads use.
 <!-- MANUAL:END -->

@@ -11,6 +11,8 @@ from unittest.mock import patch
 FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 if str(FRONTEND_ROOT) not in sys.path:
     sys.path.insert(0, str(FRONTEND_ROOT))
+TEST_TEMP_ROOT = FRONTEND_ROOT.parent / "test"
+TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 
 from app_server import config
 from app_server.services import (
@@ -27,7 +29,11 @@ class DatasetUserDisplayNameTests(unittest.TestCase):
 
     def setUp(self) -> None:
         user_identity_service.clear_display_name_cache()
-        self._temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        # The username index is read only where the workspace is local disk.
+        server = patch.dict("os.environ", {config.RUNTIME_SERVER_ROOT_ENV: str(TEST_TEMP_ROOT)})
+        server.start()
+        self.addCleanup(server.stop)
+        self._temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
         index_path = Path(self._temp_dir.name) / "username_index.json"
         index_path.write_text(
             json.dumps({"users": [{"login_name": "xwei", "full_name": "Wei, Xiao"}]}),
@@ -79,7 +85,11 @@ class HostedSaveUserDisplayNameTests(unittest.TestCase):
     def setUp(self) -> None:
         user_identity_service.clear_display_name_cache()
         self.addCleanup(user_identity_service.clear_display_name_cache)
-        self._temp_dir = tempfile.TemporaryDirectory(dir=str(FRONTEND_ROOT))
+        # The username index is read only where the workspace is local disk.
+        server = patch.dict("os.environ", {config.RUNTIME_SERVER_ROOT_ENV: str(TEST_TEMP_ROOT)})
+        server.start()
+        self.addCleanup(server.stop)
+        self._temp_dir = tempfile.TemporaryDirectory(dir=str(TEST_TEMP_ROOT))
         self.addCleanup(self._temp_dir.cleanup)
         index_path = Path(self._temp_dir.name) / "username_index.json"
         index_path.write_text(

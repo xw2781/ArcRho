@@ -246,7 +246,7 @@ class DependencyGraphTransportTests(unittest.TestCase):
         ):
             with self.assertRaises(HTTPException) as caught:
                 dataset_router.get_dataset_dependency_graph(PROJECT, RESERVING)
-        self.assertEqual(caught.exception.status_code, 503)
+        self.assertEqual(caught.exception.status_code, 401)
         local.assert_not_called()
 
     def test_gateway_transport_failure_never_falls_back_to_the_share(self) -> None:

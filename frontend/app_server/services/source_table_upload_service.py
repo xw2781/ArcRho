@@ -431,7 +431,7 @@ def _chunks(blocks: Iterator[bytes]) -> Iterator[Tuple[bytes, str]]:
 
 def _mutate(kind: str, kwargs: Dict[str, Any], local) -> Dict[str, Any]:
     return workspace_mutation_client.run_workspace_mutation(
-        kind, kwargs, local=local, gateway_required=True
+        kind, kwargs, local=local
     )
 
 
@@ -443,7 +443,6 @@ def upload_source_table(project_name: str, source_type: str) -> Dict[str, Any]:
         "source_table_settings",
         {"project_name": name},
         local=lambda: source_table_service.read_source_table_settings(name),
-        gateway_required=True,
     )
     commit_extras: Dict[str, Any] = {}
     signature: Optional[Tuple[Any, ...]] = None
@@ -488,7 +487,6 @@ def upload_source_table(project_name: str, source_type: str) -> Dict[str, Any]:
                 "source_table_upload_status",
                 status_kwargs,
                 local=lambda: get_source_table_upload_status(**status_kwargs),
-                gateway_required=True,
             )
             held = status.get("parts") or {}
             # The last attempt's commit landed but its answer was lost: the

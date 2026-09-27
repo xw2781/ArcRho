@@ -98,7 +98,6 @@ class ServerComponentStatusRouteTests(unittest.TestCase):
 
         read.assert_called_once()
         self.assertEqual(read.call_args.args[:2], (KIND, {}))
-        self.assertIs(read.call_args.kwargs["gateway_required"], True)
         self.assertEqual((status["source"], status["answering"]), ("gateway", True))
 
     def test_a_silent_gateway_is_reported_and_nothing_is_read_over_the_share(self) -> None:

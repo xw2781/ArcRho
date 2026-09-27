@@ -386,12 +386,11 @@ def _run_hosted_job_http(
     _set_failure_stage("identity_lookup")
     started_ns = time.perf_counter_ns()
     try:
-        identity = user_identity_service.get_current_identity()
+        login_name = user_identity_service.get_windows_login_name()
     finally:
         _record_phase("identity_lookup_ms", started_ns)
 
     configured_user = str(gateway_config.get("user") or "").strip()
-    login_name = str(identity.get("login_name") or "").strip()
     if configured_user.casefold() != login_name.casefold():
         raise HTTPException(
             403,
@@ -409,7 +408,8 @@ def _run_hosted_job_http(
             args=jsonable_encoder(list(args)),
             kwargs=jsonable_encoder(dict(kwargs or {})),
             user_name=login_name,
-            user_display_name=identity["display_name"],
+            # The Engine resolves the signed login's display name.
+            user_display_name="",
             mode=mode,
             plan_fingerprint=plan_fingerprint,
         )

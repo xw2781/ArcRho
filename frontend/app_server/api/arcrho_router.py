@@ -127,7 +127,6 @@ def arcrho_headers(req: ArcRhoHeadersRequest) -> Dict[str, Any]:
         "arcrho_headers",
         kwargs,
         local=lambda: arcrho_runtime_service.get_project_headers(**kwargs),
-        gateway_required=True,
     )
 
 
@@ -142,7 +141,6 @@ def clear_arcrho_headers_cache(req: ArcRhoHeadersCacheClearRequest) -> Dict[str,
         "arcrho_headers_cache_clear",
         kwargs,
         local=lambda: arcrho_runtime_service.clear_arcrho_headers_cache(**kwargs),
-        gateway_required=True,
     )
 
 
@@ -153,7 +151,6 @@ def arcrho_projects() -> Dict[str, Any]:
         "project_names",
         {},
         local=arcrho_runtime_service.arcrho_projects,
-        gateway_required=True,
     )
 
 

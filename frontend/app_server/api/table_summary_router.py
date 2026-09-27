@@ -35,5 +35,4 @@ def refresh_table_summary(req: TableSummaryRefreshRequest) -> Dict[str, Any]:
         "table_summary_rebuild",
         kwargs,
         local=lambda: table_summary_service.rebuild_table_summary(**kwargs),
-        gateway_required=True,
     )

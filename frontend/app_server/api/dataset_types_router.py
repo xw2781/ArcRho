@@ -29,7 +29,6 @@ def get_dataset_types(project_name: str) -> Dict[str, Any]:
         "dataset_types_table",
         {"project_name": project_name},
         local=lambda: dataset_types_service.get_dataset_types_table(project_name),
-        gateway_required=True,
     )
 
 
@@ -75,7 +74,6 @@ def save_dataset_types(req: DatasetTypesSaveRequest) -> Dict[str, Any]:
         "dataset_types_save",
         kwargs,
         local=lambda: dataset_types_change_service.save_dataset_types(**kwargs),
-        gateway_required=True,
         request_id=request_id,
     )
 

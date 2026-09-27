@@ -56,6 +56,14 @@ def get_windows_login_name() -> str:
 
 
 def load_username_display_names() -> Dict[str, str]:
+    """The workspace username index, read only where the workspace is local disk.
+
+    A Client PC never opens it: every request it sends carries the signed
+    login only, and the server resolves the display name.
+    """
+
+    if not str(os.environ.get(config.RUNTIME_SERVER_ROOT_ENV) or "").strip():
+        return {}
     try:
         with open(config.get_username_index_path(), "r", encoding="utf-8") as fh:
             raw = json.load(fh)

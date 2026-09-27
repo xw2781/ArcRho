@@ -366,31 +366,31 @@ class WorkspaceMutationHttpRoundTripTests(unittest.TestCase):
         self.assertEqual(self.records[-1]["transport"], "http_gateway")
         self.assertEqual(self.records[-1]["http_status"], 409)
 
-    def test_kind_not_advertised_runs_locally(self) -> None:
+    def test_a_kind_not_advertised_needs_a_server_update(self) -> None:
         with patch.object(
             workspace_mutation_client,
             "gateway_supports_mutation_kind",
             return_value=False,
         ):
-            response = workspace_mutation_client.run_workspace_mutation(
-                "cached_dataset_delete",
-                {
-                    "project_name": "Demo",
-                    "reserving_class": "COL",
-                    "dataset_names": ["Paid Loss"],
-                },
-                local=lambda: {"ok": True, "deleted_count": 0},
-            )
-        self.assertEqual(response["deleted_count"], 0)
-        self.assertEqual(self.records[-1]["transport"], "smb")
+            with self.assertRaises(HTTPException) as caught:
+                workspace_mutation_client.run_workspace_mutation(
+                    "cached_dataset_delete",
+                    {
+                        "project_name": "Demo",
+                        "reserving_class": "COL",
+                        "dataset_names": ["Paid Loss"],
+                    },
+                    local=lambda: self.fail("a Client PC must not write the workspace itself"),
+                )
+        self.assertEqual(caught.exception.status_code, 503)
+        self.assertIn("needs updating", caught.exception.detail)
         self.assertEqual(self.records[-1]["reason"], "kind_not_advertised")
 
     def test_an_accepted_request_is_never_re_run_locally(self) -> None:
         """A delete the server may have applied must not be repeated here.
 
-        Reads fall back freely because they change nothing. A mutation whose
-        answer was lost after the server had it would, run again locally,
-        report on a workspace the first run already changed.
+        A mutation whose answer was lost after the server had it may already
+        have been applied, so the user is told to refresh and look.
         """
 
         failure = workspace_read_client.GatewayTransportFailure(
@@ -407,34 +407,24 @@ class WorkspaceMutationHttpRoundTripTests(unittest.TestCase):
         self.assertEqual(self.records[-1]["transport"], "http_gateway")
         self.assertEqual(self.records[-1]["reason"], "gateway_connection_lost")
 
-    def test_a_request_the_contract_refuses_is_answered_by_the_service(self) -> None:
-        """Nothing was sent, so the canonical refusal still owns the answer."""
+    def test_a_request_the_contract_refuses_is_a_400(self) -> None:
+        with self.assertRaises(HTTPException) as caught:
+            workspace_mutation_client.run_workspace_mutation(
+                "cached_dataset_delete",
+                {"project_name": "Demo", "reserving_class": "COL", "dataset_names": []},
+                local=lambda: self.fail("a Client PC must not write the workspace itself"),
+            )
+        self.assertEqual(caught.exception.status_code, 400)
 
-        response = workspace_mutation_client.run_workspace_mutation(
-            "cached_dataset_delete",
-            {"project_name": "Demo", "reserving_class": "COL", "dataset_names": []},
-            local=lambda: {"ok": False, "canonical_refusal": True},
-        )
-        self.assertEqual(response, {"ok": False, "canonical_refusal": True})
-        self.assertEqual(self.records[-1]["transport"], "smb")
-        self.assertEqual(self.records[-1]["reason"], "contract_rejected")
-
-    def test_a_failure_before_the_server_could_act_falls_back(self) -> None:
+    def test_a_failure_before_the_server_could_act_is_reported(self) -> None:
         failure = workspace_read_client.GatewayTransportFailure("gateway_unreachable")
         with patch.object(
             workspace_read_client, "post_signed_json", side_effect=failure
         ):
-            response = workspace_mutation_client.run_workspace_mutation(
-                "cached_dataset_delete",
-                {
-                    "project_name": "Demo",
-                    "reserving_class": "COL",
-                    "dataset_names": ["Paid Loss"],
-                },
-                local=lambda: {"ok": True, "deleted_count": 3},
-            )
-        self.assertEqual(response["deleted_count"], 3)
-        self.assertEqual(self.records[-1]["transport"], "smb")
+            with self.assertRaises(HTTPException) as caught:
+                self._run()
+        self.assertEqual(caught.exception.status_code, 503)
+        self.assertIn("can't be reached", caught.exception.detail)
         self.assertEqual(self.records[-1]["reason"], "gateway_unreachable")
 
     def _lose_first_answer(self):
@@ -467,7 +457,6 @@ class WorkspaceMutationHttpRoundTripTests(unittest.TestCase):
                 "project_folder_create",
                 {"source": "project_map", "name": "Scratch"},
                 local=lambda: self.fail("the mutation must not run locally"),
-                gateway_required=True,
                 request_id="create-1",
             )
 

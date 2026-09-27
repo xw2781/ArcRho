@@ -165,7 +165,7 @@ def read_library_file(macro_id: str) -> Dict[str, Any]:
 def _library_listing() -> Dict[str, Any]:
     try:
         return workspace_read_client.run_workspace_read(
-            "macro_library_listing", {}, local=read_library_files, gateway_required=True
+            "macro_library_listing", {}, local=read_library_files
         )
     except HTTPException as exc:
         return {"available": False, "message": str(exc.detail), "files": []}
@@ -177,7 +177,6 @@ def _library_file(macro_id: str) -> Dict[str, Any]:
             "macro_library_file",
             {"macro_id": macro_id},
             local=lambda: read_library_file(macro_id),
-            gateway_required=True,
         )
     except HTTPException as exc:
         return {"found": False, "name": "", "text": "", "message": str(exc.detail)}

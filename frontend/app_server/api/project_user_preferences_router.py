@@ -23,7 +23,6 @@ def get_project_user_preferences(project_name: str) -> Dict[str, Any]:
         "project_user_preferences",
         {"project_name": project_name},
         local=lambda: project_user_preferences_service.get_preferences(project_name),
-        gateway_required=True,
     )
 
 
@@ -34,5 +33,4 @@ def update_project_user_preferences(req: ProjectUserPreferencesUpdateRequest) ->
         "project_user_preferences_update",
         kwargs,
         local=lambda: project_user_preferences_service.update_preferences(**kwargs),
-        gateway_required=True,
     )

@@ -262,7 +262,7 @@ class SourceDataWritesTests(unittest.TestCase):
             for route in routes:
                 with self.assertRaises(HTTPException) as refused:
                     route()
-                self.assertEqual(refused.exception.status_code, 503)
+                self.assertEqual(refused.exception.status_code, 401)
             # A poll the Gateway cannot answer is "unknown", never a failed job.
             status = source_table_router.get_source_refresh_job_status(PROJECT, "psrefresh_1")
         self.assertTrue(status["unknown"])

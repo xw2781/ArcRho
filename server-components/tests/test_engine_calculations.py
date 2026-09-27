@@ -669,50 +669,50 @@ class EngineCalculationHttpRoundTripTests(unittest.TestCase):
                 engine_calculation_service.run_engine_calculation(TRI_PAIRS, self.client_csv, 15.0)
         self.assertEqual(caught.exception.status_code, 500)
 
-    def test_function_not_advertised_publishes_locally(self) -> None:
+    def _refused(self, pairs=None) -> HTTPException:
+        with self.assertRaises(HTTPException) as caught:
+            engine_calculation_service.run_engine_calculation(
+                pairs or TRI_PAIRS, self.client_csv, 15.0
+            )
+        # A Client PC never writes a request file of its own.
+        self.assertEqual(self.local_publishes, [])
+        return caught.exception
+
+    def test_a_function_not_advertised_needs_a_server_update(self) -> None:
         with patch.object(
             engine_calculation_service, "gateway_supports_engine_function", return_value=False
         ):
-            outcome = engine_calculation_service.run_engine_calculation(
-                HEADER_PAIRS, self.client_csv, 15.0
-            )
-        self.assertEqual(outcome["transport"], "smb")
-        self.assertEqual(outcome["ok"], True)
-        self.assertEqual(len(self.local_publishes), 1)
-        self.assertTrue(self.local_publishes[0].endswith(f"DataPath = {self.client_csv}"))
-        self.assertEqual(self.records[-1]["reason"], "function_not_advertised")
+            refused = self._refused(HEADER_PAIRS)
+        self.assertEqual(refused.status_code, 503)
+        self.assertIn("needs updating", refused.detail)
+        self.assertEqual(self.records[-1]["reason"], "kind_not_advertised")
 
-    def test_a_disabled_gateway_publishes_locally(self) -> None:
+    def test_a_disabled_gateway_asks_the_user_to_sign_in(self) -> None:
         with patch.object(app_config, "load_gateway_config", return_value={"enabled": False}):
-            outcome = engine_calculation_service.run_engine_calculation(
-                TRI_PAIRS, self.client_csv, 15.0
-            )
-        self.assertEqual(outcome["transport"], "smb")
+            refused = self._refused()
+        self.assertEqual(refused.status_code, 401)
         self.assertEqual(self.records[-1]["reason"], "gateway_disabled")
 
-    def test_unhostable_request_publishes_locally(self) -> None:
-        pairs = TRI_PAIRS + [["StoredPeriodLength", "-1"]]
-        outcome = engine_calculation_service.run_engine_calculation(pairs, self.client_csv, 15.0)
-        self.assertEqual(outcome["transport"], "smb")
+    def test_an_unhostable_request_is_refused(self) -> None:
+        refused = self._refused(TRI_PAIRS + [["StoredPeriodLength", "-1"]])
+        self.assertEqual(refused.status_code, 400)
         self.assertEqual(self.records[-1]["reason"], "request_not_hostable")
 
-    def test_gateway_layer_rejection_publishes_locally(self) -> None:
+    def test_a_refused_signature_asks_the_user_to_sign_in_again(self) -> None:
         wrong_secret = dict(self.client_config, secret="not-alice")
         with patch.object(app_config, "load_gateway_config", return_value=wrong_secret):
-            outcome = engine_calculation_service.run_engine_calculation(
-                TRI_PAIRS, self.client_csv, 15.0
-            )
-        self.assertEqual(outcome["transport"], "smb")
+            refused = self._refused()
+        self.assertEqual(refused.status_code, 401)
+        self.assertIn("Sign in to the server again", refused.detail)
         self.assertEqual(self.records[-1]["reason"], "gateway_rejected:401")
 
-    def test_unreachable_gateway_publishes_locally(self) -> None:
+    def test_an_unreachable_gateway_is_reported(self) -> None:
         unreachable = dict(self.client_config, url="http://127.0.0.1:9")
         self.addCleanup(allow_test_gateway(unreachable["url"]))
         with patch.object(app_config, "load_gateway_config", return_value=unreachable):
-            outcome = engine_calculation_service.run_engine_calculation(
-                TRI_PAIRS, self.client_csv, 15.0
-            )
-        self.assertEqual(outcome["transport"], "smb")
+            refused = self._refused()
+        self.assertEqual(refused.status_code, 503)
+        self.assertIn("can't be reached", refused.detail)
         self.assertEqual(self.records[-1]["reason"], "gateway_unreachable")
 
     def test_server_process_never_routes_to_itself(self) -> None:
@@ -784,14 +784,15 @@ class EngineCalculationHttpRoundTripTests(unittest.TestCase):
                 )
         self.assertEqual(caught.exception.status_code, 423)
 
-    def test_dataset_run_uses_local_route_when_operation_not_advertised(self) -> None:
+    def test_a_dataset_run_the_gateway_does_not_offer_is_never_run_here(self) -> None:
         with patch.object(engine_calculation_service, "gateway_supports_operation", return_value=False):
-            payload = engine_calculation_service.run_hosted_dataset_operation(
-                OPERATION_DATASET_RUN, TRI_PAIRS, {}, timeout_sec=15.0,
-                local=lambda: {"ok": True, "from": "local"},
-            )
-        self.assertEqual(payload["from"], "local")
-        self.assertEqual(self.records[-1]["reason"], "operation_not_advertised")
+            with self.assertRaises(HTTPException) as caught:
+                engine_calculation_service.run_hosted_dataset_operation(
+                    OPERATION_DATASET_RUN, TRI_PAIRS, {}, timeout_sec=15.0,
+                    local=lambda: self.fail("a Client PC must not run the route itself"),
+                )
+        self.assertEqual(caught.exception.status_code, 503)
+        self.assertEqual(self.records[-1]["reason"], "kind_not_advertised")
 
     def test_dataset_run_timeout_is_a_504_not_a_local_rerun(self) -> None:
         with patch.object(

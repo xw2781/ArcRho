@@ -62,7 +62,7 @@ class ServerProfileRouteTests(unittest.TestCase):
             }),
             patch.object(
                 hosted_save_enrollment_service.hosted_save_http_client,
-                "probe_gateway_identity",
+                "fetch_gateway_capabilities",
                 side_effect=lambda url: self.probed.append(url) or {"windows_enrollment": True},
             ),
             # The Gateway proves who is asking by Windows sign-in; here it answers for Alice.

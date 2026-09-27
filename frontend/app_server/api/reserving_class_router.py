@@ -34,7 +34,7 @@ def _required_project(project_name: str, message: str = "Missing project_name pa
 
 
 def _read(kind: str, kwargs: Dict[str, Any], local: Any) -> Dict[str, Any]:
-    return workspace_read_client.run_workspace_read(kind, kwargs, local=local, gateway_required=True)
+    return workspace_read_client.run_workspace_read(kind, kwargs, local=local)
 
 
 @router.get("/reserving_class_combinations")
@@ -106,7 +106,6 @@ def save_reserving_class_hidden_paths(req: ReservingClassHiddenPathsSaveRequest)
         "reserving_class_hidden_paths_save",
         kwargs,
         local=lambda: reserving_class_service.save_hidden_paths(**kwargs),
-        gateway_required=True,
     )
 
 
@@ -132,7 +131,6 @@ def save_reserving_class_filter_spec(req: ReservingClassFilterSpecSaveRequest) -
         "reserving_class_filter_spec_save",
         kwargs,
         local=lambda: reserving_class_service.save_filter_spec(**kwargs),
-        gateway_required=True,
     )
 
 
@@ -172,5 +170,4 @@ def save_reserving_class_types(req: ReservingClassTypesSaveRequest) -> Dict[str,
         "reserving_class_types_save",
         kwargs,
         local=lambda: reserving_class_service.save_reserving_class_types(**kwargs),
-        gateway_required=True,
     )

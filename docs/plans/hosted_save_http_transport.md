@@ -69,8 +69,10 @@ sequenceDiagram
   per-user flag and credential. A missing file triggers sign-up on startup and
   after Server Connection changes, at the address the active server profile
   keeps (or `ARCRHO_GATEWAY_URL`), once that Gateway answers its capability
-  probe with `windows_enrollment` and the same server id as the active folder.
-  Since 2026-09-27 the client never reads the shared registry: the Gateway's
+  probe with `windows_enrollment`, and stores the server id that Gateway
+  reports in the credential; every later capability probe refuses a Gateway
+  reporting another id (a credential from before ids adopts the first one it
+  meets). Since 2026-09-27 the client never reads the shared registry: the Gateway's
   `POST /api/enroll` proves the caller by a Windows handshake and returns only
   that caller's secret (threat model in
   [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md#sign-up-threat-model-2026-09-27)).
@@ -139,8 +141,14 @@ time plus ordinary HTTP latency.
   and renewal ownership — server operations, not individual clients.
 - **Traffic limits.** Per-user and global concurrency limits are not
   implemented. Request and response size caps are.
-- **Retiring the SMB transport.** Only after the fleet runs the TLS Gateway and
-  the rollback criteria are met.
+- **Retiring the SMB transport.** Taken without waiting for TLS by decision 1 of
+  [client_smb_retirement.md](client_smb_retirement.md). Its step 18
+  (2026-09-27) made every workspace read, mutation and Engine calculation
+  Gateway-only on a Client PC: not signed in, a silent Gateway, a Gateway
+  without the operation and a refused signature are each a plain error, never
+  a share read. The hosted-save request-file branch for a kind the Gateway
+  does not advertise (and for a PC with no credential) is removed by its
+  step 19.
 
 ## Invariants To Preserve
 

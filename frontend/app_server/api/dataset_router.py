@@ -38,7 +38,6 @@ def get_dataset_number_format_defaults(
         local=lambda: dataset_number_format_service.get_preferences(
             dataset_type_name=dataset_type_name,
         ),
-        gateway_required=True,
     )
 
 
@@ -59,7 +58,6 @@ def list_cached_dataset_names(project_name: str, reserving_class: str, refresh: 
         local=lambda: dataset_service.list_cached_dataset_names(
             project_name, reserving_class, refresh=refresh
         ),
-        gateway_required=True,
     )
 
 
@@ -73,7 +71,6 @@ def get_dataset_dependency_graph(project_name: str, reserving_class: str) -> Dic
         local=lambda: dataset_dependency_graph_service.build_reserving_class_dependency_graph(
             project_name, reserving_class
         ),
-        gateway_required=True,
     )
 
 
@@ -128,7 +125,6 @@ def set_dataset_review_status(req: DatasetReviewStatusRequest) -> Dict[str, Any]
             req.dataset_names,
             status=req.status,
         ),
-        gateway_required=True,
     )
 
 
@@ -205,7 +201,6 @@ def load_dataset_sidecar(req: DatasetSidecarLoadRequest) -> Dict[str, Any]:
         "dataset_sidecar_load",
         kwargs,
         local=lambda: dataset_service.load_dataset_sidecar(**kwargs),
-        gateway_required=True,
     )
 
 
@@ -279,7 +274,6 @@ def resolve_dataset_internal_links(req: DatasetInternalLinksResolveRequest) -> D
             origin_length=req.origin_length,
             development_length=req.development_length,
         ),
-        gateway_required=True,
     )
 
 
@@ -301,7 +295,6 @@ def preview_calculated_dataset_dependents(req: DatasetCalculatedPreviewRequest) 
         "dataset_calculated_preview",
         kwargs,
         local=lambda: calculated_dataset_service.preview_dependents(**kwargs),
-        gateway_required=True,
     )
 
 

@@ -1050,6 +1050,11 @@ class ReservingClassBackupTests(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
         self.addCleanup(self.tempdir.cleanup)
         self.server_root = Path(self.tempdir.name)
+        # The copy is taken on this machine's disk, as outside the app,
+        # whatever an earlier test in the same run imported.
+        outside_the_app = patch.dict(sys.modules, {"app_server.services": None})
+        outside_the_app.start()
+        self.addCleanup(outside_the_app.stop)
 
     def _write_class(
         self,

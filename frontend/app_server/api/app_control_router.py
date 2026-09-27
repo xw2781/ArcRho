@@ -69,5 +69,4 @@ def arcbot_prompt_files() -> Dict[str, Any]:
         "arcbot_prompt_files",
         {},
         local=arcbot_prompt_service.read_arcbot_prompt_files,
-        gateway_required=True,
     )

@@ -82,7 +82,7 @@ class PropagationGatewayTests(unittest.TestCase):
         with patch.object(reads.config, "load_gateway_config", return_value={"enabled": False}):
             with self.assertRaises(HTTPException) as raised:
                 service.require_engine_available()
-            self.assertEqual(raised.exception.status_code, 503)
+            self.assertEqual(raised.exception.status_code, 401)
 
     def test_lost_mutation_response_is_not_retried_locally(self):
         with patch.object(

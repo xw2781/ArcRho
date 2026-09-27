@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 from typing import Any, Mapping
 
+from arcrho_api.config import SERVER_ID_KEY
 from arcrho_engine_save_contract import SAVE_JOB_KINDS
 
 
@@ -234,10 +235,14 @@ def normalize_gateway_client_url(value: Any, *, allow_empty: bool = False) -> st
     return url
 
 
-def client_credential(url: str, user: str, secret: str) -> dict[str, Any]:
-    """The machine-local credential file one user keeps for one Gateway."""
+def client_credential(url: str, user: str, secret: str, server_id: str = "") -> dict[str, Any]:
+    """The machine-local credential file one user keeps for one Gateway.
 
-    return {
+    ``server_id`` is the id the Gateway reported at sign-up; the client
+    refuses a Gateway at this address that reports another one.
+    """
+
+    credential = {
         "config_version": 1,
         "enabled": True,
         "url": url,
@@ -245,6 +250,9 @@ def client_credential(url: str, user: str, secret: str) -> dict[str, Any]:
         "secret": secret,
         "allow_insecure_http": url.lower().startswith("http://"),
     }
+    if str(server_id or "").strip():
+        credential[SERVER_ID_KEY] = str(server_id).strip()
+    return credential
 
 
 def normalize_client_config(value: Any) -> dict[str, Any]:
@@ -272,6 +280,7 @@ def normalize_client_config(value: Any) -> dict[str, Any]:
         "user": user,
         "secret": secret,
         "allow_insecure_http": allow_insecure,
+        SERVER_ID_KEY: str(value.get(SERVER_ID_KEY) or "").strip(),
     }
 
 

@@ -71,9 +71,9 @@ class ArcRhoFormulaTests(unittest.TestCase):
         request = router.DatasetInternalLinksResolveRequest(project_name="Current", reserving_class="RC", references=['=ArcoVec(,"Paid")'])
         with patch.object(router.workspace_read_client, "run_workspace_read", return_value={"ok": True}) as transport:
             router.resolve_dataset_internal_links(request)
-            self.assertTrue(transport.call_args.kwargs["gateway_required"])
+            self.assertEqual(transport.call_args.args[0], "dataset_internal_links_resolve")
             router.list_cached_dataset_names("Current", "RC")
-            self.assertTrue(transport.call_args.kwargs["gateway_required"])
+            self.assertEqual(transport.call_args.args[0], "dataset_index")
         with patch.object(router.workspace_read_client, "run_workspace_read", side_effect=HTTPException(503, "Gateway unavailable")), self.assertRaises(HTTPException) as error:
             router.resolve_dataset_internal_links(request)
         self.assertEqual(error.exception.status_code, 503)

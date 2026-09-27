@@ -273,6 +273,8 @@ class ExcelDatasetPolicyTests(unittest.TestCase):
         self.assertEqual(result["csv_text"].strip(), "99")
         self.assertEqual(self.csv_path().read_text().strip(), "99")
 
+    # The runtime route runs where the workspace is local disk: a server process.
+    @patch("app_server.services.workspace_read_client._is_server_process", new=lambda: True)
     def test_engine_publication_period_is_not_its_finer_source_granularity(self):
         self.publish()
         sidecar = self.sidecars / "Paid.json"
@@ -417,6 +419,8 @@ class ExcelDatasetPolicyTests(unittest.TestCase):
                 )
                 self.assertEqual(self.snapshot(), before)
 
+    # The runtime route runs where the workspace is local disk: a server process.
+    @patch("app_server.services.workspace_read_client._is_server_process", new=lambda: True)
     def test_saved_display_mode_does_not_relabel_published_csv_values(self):
         self.publish()
         sidecar = self.sidecars / "Paid.json"

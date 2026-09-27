@@ -230,17 +230,22 @@ class ClientSignUpWithoutTheShareTests(unittest.TestCase):
             ME,
         )
 
-    def test_a_gateway_serving_another_server_is_refused_before_sign_up(self) -> None:
-        self.client_root.mkdir()
-        gateway_main._write_json_atomic(
-            self.client_root / "config" / "config.json", {"server_id": "another-server"}
-        )
+    def test_sign_up_stores_the_server_id_and_another_server_is_refused_later(self) -> None:
+        self.gateway.gateway.server_id = "server-a"
 
         result = self._auto_enroll()
 
-        self.assertEqual(result["status"], "unavailable")
-        self.assertFalse(self.credential.exists())
-        self.assertEqual(json.loads((self.server_root / "config" / "arcrho_gateway.json").read_text(encoding="utf-8"))["users"], {})
+        self.assertEqual(result["status"], "enrolled", result)
+        credential = normalize_client_config(json.loads(self.credential.read_text(encoding="utf-8")))
+        self.assertEqual(credential["server_id"], "server-a")
+        self.assertFalse(self.client_root.exists())
+        # Another server now answers at the same address: the stored id refuses it.
+        self.gateway.gateway.server_id = "server-b"
+        client = hosted_save_enrollment_service.hosted_save_http_client
+        with patch.dict(os.environ, {"ARCRHO_RUNTIME_SERVER_ROOT": ""}), self.assertRaises(
+            client.GatewayServerMismatch
+        ):
+            client.probe_gateway(credential)
 
 
 def _signed_headers(credential: dict, body: bytes) -> dict[str, str]:

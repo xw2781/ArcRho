@@ -161,7 +161,6 @@ def submit_project_audit_log_append(
         AUDIT_LOG_APPEND_KIND,
         kwargs,
         local=lambda: append_project_audit_log(**kwargs),
-        gateway_required=True,
     )
 
 

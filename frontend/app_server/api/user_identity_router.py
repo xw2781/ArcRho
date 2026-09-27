@@ -17,5 +17,4 @@ def get_user_identity() -> Dict[str, str]:
         "user_identity",
         {},
         local=user_identity_service.get_current_identity,
-        gateway_required=True,
     )

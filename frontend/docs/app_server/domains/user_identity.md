@@ -27,7 +27,7 @@ Resolve the current Windows login to the display name used by the ArcRho Home br
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
 - The mapping is read from `<workspace_root>/config/username_index.json`.
-- `GET /app/user-identity` is the `user_identity` hosted read: on a Client PC the Gateway answers for the login the request is signed with and resolves its name against the server's copy of the index, so the Home brand never reads the index over the share. The route answers `503` when the Gateway is unavailable. The other writers in this process still resolve their own name through the local cache described below.
+- `GET /app/user-identity` is the `user_identity` hosted read: on a Client PC the Gateway answers for the login the request is signed with and resolves its name against the server's copy of the index, so the Home brand never reads the index over the share. The route answers `503` when the Gateway is unavailable. A Client PC never opens the index at all: `load_username_display_names` answers with an empty mapping unless the process runs with `ARCRHO_RUNTIME_SERVER_ROOT` set, and every request a Client PC sends (reads, mutations, calculations, hosted saves) carries the login only, with an empty display name the server resolves.
 - `login_name` matching is case-insensitive.
 - A matching row uses its non-empty `full_name`; a missing, invalid, or unmapped entry falls back to the unchanged Windows login name.
 - The parsed mapping and the current account's resolved display name are cached for the life of the app-server process, keyed by index path, because every dataset save now resolves a name and the index is workspace-global configuration that rarely changes. A mapping edit takes effect for a running session only after the app server restarts.

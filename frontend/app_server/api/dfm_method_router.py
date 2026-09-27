@@ -27,7 +27,6 @@ def resolve_dfm_dataset_references(req: DfmDatasetReferencesResolveRequest) -> D
         "dfm_dataset_references_resolve",
         kwargs,
         local=lambda: dfm_service.resolve_dfm_dataset_references(**kwargs),
-        gateway_required=True,
     )
 
 

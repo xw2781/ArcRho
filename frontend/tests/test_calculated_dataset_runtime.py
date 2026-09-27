@@ -420,6 +420,8 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
             component_paths={},
         )
 
+    # The runtime route runs where the workspace is local disk: a server process.
+    @patch("app_server.services.workspace_read_client._is_server_process", new=lambda: True)
     def test_new_engine_cache_skips_dependents_without_sidecar_write(self) -> None:
         generated_path = str(
             self.cache_dir / "Generated Input@12@12@cum@dev.csv"

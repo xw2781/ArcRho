@@ -260,7 +260,7 @@ class ProjectJobsHostedTests(unittest.TestCase):
             for route in routes:
                 with self.assertRaises(HTTPException) as refused:
                     route()
-                self.assertEqual(refused.exception.status_code, 503)
+                self.assertEqual(refused.exception.status_code, 401)
         self.assertEqual(self.requests, [])
         self.assertEqual(self._files(), before)
 

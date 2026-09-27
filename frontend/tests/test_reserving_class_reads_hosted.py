@@ -287,7 +287,7 @@ class ReservingClassHostedTests(unittest.TestCase):
                 with self.subTest(route=kind):
                     with self.assertRaises(HTTPException) as refused:
                         route()
-                    self.assertEqual(refused.exception.status_code, 503)
+                    self.assertEqual(refused.exception.status_code, 401)
         self.assertEqual(self.kinds, [])
         self.assertEqual(self._files(), before)
 

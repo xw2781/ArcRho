@@ -6,13 +6,11 @@ from fastapi import APIRouter, HTTPException
 
 from app_server.schemas.data_processing_rules import (
     DataProcessingRulesSaveJobRequest,
-    DataProcessingRulesSaveRequest,
     DataProcessingRulesValidateRequest,
 )
 from app_server.services import (
     data_processing_rules_job_service,
     data_processing_rules_service,
-    data_processing_values_service,
     workspace_mutation_client,
     workspace_read_client,
 )
@@ -41,7 +39,6 @@ def get_data_processing_rules(project_name: str) -> Dict[str, Any]:
         "data_processing_rules",
         {"project_name": project_name_clean},
         local=lambda: data_processing_rules_service.read_data_processing_rules(project_name_clean),
-        gateway_required=True,
     )
 
 
@@ -57,40 +54,7 @@ def validate_data_processing_rules(
         "data_processing_rules_validate",
         {"project_name": project_name, "data": data},
         local=lambda: data_processing_rules_service.check_data_processing_rules(project_name, data),
-        gateway_required=True,
     )
-
-
-@router.post("/data_processing_rules")
-def save_data_processing_rules(
-    request: DataProcessingRulesSaveRequest,
-) -> Dict[str, Any]:
-    project_name = str(request.project_name or "").strip()
-    if not project_name:
-        raise HTTPException(400, "project_name is required")
-    try:
-        return data_processing_rules_service.save_data_processing_rules(
-            project_name,
-            expected_revision=int(request.expected_revision),
-            data=_request_data_dict(request.data),
-        )
-    except data_processing_rules_service.RulesRevisionConflictError as error:
-        raise HTTPException(409, str(error))
-    except data_processing_rules_service.RulesWriteLockedError as error:
-        raise HTTPException(423, str(error))
-    except data_processing_rules_service.RulesValidationError as error:
-        raise HTTPException(400, "; ".join(error.errors) or str(error))
-    except data_processing_values_service.DataProcessingValuesLockedError as error:
-        raise HTTPException(423, str(error))
-    except ValueError as error:
-        message = str(error)
-        if "Project folder not found under projects:" in message:
-            raise HTTPException(404, message)
-        raise HTTPException(400, message)
-    except PermissionError:
-        raise HTTPException(423, "Data processing rules file is locked. Please retry.")
-    except Exception as error:
-        raise HTTPException(500, f"Failed to save data processing rules: {str(error)}")
 
 
 @router.post("/data_processing_rules/save_job")
@@ -102,8 +66,8 @@ def submit_data_processing_rules_save_job(
     The save is the same one ``POST /data_processing_rules`` performs, run on
     the server host where the sidecar walk after the write is local disk;
     the caller polls ``/data_processing_rules/save_job/status`` and reads the
-    save response from the terminal status. A 503 means no Engine is running,
-    which is the one outcome the caller handles by saving directly instead.
+    save response from the terminal status. This is the only way the rules
+    are saved: a 503 (no Engine, or no server) is shown to the user.
     """
 
     project_name = str(request.project_name or "").strip()

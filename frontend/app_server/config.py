@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from arcrho_api import source_table_contract
 from arcrho_api import config as api_config
+from arcrho_api.hosted_save_enrollment import remember_server_id
 from arcrho_api.field_mapping_contract import DATE_ROLE_SIGNIFICANCES
 from arcrho_api.sidecar_audit_contract import PROJECT_AUDIT_LOG_MAX_ENTRIES
 from arcrho_hosted_save_http_contract import (
@@ -136,11 +137,11 @@ def get_gateway_url() -> str:
 
 
 def load_gateway_config() -> Dict[str, Any]:
-    """Load the optional dataset-save HTTP transport configuration.
+    """Load this PC's Gateway credential for the active server.
 
-    A missing file keeps the existing SMB transport. An enabled but malformed
-    file fails explicitly so ArcRho never silently falls back after an HTTP
-    submission might have been accepted.
+    A missing file means this PC has not signed in; a Client PC then refuses
+    every server operation rather than reaching the share. A malformed file
+    fails explicitly.
     """
 
     path = get_gateway_config_path()
@@ -154,6 +155,12 @@ def load_gateway_config() -> Dict[str, Any]:
             f"Gateway configuration could not be read: {path}"
         ) from exc
     return normalize_client_config(raw)
+
+
+def remember_gateway_server_id(server_id: str) -> None:
+    """Store the server id in a credential signed up before sign-up stored one."""
+
+    remember_server_id(get_gateway_config_path(), server_id)
 
 
 WORKSPACE_PATHS_PATH = os.path.join(

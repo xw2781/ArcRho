@@ -7,7 +7,7 @@ import {
   createDataProcessingRulesRequestId,
   describeDataProcessingRulesSaveResult,
   waitForDataProcessingRulesJob,
-} from "./project_settings_data_processing_rules_job.js?v=20260905rules2";
+} from "./project_settings_data_processing_rules_job.js?v=20260927smb18";
 
 const RULES_FORMAT = "arcrho-data-processing-rules-v1";
 
@@ -2377,29 +2377,14 @@ export function createDataProcessingRulesFeature(deps = {}) {
     return error;
   }
 
-  /** The save in this process: the fallback when no ArcRho Engine is running. */
-  async function saveRulesDirectly(name, rules, expectedRevision) {
-    const response = await fetchImpl("/data_processing_rules", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        project_name: name,
-        expected_revision: expectedRevision,
-        data: { rules },
-      }),
-    });
-    if (response.status === 409) throw revisionConflictError();
-    return readJsonResponse(response);
-  }
-
   /**
    * Save on ArcRho Engine, following the job in the shell's progress window.
    *
    * The Engine runs the same save next to the data, so the walk over every
    * generated dataset that follows the write is local disk instead of one
    * network round trip per file. The terminal status carries the save
-   * response, so nothing is re-read afterwards. A 503 means no Engine is
-   * running, which is the one outcome handled by saving directly instead.
+   * response, so nothing is re-read afterwards. The rules are only ever
+   * saved there: with no Engine or no server the save fails and says why.
    */
   async function saveRulesOnEngine(name, rules, expectedRevision) {
     const requestId = createDataProcessingRulesRequestId();
@@ -2422,10 +2407,6 @@ export function createDataProcessingRulesFeature(deps = {}) {
           data: { rules },
         }),
       });
-      if (response.status === 503) {
-        publishProgress("close", progressId);
-        return saveRulesDirectly(name, rules, expectedRevision);
-      }
       const submitted = await readJsonResponse(response);
       const terminal = await waitForDataProcessingRulesJob({
         fetchImpl,
@@ -2465,7 +2446,7 @@ export function createDataProcessingRulesFeature(deps = {}) {
       state.loaded = true;
       renderRules(name);
       // The Engine save reports the datasets and methods it refreshed after
-      // the write; a direct save only says what will refresh when opened.
+      // the write.
       const outcome = describeDataProcessingRulesSaveResult(payload);
       const suffix = outcome.text ? ` ${outcome.text}` : "";
       setRulesStatus(`Saved revision ${state.document.revision}.${suffix}`, outcome.failed);

@@ -1,19 +1,14 @@
-"""Client-PC transport selection for Server-hosted workspace mutations.
+"""Client-PC transport for Server-hosted workspace mutations.
 
 A registered mutation (``arcrho_workspace_mutation_contract``) runs on the
-Arco Server host through the Gateway when the gateway advertises it, and
-locally over the mapped drive otherwise. Deleting a reserving class's cached
-files is the first such kind: every unlink is its own SMB round trip and the
-index rebuild that follows reads the whole folder again, so a delete a user
-waits seconds for on a Client PC is milliseconds of local disk on the server.
+Arco Server host through the Gateway. A Client PC never writes the workspace
+itself: a Gateway that is not signed in, does not answer, or does not offer
+the kind is reported to the user, exactly as a read is. Only a server process
+runs the mutation in place.
 
 The transport reuses the read transport's signing, capability probe, and path
-rebasing. What it does not reuse is the fallback: a read may be re-answered
-locally after any gateway failure because it changes nothing, while a mutation
-may only fall back when the failure proves the server never acted. Once the
-request has been accepted, an ambiguous outcome is reported to the user rather
-than re-run against the mapped drive, because the local run would be reasoning
-about a workspace the server has already changed.
+rebasing. Once the request has been accepted, an ambiguous outcome is
+reported as unconfirmed, because the server may already have applied it.
 
 A kind the contract marks ``receipt`` is not idempotent. The caller names the
 user's action with one request id, and when the answer is lost after the
@@ -30,7 +25,6 @@ from typing import Any, Callable, Dict, Mapping
 
 from fastapi import HTTPException
 
-from arcrho_hosted_save_http_contract import HostedSaveHttpContractError
 from arcrho_workspace_mutation_contract import (
     WORKSPACE_MUTATION_CAPABILITY_FIELD,
     WORKSPACE_MUTATION_KINDS,
@@ -40,8 +34,7 @@ from arcrho_workspace_mutation_contract import (
     build_workspace_mutation_request,
 )
 
-from app_server import config
-from app_server.services import user_identity_service, workspace_read_client
+from app_server.services import workspace_read_client
 from app_server.services.workspace_read_client import (
     GatewayTransportFailure,
     TRANSPORT_HTTP,
@@ -93,17 +86,13 @@ def run_workspace_mutation(
     kwargs: Mapping[str, Any],
     *,
     local: Callable[[], Dict[str, Any]],
-    gateway_required: bool = False,
     request_id: str | None = None,
 ) -> Dict[str, Any]:
-    """Serve one registered mutation over the gateway when possible, else locally.
+    """Serve one registered mutation over the Gateway, or in place in a server process.
 
-    ``local`` runs the canonical service function in this process. It is used
-    only when the gateway is unavailable, disabled, or has not advertised the
-    kind — never after a request the server may already have acted on.
-    Gateway-required operations refuse instead of falling back on Client PCs.
-    ``request_id`` names the user's action for a receipt kind; a fresh one is
-    used when the caller has none.
+    ``local`` runs the canonical service function and is called only in a
+    server process. ``request_id`` names the user's action for a receipt
+    kind; a fresh one is used when the caller has none.
     """
 
     started_ns = time.perf_counter_ns()
@@ -128,81 +117,52 @@ def run_workspace_mutation(
         return result
 
     try:
-        gateway_config: Mapping[str, Any] = {"enabled": False}
-        if workspace_read_client._is_server_process():
-            # The gateway executes this very service function; routing back to
-            # itself would be an infinite hop.
-            context["reason"] = "server_process"
-        else:
-            try:
-                gateway_config = config.load_gateway_config()
-            except HostedSaveHttpContractError:
-                context["reason"] = "gateway_config_invalid"
-            else:
-                if gateway_config.get("enabled") is not True:
-                    context["reason"] = "gateway_disabled"
-        if not context["reason"]:
-            capabilities = workspace_read_client.cached_gateway_capabilities(gateway_config)
-            if capabilities is None:
-                context["reason"] = "gateway_unreachable"
-            elif not gateway_supports_mutation_kind(capabilities, mutation_kind):
-                context["reason"] = "kind_not_advertised"
-        request_payload: Mapping[str, Any] | None = None
-        if not context["reason"]:
-            request_id = str(request_id or "").strip() or uuid.uuid4().hex
-            context["request_id"] = request_id
-            try:
-                request_payload = build_workspace_mutation_request(
-                    request_id=request_id,
-                    mutation_kind=mutation_kind,
-                    kwargs=kwargs,
-                    user_name=str(gateway_config["user"]),
-                    user_display_name=(
-                        "" if gateway_required else user_identity_service.get_current_identity()["display_name"]
-                    ),
-                )
-            except WorkspaceMutationContractError as error:
-                if gateway_required:
-                    raise HTTPException(400, str(error)) from error
-                # Nothing was sent, so the canonical service still owns this
-                # request's answer: running it locally reports the same refusal
-                # a Client PC without a gateway would have seen, rather than
-                # turning a bad argument into a transport-shaped 500.
-                context["reason"] = "contract_rejected"
-        if request_payload is not None:
-            remote_started_ns = time.perf_counter_ns()
-            try:
-                payload, server_root, response_bytes = _post_mutation(
-                    gateway_config, mutation_kind, request_payload
-                )
-            except GatewayTransportFailure as failure:
-                remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
-                if failure.accepted:
-                    # The server may already have applied this. Running it here
-                    # as well would report on a workspace it no longer owns
-                    # alone, so the user is told to reload and look instead.
-                    context["transport"] = TRANSPORT_HTTP
-                    context["reason"] = failure.reason
-                    raise HTTPException(
-                        504,
-                        "The Arco Server did not confirm this change. "
-                        "Refresh the dataset table to see whether it was applied.",
-                    ) from failure
-                context["reason"] = failure.reason
-            except HTTPException:
-                remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
-                context["transport"] = TRANSPORT_HTTP
-                raise
-            else:
-                remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
-                context["transport"] = TRANSPORT_HTTP
-                payload = workspace_read_client.rebase_workspace_paths(
-                    payload, server_root, workspace_read_client._client_workspace_root()
-                )
-                return _finish(payload)
-        if gateway_required and context["reason"] != "server_process":
-            raise HTTPException(503, "Arco Gateway is required for this operation and is unavailable or needs updating.")
-        return _finish(local())
+        gateway_config = workspace_read_client.require_client_gateway(
+            context, lambda capabilities: gateway_supports_mutation_kind(capabilities, mutation_kind)
+        )
+        if gateway_config is None:
+            return _finish(local())
+        request_id = str(request_id or "").strip() or uuid.uuid4().hex
+        context["request_id"] = request_id
+        try:
+            request_payload = build_workspace_mutation_request(
+                request_id=request_id,
+                mutation_kind=mutation_kind,
+                kwargs=kwargs,
+                user_name=str(gateway_config["user"]),
+                # The server resolves the signed login's display name.
+                user_display_name="",
+            )
+        except WorkspaceMutationContractError as error:
+            raise HTTPException(400, str(error)) from error
+        remote_started_ns = time.perf_counter_ns()
+        try:
+            payload, server_root, response_bytes = _post_mutation(
+                gateway_config, mutation_kind, request_payload
+            )
+        except GatewayTransportFailure as failure:
+            remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
+            context["transport"] = TRANSPORT_HTTP
+            context["reason"] = failure.reason
+            if failure.accepted:
+                # The server may already have applied this, so the user is told
+                # to reload and look rather than to try again blindly.
+                raise HTTPException(
+                    504,
+                    "The Arco Server did not confirm this change. "
+                    "Refresh the dataset table to see whether it was applied.",
+                ) from failure
+            raise workspace_read_client.failure_error(failure) from failure
+        except HTTPException:
+            remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
+            context["transport"] = TRANSPORT_HTTP
+            raise
+        remote_ms = (time.perf_counter_ns() - remote_started_ns) / 1_000_000.0
+        context["transport"] = TRANSPORT_HTTP
+        payload = workspace_read_client.rebase_workspace_paths(
+            payload, server_root, workspace_read_client._client_workspace_root()
+        )
+        return _finish(payload)
     except HTTPException as error:
         http_status = int(error.status_code)
         raise

@@ -21,7 +21,6 @@ def get_field_mapping(project_name: str) -> Dict[str, Any]:
         "field_mapping",
         {"project_name": project_name},
         local=lambda: field_mapping_service.get_field_mapping(project_name),
-        gateway_required=True,
     )
 
 
@@ -40,5 +39,4 @@ def save_field_mapping(req: FieldMappingSaveRequest) -> Dict[str, Any]:
         "field_mapping_save",
         kwargs,
         local=lambda: field_mapping_service.save_field_mapping(**kwargs),
-        gateway_required=True,
     )

@@ -197,6 +197,8 @@ class ArcRhoHeaderSettingsTests(unittest.TestCase):
             ])
         self.assertIs(actual, settings)
 
+    # The runtime route runs where the workspace is local disk: a server process.
+    @patch("app_server.services.workspace_read_client._is_server_process", new=lambda: True)
     def test_invalidates_a_header_cache_older_than_general_settings(self) -> None:
         cache_path = "headers.csv"
         settings_path = "general_settings.json"

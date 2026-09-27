@@ -32,7 +32,6 @@ def get_dfm_percent_developed_curve(
         "dfm_percent_developed_curve",
         kwargs,
         local=lambda: dataset_instance_index_service.get_percent_developed_curve(**kwargs),
-        gateway_required=True,
     )
 
 
@@ -47,7 +46,6 @@ def get_dfm_development_pattern(
         "dfm_development_pattern",
         kwargs,
         local=lambda: dataset_instance_index_service.get_development_pattern(**kwargs),
-        gateway_required=True,
     )
 
 
@@ -60,5 +58,4 @@ def refresh_dfm_method_index(req: DfmMethodIndexRefreshRequest) -> Dict[str, Any
         "dataset_index_rebuild",
         kwargs,
         local=lambda: dataset_instance_index_service.rebuild_index(**kwargs),
-        gateway_required=True,
     )

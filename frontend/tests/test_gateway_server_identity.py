@@ -1,4 +1,4 @@
-"""The client refuses a Gateway that serves a different server from its folder."""
+"""The client refuses a Gateway that is not the server its credential signed up with."""
 
 from __future__ import annotations
 
@@ -39,82 +39,75 @@ class _Opener:
 class GatewayServerIdentityTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT)
-        self.root = self.temp.name
+        self.addCleanup(self.temp.cleanup)
+        self.credential = Path(self.temp.name) / "arcrho_gateway.json"
         env = {k: v for k, v in os.environ.items() if k != api_config.RUNTIME_SERVER_ROOT_ENV}
         for patcher in (
             patch.dict(os.environ, env, clear=True),
-            patch.object(config, "get_root_path", return_value=self.root),
-            patch.dict(hosted_save_http_client._ROOT_SERVER_IDS, clear=True),
+            patch.object(config, "get_gateway_config_path", return_value=str(self.credential)),
+            # The check needs nothing from the server's folder.
+            patch.object(config, "get_root_path", side_effect=AssertionError("the folder was read")),
         ):
             patcher.start()
             self.addCleanup(patcher.stop)
         workspace_read_client.reset_capability_cache()
         self.addCleanup(workspace_read_client.reset_capability_cache)
-        self.addCleanup(self.temp.cleanup)
 
-    def _root_id(self, server_id: str) -> None:
-        path = Path(self.root) / "config" / "config.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"server_id": server_id}), encoding="utf-8")
+    def _credential(self, server_id: str | None) -> dict:
+        stored = {"config_version": 1, **GATEWAY, "allow_insecure_http": True}
+        if server_id is not None:
+            stored["server_id"] = server_id
+        self.credential.write_text(json.dumps(stored), encoding="utf-8")
+        return config.load_gateway_config()
 
-    def _probe(self, reported: str | None) -> dict:
+    def _probe(self, gateway: dict, reported: str | None) -> dict:
         capabilities = {"hosted_save_http": True, "workspace_read_kinds": ["dataset_index"]}
         if reported is not None:
             capabilities["server_id"] = reported
         with patch.object(hosted_save_http_client, "_DIRECT_HTTP_OPENER", _Opener(capabilities)):
-            return hosted_save_http_client.probe_gateway(GATEWAY)
+            return hosted_save_http_client.probe_gateway(gateway)
 
-    def test_matching_ids_are_served(self) -> None:
-        self._root_id("server-a")
-        self.assertEqual(self._probe("server-a")["server_id"], "server-a")
+    def test_the_id_signed_up_with_is_served(self) -> None:
+        gateway = self._credential("server-a")
+        self.assertEqual(self._probe(gateway, "server-a")["server_id"], "server-a")
 
     def test_a_different_id_is_refused(self) -> None:
-        self._root_id("server-a")
+        gateway = self._credential("server-a")
         with self.assertRaises(hosted_save_http_client.GatewayServerMismatch) as caught:
-            self._probe("server-b")
+            self._probe(gateway, "server-b")
         self.assertEqual(caught.exception.status_code, 409)
 
-    def test_a_gateway_without_an_id_is_refused_for_a_root_with_one(self) -> None:
-        self._root_id("server-a")
+    def test_a_gateway_without_an_id_is_refused_for_a_credential_with_one(self) -> None:
+        gateway = self._credential("server-a")
         with self.assertRaises(hosted_save_http_client.GatewayServerMismatch):
-            self._probe(None)
+            self._probe(gateway, None)
 
-    def test_a_root_without_an_id_refuses_a_gateway_with_one(self) -> None:
+    def test_a_credential_from_before_ids_adopts_the_first_gateways_id(self) -> None:
+        gateway = self._credential(None)
+        self._probe(gateway, "server-a")
+        adopted = config.load_gateway_config()
+        self.assertEqual(adopted["server_id"], "server-a")
         with self.assertRaises(hosted_save_http_client.GatewayServerMismatch):
-            self._probe("server-b")
+            self._probe(adopted, "server-b")
 
     def test_neither_side_having_an_id_is_served(self) -> None:
-        self.assertNotIn("server_id", self._probe(None))
+        gateway = self._credential(None)
+        self.assertNotIn("server_id", self._probe(gateway, None))
+        self.assertEqual(config.load_gateway_config()["server_id"], "")
 
     def test_server_processes_skip_the_check(self) -> None:
-        self._root_id("server-a")
-        with patch.dict(os.environ, {api_config.RUNTIME_SERVER_ROOT_ENV: self.root}):
-            self._probe("server-b")
+        gateway = self._credential("server-a")
+        with patch.dict(os.environ, {api_config.RUNTIME_SERVER_ROOT_ENV: self.temp.name}):
+            self._probe(gateway, "server-b")
 
-    def test_a_found_id_is_read_once_and_a_missing_one_again_later(self) -> None:
-        with patch.object(api_config, "read_server_id", return_value="") as read:
-            hosted_save_http_client.root_server_id(self.root)
-            hosted_save_http_client.root_server_id(self.root)
-            self.assertEqual(read.call_count, 1)
-            with patch.object(hosted_save_http_client.time, "monotonic", return_value=1e12):
-                hosted_save_http_client.root_server_id(self.root)
-            self.assertEqual(read.call_count, 2)
-        with patch.object(api_config, "read_server_id", return_value="server-a") as read:
-            with patch.object(hosted_save_http_client.time, "monotonic", return_value=2e12):
-                hosted_save_http_client.root_server_id(self.root)
-                hosted_save_http_client.root_server_id(self.root)
-            with patch.object(hosted_save_http_client.time, "monotonic", return_value=3e12):
-                self.assertEqual(hosted_save_http_client.root_server_id(self.root), "server-a")
-            self.assertEqual(read.call_count, 1)
-
-    def test_a_refused_read_never_falls_back_to_the_share(self) -> None:
-        self._root_id("server-a")
+    def test_a_refused_read_never_runs_on_this_pc(self) -> None:
+        gateway = self._credential("server-a")
         local_calls = []
         opener = _Opener(
             {"hosted_save_http": True, "workspace_read_kinds": ["dataset_index"], "server_id": "b"}
         )
         with patch.object(hosted_save_http_client, "_DIRECT_HTTP_OPENER", opener), patch.object(
-            config, "load_gateway_config", return_value=GATEWAY
+            config, "load_gateway_config", return_value=gateway
         ), patch.object(workspace_read_client, "_log"):
             with self.assertRaises(hosted_save_http_client.GatewayServerMismatch):
                 workspace_read_client.run_workspace_read(

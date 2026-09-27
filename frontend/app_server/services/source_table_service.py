@@ -345,7 +345,6 @@ def submit_mssql_connection_remember(server: str, database: str) -> Dict[str, An
         "mssql_connection_remember",
         kwargs,
         local=lambda: remember_mssql_connection(**kwargs),
-        gateway_required=True,
     )
 
 
