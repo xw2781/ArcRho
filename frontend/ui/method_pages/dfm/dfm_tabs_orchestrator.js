@@ -57,7 +57,7 @@ import {
   wireMethodName,
   wireDfmInstanceCreationNotice,
   wireDetailsThresholdReset,
-} from "/ui/method_pages/dfm/dfm_details.js?v=20260914b";
+} from "/ui/method_pages/dfm/dfm_details.js?v=20260927c";
 import {
   scheduleRatioSelectionLoad,
   saveRatioSelectionPattern,
@@ -72,13 +72,13 @@ import {
   scheduleDfmMethodPreview,
   cancelDfmMethodAsyncTasks,
   buildDfmMethodPayload,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260923c";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260927c";
 import { wireRatioSyncChannel, requestRatioStateSync } from "/ui/method_pages/dfm/dfm_sync.js?v=20260914b";
 import {
   applyArcBotDfmEdit,
   revertArcBotDfmEdit,
   reviewArcBotDfmEditApproval,
-} from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260927a";
+} from "/ui/method_pages/dfm/dfm_rpc_bridge_client.js?v=20260927c";
 import { wireDfmTabPopoutWindows } from "/ui/method_pages/dfm/dfm_tab_popout_window.js?v=20260903a";
 import {
   clearRatioHistoryTempSession,
@@ -88,7 +88,7 @@ import {
   runRatioRedo,
   runRatioUndo,
 } from "/ui/method_pages/dfm/dfm_ratio_history.js";
-import { wireDfmLoadSettingsButton } from "/ui/method_pages/dfm/dfm_load_settings_dialog.js?v=20260923b";
+import { wireDfmLoadSettingsButton } from "/ui/method_pages/dfm/dfm_load_settings_dialog.js?v=20260927c";
 import { readDfmMethodIdentityFromPage } from "/ui/method_pages/dfm/dfm_method_api.js?v=20260910a";
 import { readDatasetInputQueryValues } from "/ui/shared/tabs/data/data_tab_query_inputs.js";
 

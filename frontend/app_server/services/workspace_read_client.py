@@ -394,3 +394,26 @@ def run_workspace_read(
             }
         )
         _log(record)
+
+
+def run_polled_workspace_read(
+    read_kind: str,
+    kwargs: Mapping[str, Any],
+    *,
+    local: Callable[[], Dict[str, Any]],
+    unknown: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Serve a Gateway-required read that a window polls on a timer.
+
+    The change watches ask whether something moved; when the server cannot be
+    asked (503) or does not answer in time (504) the honest answer is
+    ``unknown``, which the window treats as "ask again next poll" and never
+    as an alert or an error.
+    """
+
+    try:
+        return run_workspace_read(read_kind, kwargs, local=local, gateway_required=True)
+    except HTTPException as error:
+        if error.status_code in (503, 504):
+            return {**unknown, "unknown": True}
+        raise

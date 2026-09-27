@@ -165,6 +165,8 @@ async function fetchDatasetIndexSignature(selectedPath) {
   if (!resp.ok || payload?.ok === false) {
     throw new Error(payload?.detail || `Index signature lookup failed (${resp.status})`);
   }
+  // The server could not be asked: skip this poll quietly and ask again.
+  if (payload?.unknown) throw new Error("Index signature unknown.");
   return toText(payload?.signature);
 }
 
@@ -196,8 +198,9 @@ async function checkDatasetIndexSignature() {
       return;
     }
     if (signature === datasetIndexWatch.signature) return;
-    // A mapped-drive stat can be answered from the SMB redirector's cache and
-    // report metadata from before the baseline write. Staleness only ever
+    // The server stats index.json on its own disk, but a stat over a mapped
+    // drive could be answered from the SMB redirector's cache and report
+    // metadata from before the baseline write, so the rule stays. Staleness only ever
     // reports an older state than the truth (business logic contract rule 15),
     // so an observation older than the baseline is that cache echoing the
     // past — never new work. Ignore it without adopting it, or the next fresh

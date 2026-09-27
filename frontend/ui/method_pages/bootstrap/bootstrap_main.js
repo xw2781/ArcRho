@@ -29,7 +29,7 @@ import {
   createMethodObjectChangeWatchController,
   showObjectUpdatedAlert,
   wireSamePropagationScopePause,
-} from "/ui/shared/services/object_change_watch.js?v=20260820a";
+} from "/ui/shared/services/object_change_watch.js?v=20260927c";
 import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
 import { BOOTSTRAP_TAB_DEFS, windowTabIds } from "/ui/shared/tabs/window_tab_catalog.js?v=20260903a";
 import {

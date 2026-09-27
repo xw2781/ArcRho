@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "change alerts",
+  "audience": "user",
+  "summary": "The \"Updated Outside This Window\" alert and the Project Instance \"Refresh Table\" button now check with the server, so your own saves no longer set them off, and they stay quiet while the server cannot be reached."
+}

@@ -79,10 +79,15 @@ def get_dataset_dependency_graph(project_name: str, reserving_class: str) -> Dic
 
 @router.get("/datasets/cached/index-signature")
 def get_cached_dataset_index_signature(project_name: str, reserving_class: str) -> Dict[str, Any]:
-    # Deliberately local even when the index itself is read on the Gateway: this
-    # is a single stat that clients poll on a timer, so a hosted round trip
-    # would cost more than the call saves.
-    return dataset_service.get_cached_dataset_index_signature(project_name, reserving_class)
+    # Polled on a timer, and answered by the server's own stat: one over the
+    # mapped drive can report index.json as it was before a server write.
+    kwargs = {"project_name": project_name, "reserving_class": reserving_class}
+    return workspace_read_client.run_polled_workspace_read(
+        "dataset_index_signature",
+        kwargs,
+        local=lambda: dataset_service.get_cached_dataset_index_signature(**kwargs),
+        unknown={"ok": True, "project_name": project_name, "reserving_class": reserving_class, "signature": ""},
+    )
 
 
 @router.post("/datasets/cached/delete")

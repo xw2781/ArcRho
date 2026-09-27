@@ -11,7 +11,7 @@ import {
   applyDfmOwnedPatchPayload,
   buildDfmMethodPayload,
   saveRatioSelectionPattern,
-} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260923c";
+} from "/ui/method_pages/dfm/dfm_persistence.js?v=20260927c";
 import {
   peekRatioHistoryStepSource,
   recordMethodHistoryStep,

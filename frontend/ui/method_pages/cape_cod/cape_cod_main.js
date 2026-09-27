@@ -34,7 +34,7 @@ import {
   createMethodObjectChangeWatchController,
   showObjectUpdatedAlert,
   wireSamePropagationScopePause,
-} from "/ui/shared/services/object_change_watch.js?v=20260820a";
+} from "/ui/shared/services/object_change_watch.js?v=20260927c";
 import { createSpreadsheetTableController } from "/ui/shared/components/spreadsheet/spreadsheet_table.js?v=20260712c";
 import { readProjectInstanceDatasetSnapshot } from "/ui/shared/dataset/project_instance_dataset_snapshot.js?v=20260725a";
 import {

@@ -103,6 +103,7 @@ function createHarness() {
     api,
     els,
     nextPolledSignature: "",
+    nextPolledAnswer: null,
     signatureReads,
     state,
     async restore() {
@@ -120,7 +121,7 @@ function createHarness() {
       ok: true,
       status: 200,
       async json() {
-        return { ok: true, signature: harness.nextPolledSignature };
+        return harness.nextPolledAnswer || { ok: true, signature: harness.nextPolledSignature };
       },
     };
   };
@@ -249,6 +250,28 @@ test("a newer observation inside the settle window is adopted silently", async (
 
     assert.equal(harness.state.datasetIndexWatch.pending, false);
     assert.equal(harness.state.datasetIndexWatch.signature, "3000:80");
+  } finally {
+    await harness.restore();
+  }
+});
+
+test("an unknown answer (the server could not be asked) never raises the prompt", async () => {
+  const harness = createHarness();
+  try {
+    await harness.api.startDatasetIndexWatchForSnapshot(
+      { index_signature: "2000:64" },
+      harness.state.selectedPath,
+    );
+    harness.nextPolledAnswer = { ok: true, signature: "", unknown: true };
+    await harness.api.checkDatasetIndexSignature();
+
+    assert.equal(harness.state.datasetIndexWatch.pending, false);
+    assert.equal(harness.state.datasetIndexWatch.signature, "2000:64");
+
+    harness.nextPolledAnswer = null;
+    harness.nextPolledSignature = "3000:80";
+    await harness.api.checkDatasetIndexSignature();
+    assert.equal(harness.state.datasetIndexWatch.pending, true, "the next known answer still decides");
   } finally {
     await harness.restore();
   }

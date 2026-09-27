@@ -4,8 +4,9 @@
 // When another user or an automation process — including the Engine-hosted
 // dependent-propagation job — rewrites the object, the fingerprint moves and
 // the window shows a one-time "close and reopen" alert. One poll costs one
-// or two server-side stats; failures are ignored and never surface to the
-// user. Self-saves must rebase the watch through pause()/resume()/rebase()
+// or two stats, taken by the server on its own disk (a stat over the mapped
+// drive can be seconds stale); failures, and an `unknown` answer when the
+// server cannot be asked, are ignored and never surface to the user. Self-saves must rebase the watch through pause()/resume()/rebase()
 // so the alert only fires for outside changes.
 //
 // A moved fingerprint says nothing about who moved it, so the alert reads the
@@ -27,6 +28,9 @@ export const PROPAGATION_SCOPE_STARTED_MESSAGE = "arcrho:dependent-propagation-s
 export const PROPAGATION_SCOPE_FINISHED_MESSAGE = "arcrho:dependent-propagation-finished";
 export const DEFAULT_POLL_INTERVAL_MS = 5000;
 const MAX_PROPAGATION_SCOPE_PAUSE_MS = 20 * 60 * 1000;
+// The attribution read's answer when the server could not be asked: the
+// decision waits for the next poll rather than alerting without it.
+const ATTRIBUTION_UNKNOWN = Symbol("attribution-unknown");
 
 function normalizedScopeText(value) {
   return String(value ?? "").trim().toLowerCase();
@@ -265,18 +269,21 @@ export function createObjectChangeWatch({
     const response = await postIdentity(OBJECT_CHANGE_FINGERPRINT_URL);
     if (!response?.ok) throw new Error(`HTTP ${response?.status}`);
     const result = await response.json();
+    if (result?.unknown) throw new Error("Change state unknown.");
     const token = String(result?.token || "").trim();
     if (!token) throw new Error("Missing fingerprint token.");
     return token;
   }
 
   // Read once, after the fingerprint moved, so the alert can name the writer.
-  // Advisory like the poll: a failure leaves the generic message in place.
+  // Advisory like the poll: a failure leaves the generic message in place,
+  // and an `unknown` answer defers the whole decision to the next poll.
   async function fetchAttribution() {
     try {
       const response = await postIdentity(OBJECT_CHANGE_ATTRIBUTION_URL);
       if (!response?.ok) return null;
       const result = await response.json();
+      if (result?.unknown) return ATTRIBUTION_UNKNOWN;
       return result?.attribution || null;
     } catch {
       return null;
@@ -294,6 +301,8 @@ export function createObjectChangeWatch({
    * atomic replace — but staleness only ever reports an *older* state than
    * the truth, never a newer one. A recorded write no newer than the newest
    * write this window knows it made therefore cannot be an outside change.
+   * The fingerprint is now the server's own stat, which is authoritative;
+   * this comparison stays as the rule a stale observation must still pass.
    */
   function isOwnWriteArrivingLate(attribution) {
     if (selfWriteAt === null) return false;
@@ -319,6 +328,7 @@ export function createObjectChangeWatch({
         const attribution = await fetchAttribution();
         if (stopped || alerted || pauseDepth > 0) return;
         if (generation !== baselineGeneration) return;
+        if (attribution === ATTRIBUTION_UNKNOWN) return;
         if (isOwnWriteArrivingLate(attribution)) {
           // Adopt the fingerprint we can now see and keep watching; a later
           // outside write still moves it past this window's own stamp.

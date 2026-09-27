@@ -11,7 +11,7 @@ import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 import { createProjectInstanceContext } from "./project_instance_context.js?v=20260920b";
 import { installProjectInstanceUtils } from "./project_instance_utils.js?v=20260607d";
 import { installProjectInstanceLoading } from "./project_instance_loading.js?v=20260809b";
-import { installProjectInstanceDatasetCache } from "./project_instance_dataset_cache.js?v=20260919a";
+import { installProjectInstanceDatasetCache } from "./project_instance_dataset_cache.js?v=20260927c";
 import { installProjectInstancePreferences } from "./project_instance_preferences.js?v=20260824g";
 import { installProjectInstanceExcelLinks } from "./project_instance_excel_links.js?v=20260919a";
 import { installProjectInstanceDependencyGraph } from "./project_instance_dependency_graph.js?v=20260920a";
@@ -21,7 +21,7 @@ import { installProjectInstancePathPanel } from "./project_instance_path_panel.j
 import { installProjectInstanceWindows } from "./project_instance_windows.js?v=20260909a";
 import { installProjectInstanceHiddenTabs } from "./project_instance_hidden_tabs.js?v=20260916a";
 import { installProjectInstanceReviewTable } from "./project_instance_review_table.js?v=20260828f";
-import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260927b";
+import { installProjectInstanceMessages } from "./project_instance_messages.js?v=20260927c";
 import { installProjectInstanceBusyBanner } from "./project_instance_busy_banner.js?v=20260813c";
 import { installProjectInstanceDeleteGuard } from "./project_instance_delete_guard.js?v=20260817a";
 

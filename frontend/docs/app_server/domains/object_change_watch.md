@@ -9,8 +9,8 @@ Open-window change-watch domain: a dataset window or method page polls a stat-on
 <!-- AUTO-GEN:BEGIN app_server.object_change_watch.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
-| `POST` | `/object_change/attribution` | `get_object_change_attribution` | `ObjectChangeFingerprintRequest` | [`app_server/schemas/object_change_watch.py`](../../../app_server/schemas/object_change_watch.py) | `object_change_watch_service.object_change_attribution` |
-| `POST` | `/object_change/fingerprint` | `get_object_change_fingerprint` | `ObjectChangeFingerprintRequest` | [`app_server/schemas/object_change_watch.py`](../../../app_server/schemas/object_change_watch.py) | `object_change_watch_service.object_change_fingerprint` |
+| `POST` | `/object_change/attribution` | `get_object_change_attribution` | `ObjectChangeFingerprintRequest` | [`app_server/schemas/object_change_watch.py`](../../../app_server/schemas/object_change_watch.py) | `object_change_watch_service.object_change_attribution`, `workspace_read_client.run_polled_workspace_read` |
+| `POST` | `/object_change/fingerprint` | `get_object_change_fingerprint` | `ObjectChangeFingerprintRequest` | [`app_server/schemas/object_change_watch.py`](../../../app_server/schemas/object_change_watch.py) | `object_change_watch_service.object_change_fingerprint`, `workspace_read_client.run_polled_workspace_read` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files
@@ -25,6 +25,7 @@ Open-window change-watch domain: a dataset window or method page polls a stat-on
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
 - `POST /object_change/fingerprint` stats the watched files only — the dataset sidecar for `kind: "dataset"`, the canonical `<PREFIX>@<name>.json` method file (plus the output sidecar when `output_dataset` is given) for `kind: "method"` — and returns `{files, token}`; it never reads a payload.
+- Both routes run on the server host: a Client PC asks the Gateway (read kinds `object_change_fingerprint` and `object_change_attribution`, Gateway-required) and never stats the share, because a stat over the mapped drive can report metadata from before a server write. When the Gateway cannot answer (disabled, unreachable, or timed out) the route answers `unknown: true` with an empty token or attribution instead of an error; the poller treats that as "ask again next poll" - an unknown fingerprint keeps the baseline, and an unknown attribution after a moved fingerprint defers the alert to the next poll rather than raising it. A server process stats its own disk directly.
 - `POST /object_change/attribution` takes the same identity and answers who last wrote the object: `{user, action, at, automatic, subject}`, projected by `arcrho_api.sidecar_audit_contract.sidecar_attribution` from the output sidecar's last audit entry (falling back to `modified_by`/`updated_at`, and for a method with no readable sidecar to its `method metadata.last modified`). It is called once per alert, never per poll, so the watch's steady-state cost stays two stats. An unreadable or absent payload answers an empty attribution rather than an error, and the window keeps its generic message.
 - `arcrho_api.sidecar_audit_contract` owns the audit-action vocabulary every sidecar producer writes and this domain reads: `Insert`/`Update` for a person's save, `Auto Refresh` for an unattended rewrite (the classification that lets the alert name an automation task instead of a person).
 - `dataset_sidecar_status_service.method_json_path` is the single owner of the method-type-to-filename-prefix rule; every method service path builder delegates to it.
@@ -35,7 +36,7 @@ Open-window change-watch domain: a dataset window or method page polls a stat-on
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- Stateless: each fingerprint request is one or two `os.stat` calls and each attribution request is one sidecar read; the baseline token lives in the open window.
+- Stateless: each fingerprint request is one or two `os.stat` calls on the server and each attribution request is one sidecar read there; a Client PC pays one Gateway round trip per poll. The baseline token lives in the open window.
 <!-- MANUAL:END -->
 
 ## Common Change Tasks
@@ -45,7 +46,7 @@ Open-window change-watch domain: a dataset window or method page polls a stat-on
 
 ## Known Risks
 <!-- MANUAL:BEGIN -->
-- The alert is advisory: detection latency is the poll interval plus SMB attribute-cache lag, and a change landing between open and the first poll baseline is not reported.
-- The stat itself cannot be made authoritative on a mapped drive. Measured on a Client PC against `E:`, `os.stat` alternates between current and cached metadata for seconds after a server-side write (regressions up to 16 s), and neither the `_bust_network_lookup_cache` probe write nor an open file handle fixes it - a handle also makes a concurrent `os.replace` fail, so the watch must never hold one. The self-write stamp above, not a better read, is what keeps the alert honest.
+- The alert is advisory: detection latency is the poll interval plus one Gateway round trip, and a change landing between open and the first poll baseline is not reported. While the Gateway is down the watch knows nothing and shows nothing.
+- The server's own stat is authoritative; the stat could not be made so on a mapped drive, which is why the watch no longer takes one there. Measured on a Client PC against `E:`, `os.stat` alternates between current and cached metadata for seconds after a server-side write (regressions up to 16 s), and neither the `_bust_network_lookup_cache` probe write nor an open file handle fixes it - a handle also makes a concurrent `os.replace` fail, so the watch must never hold one. The self-write stamp rule above stays in place as the test any stale observation must still pass.
 - A write by another window of the *same* app still alerts: hosted saves run the dependent walk inline and answer without a `job_id`, so the `propagationJobId` the scope broadcasts depend on is never produced and `wireSamePropagationScopePause` does not engage.
 <!-- MANUAL:END -->

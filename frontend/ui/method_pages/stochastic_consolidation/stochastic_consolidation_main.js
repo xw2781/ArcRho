@@ -29,7 +29,7 @@ import {
   createMethodObjectChangeWatchController,
   showObjectUpdatedAlert,
   wireSamePropagationScopePause,
-} from "/ui/shared/services/object_change_watch.js?v=20260820a";
+} from "/ui/shared/services/object_change_watch.js?v=20260927c";
 import { STOCHASTIC_CONSOLIDATION_TAB_DEFS, windowTabIds } from "/ui/shared/tabs/window_tab_catalog.js?v=20260903a";
 import { createDistributionChart } from "/ui/shared/components/reserve_range/reserve_distribution_chart.js?v=20260924b";
 import { createMethodGridSelection, tagMethodGridCells } from "/ui/shared/components/spreadsheet/method_grid_selection.js";

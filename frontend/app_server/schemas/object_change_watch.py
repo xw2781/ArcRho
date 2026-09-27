@@ -27,6 +27,8 @@ class ObjectChangeFingerprintResponse(BaseModel):
     ok: Literal[True]
     files: List[ObjectChangeFileFingerprint]
     token: str
+    # True when the server could not be asked; the window polls again.
+    unknown: bool = False
 
 
 class ObjectChangeAttribution(BaseModel):
@@ -44,3 +46,5 @@ class ObjectChangeAttribution(BaseModel):
 class ObjectChangeAttributionResponse(BaseModel):
     ok: Literal[True]
     attribution: ObjectChangeAttribution
+    # True when the server could not be asked; the window decides next poll.
+    unknown: bool = False

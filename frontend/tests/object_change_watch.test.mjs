@@ -230,6 +230,52 @@ test("failed polls are skipped silently and never alert", async () => {
   assert.equal(alerts, 1);
 });
 
+test("an unknown fingerprint answer is skipped quietly and keeps the baseline", async () => {
+  const unknown = () => Promise.resolve({
+    ok: true,
+    status: 200,
+    json: async () => ({ ok: true, files: [], token: "", unknown: true }),
+  });
+  const h = harness({ tokens: ["a", unknown, unknown, "a", "b"] });
+  let alerts = 0;
+  const watch = createObjectChangeWatch({ ...h.watchArgsBase, onChange: () => { alerts += 1; } });
+  watch.start();
+  await drain();
+  await h.tick();
+  await h.tick();
+  await h.tick();
+  assert.equal(alerts, 0, "the server could not be asked: nothing is known, nothing is shown");
+  await h.tick();
+  assert.equal(alerts, 1, "the baseline survived the unknown answers");
+});
+
+test("an unknown attribution answer defers the alert to the next poll", async () => {
+  const recorded = {
+    user: "Dana Reid", action: "Update", at: "2026-08-20T14:24:11Z",
+    automatic: false, subject: "dataset",
+  };
+  const h = harness({ tokens: ["a", "b", "b"] });
+  const answers = [{ ok: true, attribution: { ...recorded, user: "" }, unknown: true }, { ok: true, attribution: recorded }];
+  const fetchFingerprint = h.watchArgsBase.fetchImpl;
+  const seen = [];
+  const watch = createObjectChangeWatch({
+    ...h.watchArgsBase,
+    fetchImpl: (url, options) => {
+      if (url !== OBJECT_CHANGE_ATTRIBUTION_URL) return fetchFingerprint(url, options);
+      const answer = answers.shift();
+      return Promise.resolve({ ok: true, status: 200, json: async () => answer });
+    },
+    onChange: (attribution) => { seen.push(attribution); },
+  });
+  watch.start();
+  await drain();
+  await h.tick();
+  assert.deepEqual(seen, [], "no alert while the writer is unknown");
+  assert.equal(watch.hasAlerted(), false);
+  await h.tick();
+  assert.deepEqual(seen, [recorded], "the moved fingerprint was not adopted, so the next poll decides");
+});
+
 test("pause suppresses polling and resume rebases so a self-save is not reported", async () => {
   const h = harness({ tokens: ["a", "self-saved", "self-saved", "outside"] });
   let alerts = 0;

@@ -481,6 +481,28 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "get_development_pattern",
         ("project_name", "reserving_class", "dataset_name"),
     ),
+    # Change detection: an open window's stat-only fingerprint, the writer it
+    # names once the fingerprint moved, and the Project Instance table's
+    # index.json signature. Each is polled, and a stat over the mapped drive
+    # can be seconds stale after a server write, so the server stats its own
+    # disk instead.
+    "object_change_fingerprint": WorkspaceReadKind(
+        "object_change_watch_service",
+        "object_change_fingerprint",
+        ("project_name", "reserving_class", "kind", "name"),
+        ("method_type", "output_dataset"),
+    ),
+    "object_change_attribution": WorkspaceReadKind(
+        "object_change_watch_service",
+        "object_change_attribution",
+        ("project_name", "reserving_class", "kind", "name"),
+        ("method_type", "output_dataset"),
+    ),
+    "dataset_index_signature": WorkspaceReadKind(
+        "dataset_service",
+        "get_cached_dataset_index_signature",
+        ("project_name", "reserving_class"),
+    ),
 }
 
 HTTP_WORKSPACE_READ_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_READ_KINDS))

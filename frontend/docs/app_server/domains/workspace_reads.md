@@ -58,12 +58,17 @@ No new browser-facing route. These existing routes select the transport per requ
 | `POST /dfm/method/dataset-references/resolve` | `dfm_dataset_references_resolve` | `dfm_service.resolve_dfm_dataset_references` |
 | `GET /dfm/percent-developed-curve` | `dfm_percent_developed_curve` | `dataset_instance_index_service.get_percent_developed_curve` |
 | `GET /dfm/development-pattern` | `dfm_development_pattern` | `dataset_instance_index_service.get_development_pattern` |
+| `POST /object_change/fingerprint` | `object_change_fingerprint` | `object_change_watch_service.object_change_fingerprint` |
+| `POST /object_change/attribution` | `object_change_attribution` | `object_change_watch_service.object_change_attribution` |
+| `GET /datasets/cached/index-signature` | `dataset_index_signature` | `dataset_service.get_cached_dataset_index_signature` |
 
 The project configuration reads from `project_settings_sources` down were added by step 7 of [client_smb_retirement.md](../../../../docs/plans/client_smb_retirement.md). Each is called with `gateway_required=True`, so a Client PC answers `503` rather than reading the share, and each service returns the route's whole answer, refusals included, so the two transports answer alike.
 
 The reserving-class and project-user-preference reads from `reserving_class_combinations` down were added by step 8, on the same terms; step 8 also made the existing `reserving_classes_with_data` read Gateway-required.
 
 The dataset and method side reads from `dataset_sidecar_load` down were added by step 9, on the same terms. The dependents preview sends the whole edited grid, so a workspace-read request may be as large as a hosted save request (`MAX_WORKSPACE_READ_REQUEST_BYTES` is the hosted save contract's `MAX_REQUEST_BYTES`).
+
+The three change-detection reads from `object_change_fingerprint` down were added by step 10. They are polled on a timer, so they go through `workspace_read_client.run_polled_workspace_read`: Gateway-required, but a `503` or `504` becomes the route's answer with `unknown: true` rather than an error, and the window asks again on its next poll. The server's stat is authoritative; a Client PC never stats the share for them.
 
 Gateway side: `POST /api/workspace-reads` on the Gateway (`arcrho_workspace_read_contract.WORKSPACE_READ_PATH`), authenticated with the same per-user HMAC headers as hosted saves. `GET /api/capabilities` advertises `workspace_read_kinds`.
 <!-- MANUAL:END -->

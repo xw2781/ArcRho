@@ -58,7 +58,7 @@ import {
   createMethodObjectChangeWatchController,
   showObjectUpdatedAlert,
   wireSamePropagationScopePause,
-} from "/ui/shared/services/object_change_watch.js?v=20260820a";
+} from "/ui/shared/services/object_change_watch.js?v=20260927c";
 import {
   getSummaryConfigKey,
   saveCustomSummaryRows,
