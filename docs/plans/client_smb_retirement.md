@@ -1,10 +1,12 @@
 # Client SMB Retirement: Every Client PC Read and Write Through the Gateway
 
-Status: Audited 2026-09-26 and broken into 20 session-sized steps; the dead SMB code the audit found (workbook routes, the unused dataset list and diagonal routes, the unused Project Instance folder watcher) was removed the same day; the three decisions were settled the same day as recommended, and the Snowflake config path moved off the share; step 1 of 20 done 2026-09-26 (ResQ bridge apply is a hosted save; its Engine and Gateway deploy is step 6).
+Status: Audited 2026-09-26 and broken into 20 session-sized steps; the dead SMB code the audit found (workbook routes, the unused dataset list and diagonal routes, the unused Project Instance folder watcher) was removed the same day; the three decisions were settled the same day as recommended, and the Snowflake config path moved off the share; step 1 of 20 done 2026-09-26 (ResQ bridge apply is a hosted save; its Engine and Gateway deploy is step 6); step 2 in progress; production deploys wait for the user.
 Last updated: 2026-09-26
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finishes; its Phase 3 notifications and Phase 4 small writes are folded in here), [hosted_save_http_transport.md](hosted_save_http_transport.md) (its "Retiring the SMB transport" item is steps 18 and 19 here)
 
 **How this ships.** Most steps change both sides: a Gateway (and sometimes Engine) deploy that adds a registered kind, which is additive and cannot affect a user on the released app, then a frontend release that makes the client use it. Each deploy step deploys only additive server work. The steps that change behaviour for users — a Gateway outage stops the app instead of falling back to the share — reach users only with a frontend release (decision 1 allows it).
+
+**Production deploys wait for the user (2026-09-26).** The user asked for no rush on production deploys and app releases. Deploy steps 6, 12 and 17 deploy to the local test root and check there; the production deploy and the frontend release run only when the user asks.
 
 ## Progress
 
@@ -13,7 +15,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | # | Step | Done | Date | Est. | Actual | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | Applying a ResQ bridge change saves on the server like any other save | [x] | 2026-09-26 | 50 min | 8 min | "Update local from ResQ" in a DFM now saves on the server, under the same protection as the page's own Save. |
-| 2 | Bootstrap refresh, dataset notes and new empty datasets save on the server | [ ] | | 60 min | | |
+| 2 | Bootstrap refresh, dataset notes and new empty datasets save on the server | [ ] | | 60 min | | In progress 2026-09-26 |
 | 3 | Audit log entries from two PCs can no longer overwrite each other | [ ] | | 45 min | | |
 | 4 | ArcBot edits go through the normal save instead of writing files directly | [ ] | | 70 min | | |
 | 5 | Editing a method file by hand no longer writes around the save | [ ] | | 35 min | | |
