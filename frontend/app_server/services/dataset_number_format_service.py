@@ -6,7 +6,7 @@ import re
 import threading
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
 
@@ -171,10 +171,14 @@ def dataset_type_number_format_settings(dataset_type_name: Any) -> Dict[str, Any
 
 def save_preferences(
     *,
-    expected_revision: int,
     default_number_format: str,
-    overrides: List[Dict[str, Any]],
+    expected_revision: int = 0,
+    overrides: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
+    # The hosted write lists the revision and overrides as optional (0 and an
+    # empty list are both legal and a request may leave them out), so their
+    # defaults live here, where the Gateway calls in.
+    overrides = list(overrides or [])
     if not _WRITE_LOCK.acquire(timeout=_WRITE_LOCK_TIMEOUT_SECONDS):
         raise HTTPException(423, "Dataset number-format preferences are being saved by another request. Please retry.")
     try:
