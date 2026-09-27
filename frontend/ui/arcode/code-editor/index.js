@@ -1,5 +1,6 @@
 import { inferSqlDialect } from "../../ai-assistant/skills.js?v=20260726a";
-import { createEditorPage } from "../shared/editor_framework.js?v=20260927a";
+import { createEditorPage } from "../shared/editor_framework.js?v=20260927b";
+import { loadDfmMethod } from "/ui/method_pages/dfm/dfm_method_api.js?v=20260910a";
 
 /**
  * The plain code/text editor: the generic editor framework in its scripting
@@ -16,6 +17,29 @@ const shared = window.ArcodeEditorShared;
 const scriptingSessionId = shared.getOrCreateScriptingSessionId();
 
 let page = null;
+
+/**
+ * "Open DFM JSON" names a method rather than a file. It loads through the same
+ * hosted DFM load the DFM page uses and opens read only, laid out the way the
+ * method file is written, so this window never reads or writes the method
+ * over the share. The method is changed in its DFM page.
+ */
+function dfmMethodSource(param) {
+  if (!param) return null;
+  const identity = JSON.parse(param);
+  return {
+    name: `${identity.method_name}.json`,
+    note: "Loaded from the server. Change this method in its DFM page.",
+    load: async () => {
+      const response = await loadDfmMethod(identity);
+      const host = shared.getHostApi();
+      if (typeof host?.formatPersistedJsonText !== "function") {
+        throw new Error("Showing a DFM method requires the desktop app host.");
+      }
+      return host.formatPersistedJsonText({ data: response.method });
+    },
+  };
+}
 
 const TEXT_FILE_FILTERS = [
   { name: "Code and Text Files", extensions: ["py", "r", "sql", "js", "ts", "json", "md", "txt", "css", "html"] },
@@ -172,6 +196,7 @@ page = createEditorPage({
   panelTitle: "Output",
   suggestedFileName: "script.py",
   fileFilters: TEXT_FILE_FILTERS,
+  readOnlySource: dfmMethodSource(new URLSearchParams(window.location.search).get("dfm")),
   restart: {
     label: "Restart",
     title: "Restart the Python session",

@@ -9,6 +9,11 @@
  * commands, the ArcBot context and replacement contract, and the shell
  * messages every editor page answers.
  *
+ * A mode may hand over a read-only source instead of a file (`readOnlySource`:
+ * a display name, a one-line note, and a loader). The text is loaded, never
+ * read from or saved to a path: the editor is read only, and Save, Ctrl+S and
+ * ArcBot edits are refused. A DFM method opened from its page is one.
+ *
  * A page supplies only a mode descriptor: what language it edits, what Run
  * does, what Restart does, and any extra controls its engine needs. No page
  * restates the chrome markup, the file lifecycle, or the assistant contract.
@@ -101,6 +106,7 @@ export function createEditorPage(mode) {
   const tabInstanceId = shared.sanitizeStorageId(params.get("inst") || "");
 
   let currentPath = String(params.get("path") || "").trim();
+  const readOnlySource = mode.readOnlySource || null;
   let editor = null;
   let savedText = "";
   let dirty = false;
@@ -114,13 +120,13 @@ export function createEditorPage(mode) {
   const messageHandlers = [];
 
   function filename() {
-    return shared.filenameFromPath(currentPath) || mode.defaultTitle || "Untitled";
+    return readOnlySource?.name || shared.filenameFromPath(currentPath) || mode.defaultTitle || "Untitled";
   }
 
   function language() {
     return typeof mode.language === "function"
       ? mode.language(currentPath)
-      : (mode.language || shared.languageFromPath(currentPath));
+      : (mode.language || shared.languageFromPath(currentPath || readOnlySource?.name));
   }
 
   function setStatus(text) {
@@ -373,6 +379,10 @@ export function createEditorPage(mode) {
   }
 
   async function saveCurrentFile({ saveAs = false, ignoreRevisionConflict = false, copy = false } = {}) {
+    if (readOnlySource) {
+      setStatus(`Read only. ${readOnlySource.note}`);
+      return false;
+    }
     const text = editor?.getValue() || "";
     const targetPath = saveAs || copy ? "" : currentPath;
 
@@ -478,6 +488,8 @@ export function createEditorPage(mode) {
         editor = window.monaco.editor.create($("editorHost"), {
           value: "",
           language: language(),
+          readOnly: !!readOnlySource,
+          domReadOnly: !!readOnlySource,
           theme: monacoTheme,
           fontSize: 13,
           fontFamily: '"Cascadia Code", "Fira Code", Consolas, "Courier New", monospace',
@@ -512,8 +524,16 @@ export function createEditorPage(mode) {
    * ArcBot replacement contract. The reviewed text must still be the text on
    * screen, so every stale case is refused with a sentence the user can act on.
    */
+  function readOnlyRefusal() {
+    return `${filename()} is open read only. ${readOnlySource.note}`;
+  }
+
   function handleAssistantReplaceText(msg) {
     const requestId = msg.requestId || "";
+    if (readOnlySource) {
+      replyAssistant(requestId, { ok: false, error: readOnlyRefusal() });
+      return;
+    }
     if (
       typeof msg.expectedTargetPath === "string"
       && msg.expectedTargetPath !== (currentPath || "")
@@ -588,6 +608,10 @@ export function createEditorPage(mode) {
   function handleAssistantJsonEdit(msg) {
     const revert = msg.type === "arcode:assistant-revert-json-edit";
     const reply = (payload) => shared.postParentMessage({ type: `${msg.type}-result`, requestId: msg.requestId || "", ...payload });
+    if (readOnlySource) {
+      reply({ ok: false, error: readOnlyRefusal() });
+      return;
+    }
     if (!editor || !isArcBotEditTarget(msg.targetPath)) {
       reply({ ok: false, error: "The file ArcBot edited is no longer open in this tab. Nothing was changed." });
       return;
@@ -714,6 +738,24 @@ export function createEditorPage(mode) {
     $,
   };
 
+  async function openReadOnlySource() {
+    const bar = $("contextBar");
+    if (bar) {
+      bar.innerHTML = `<span class="ce-read-only-chip">Read only</span><span class="ce-context-note"></span>`;
+      bar.querySelector(".ce-context-note").textContent = readOnlySource.note;
+      bar.hidden = false;
+    }
+    setEditorText("", { path: "" });
+    try {
+      setEditorText(await readOnlySource.load(), { path: "" });
+      setStatus(`Opened ${filename()} read only`);
+    } catch (err) {
+      const message = `Could not open ${filename()}: ${String(err?.message || err)}`;
+      setOutput(message, { error: true });
+      setStatus(message);
+    }
+  }
+
   async function boot() {
     // The page markup lives here, not in each editor document, so all three
     // editor pages carry the same command strip, banner, and panel.
@@ -725,7 +767,8 @@ export function createEditorPage(mode) {
     initEvents();
     updateTitle();
     await mode.onReady?.(api);
-    if (currentPath) await openFilePath(currentPath);
+    if (readOnlySource) await openReadOnlySource();
+    else if (currentPath) await openFilePath(currentPath);
     else setEditorText("", { path: "" });
     updateCommandState();
   }

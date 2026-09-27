@@ -7,7 +7,8 @@
 // the canonical text by `tests/test_host_json_text_parity.py`.
 //
 // It exists for files the host writes on its own - DFM templates, Arcode
-// notebooks, ratio-undo steps, ArcBot exchange copies and manifests. Persisted
+// notebooks, ratio-undo steps, ArcBot exchange copies and manifests - and for
+// the read-only Arcode view of a DFM method, which only displays it. Persisted
 // project data (method JSON, sidecars, index files) is written by the app
 // server through the Python owner, never from here: JavaScript cannot tell
 // `1` from `1.0`, so a number the Python side would write as `1.0` cannot be

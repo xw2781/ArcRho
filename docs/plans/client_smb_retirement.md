@@ -1,6 +1,6 @@
 # Client SMB Retirement: Every Client PC Read and Write Through the Gateway
 
-Status: Audited 2026-09-26 and broken into 20 session-sized steps; the dead SMB code the audit found (workbook routes, the unused dataset list and diagonal routes, the unused Project Instance folder watcher) was removed the same day; the three decisions were settled the same day as recommended, and the Snowflake config path moved off the share; step 1 of 20 done 2026-09-26 (ResQ bridge apply is a hosted save); step 2 done 2026-09-27 (Bootstrap refresh, dataset notes and empty-dataset create are hosted saves; the unused BF and Cape Cod refresh routes and the hidden grid-patch save were removed); step 3 done 2026-09-27 (the project audit log is read and appended through the Gateway from a Client PC, with an entry id that makes a repeated append land once); step 4 done 2026-09-27 (ArcBot hands its edit to the open page, which applies it as one undo step and saves through its own save; revert is that page's undo; ArcBot's class-folder CSV staging still reads the share and moved to step 16); step 21 done 2026-09-27 (no test run can reach a real Gateway); the Engine and Gateway deploy of steps 1-3 is step 6; production deploys wait for the user.
+Status: Audited 2026-09-26 and broken into 20 session-sized steps; the dead SMB code the audit found (workbook routes, the unused dataset list and diagonal routes, the unused Project Instance folder watcher) was removed the same day; the three decisions were settled the same day as recommended, and the Snowflake config path moved off the share; step 1 of 20 done 2026-09-26 (ResQ bridge apply is a hosted save); step 2 done 2026-09-27 (Bootstrap refresh, dataset notes and empty-dataset create are hosted saves; the unused BF and Cape Cod refresh routes and the hidden grid-patch save were removed); step 3 done 2026-09-27 (the project audit log is read and appended through the Gateway from a Client PC, with an entry id that makes a repeated append land once); step 4 done 2026-09-27 (ArcBot hands its edit to the open page, which applies it as one undo step and saves through its own save; revert is that page's undo; ArcBot's class-folder CSV staging still reads the share and moved to step 16); step 5 done 2026-09-27 ("Open DFM JSON" shows the method read only in Arcode, loaded through the hosted DFM load, with no way to save it); step 21 done 2026-09-27 (no test run can reach a real Gateway); the Engine and Gateway deploy of steps 1-3 is step 6; production deploys wait for the user.
 Last updated: 2026-09-27
 Related: [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md) (the transport this plan finishes; its Phase 3 notifications and Phase 4 small writes are folded in here), [hosted_save_http_transport.md](hosted_save_http_transport.md) (its "Retiring the SMB transport" item is steps 18 and 19 here)
 
@@ -18,7 +18,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 2 | Bootstrap refresh, dataset notes and new empty datasets save on the server | [x] | 2026-09-27 | 60 min | 21 min | Refreshing a Bootstrap method, saving dataset notes and creating an empty dataset now save on the server, under the same protection as a page's own Save. |
 | 3 | Audit log entries from two PCs can no longer overwrite each other | [x] | 2026-09-27 | 45 min | 41 min | The project audit log is read and written on the server, so entries saved from two PCs at once no longer overwrite each other. |
 | 4 | ArcBot edits go through the normal save instead of writing files directly | [x] | 2026-09-27 | 70 min | 28 min | ArcBot's edits now land in the open page and save through its normal Save; "revert the latest ArcBot edit" undoes it in that page, and no backup files are written next to the method. |
-| 5 | Editing a method file by hand no longer writes around the save | [ ] | | 35 min | | |
+| 5 | Editing a method file by hand no longer writes around the save | [x] | 2026-09-27 | 35 min | 18 min | "Open DFM JSON" now shows the method read only, loaded from the server; it cannot be saved there, so a method changes only through its DFM page. |
 | 6 | Deploy the server side of steps 1-3 | [ ] | | 20 min | | |
 | 7 | Project configuration pages load from the server | [ ] | | 70 min | | |
 | 8 | Reserving-class pickers and filters load and save through the server | [ ] | | 70 min | | |
@@ -36,7 +36,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 20 | Signing up to the server no longer needs the shared drive | [ ] | | 90 min | | |
 | 21 | Running the test suites can never reach a real server | [x] | 2026-09-27 | 50 min | 34 min | Running the test suites on a developer PC can no longer read from or write to a real server. |
 
-Overall: 5 of 21 steps done. Estimated 1,175 min, actual so far 132 min. Step 21 was added 2026-09-27 and ran before any production deploy.
+Overall: 6 of 21 steps done. Estimated 1,175 min, actual so far 150 min. Step 21 was added 2026-09-27 and ran before any production deploy.
 
 ## How agents work this plan
 
@@ -86,7 +86,7 @@ All three were decided by the user on 2026-09-26, each as recommended.
 2. **ArcBot's edits go through the page's save.** Step 4: ArcBot hands the edited JSON to the open page, which applies it as unsaved changes and saves through its normal hosted save, so ArcBot never writes a project file. Its backup and revert work on the page's undo instead of files on the share. No "replace this method JSON" save kind is added.
 3. **Client-only import sources upload to the Gateway.** Step 15b: the SQL Server import and a client-only CSV are still read on the client, and the rows are uploaded to a new Gateway operation that writes the master table, so the client never writes the share.
 
-Two smaller questions: "Open DFM JSON" becomes read-only (step 5, recommended, not yet confirmed; the step may still take the editable route it describes). The developer's fixed Snowflake config path under `E:\XWSpace` moved to the user's own settings folder on 2026-09-26 (done ahead of step 19).
+Two smaller questions: "Open DFM JSON" becomes read-only (step 5; the recommended read-only answer was taken on 2026-09-27). The developer's fixed Snowflake config path under `E:\XWSpace` moved to the user's own settings folder on 2026-09-26 (done ahead of step 19).
 
 ## Open decisions
 
@@ -174,17 +174,17 @@ Estimate: code edit 50 min, test/validation 20 min, total 70 min. Actual: code e
 
 **Goal.** The Arcode window opened from a DFM shows the method JSON without saving it back over the share.
 
-**Read first.** [dfm_tabs_orchestrator.js](../../frontend/ui/method_pages/dfm/dfm_tabs_orchestrator.js) "Open DFM JSON"; [editor_framework.js](../../frontend/ui/arcode/shared/editor_framework.js) open, revision check and save.
+**Read first.** [dfm_tabs_orchestrator.js](../../frontend/ui/method_pages/dfm/dfm_tabs_orchestrator.js) "Open DFM JSON"; [editor_framework.js](../../frontend/ui/arcode/shared/editor_framework.js) open, revision check and save; the path the request travels: [project_instance_messages.js](../../frontend/ui/project_instance/project_instance_messages.js) `forwardOpenPathRequestToShell`, [shell_messages.js](../../frontend/ui/shell/shell_messages.js) `arcrho:open-path`, [main.js](../../frontend/electron/main.js) `open-path` and `createArcodeWindow`, [arcode/main.js](../../frontend/ui/arcode/main.js) `openCodeTab`, and [code-editor/index.js](../../frontend/ui/arcode/code-editor/index.js).
 
 **Do.**
-- [ ] Load the content through the hosted DFM load and open it read-only (recommended answer; if the user prefers editable, route the save through the DFM hosted save instead).
-- [ ] Bump the `?v=` stamps of every edited module and update the tests that pin them (memory `theme-css-version-pins`, `frontend-node-test-suite`).
+- [x] Load the content through the hosted DFM load and open it read-only (recommended answer; if the user prefers editable, route the save through the DFM hosted save instead). Done: the DFM page sends the method's identity, not its path; the Project Instance and the shell pass it on and the host opens Arcode without touching the share. The code editor loads the method through `/dfm/method/load`, lays it out with the host's persisted-JSON formatter, and opens it read only with a "Read only" chip; Save, Save As, Ctrl+S and ArcBot edits are refused, the tab has no path (no recent-file entry, no revision polling), and every other file keeps its normal save.
+- [x] Bump the `?v=` stamps of every edited module and update the tests that pin them (memory `theme-css-version-pins`, `frontend-node-test-suite`).
 
 **Tests.** Node test that the window opened from a DFM cannot save to a file path.
 
 **Done when.** No DFM-originated Arcode window writes a method file.
 
-Estimate: code edit 20 min, test/validation 15 min, total 35 min.
+Estimate: code edit 20 min, test/validation 15 min, total 35 min. Actual: code edit 12 min, test/validation 6 min, total 18 min (checked against the local root in headless Chrome: a DFM page's "Open DFM JSON" opened the method read only and no save reached the host; the method file's time was unchanged).
 
 ### Step 6 — Deploy the server side of steps 1-3
 

@@ -10,6 +10,9 @@ import { createDatabaseConnectionsDialog } from "/ui/arcode/database-connections
 
 const UI_VERSION_PARAM = new URLSearchParams(window.location.search).get("v") || String(Date.now());
 const initialOpenPath = new URLSearchParams(window.location.search).get("path") || "";
+// A DFM's "Open DFM JSON" names its method: the tab loads it through the
+// hosted DFM load and is read only (see code-editor/index.js).
+const initialDfmMethodParam = new URLSearchParams(window.location.search).get("dfm") || "";
 const RECENT_KEY = "arcode_recent_files_v1";
 const WORKSPACE_FOLDERS_KEY = "arcode_workspace_folders_v1";
 const ACTIVE_WORKSPACE_FOLDER_KEY = "arcode_active_workspace_folder_v1";
@@ -205,6 +208,7 @@ function buildClearCacheReloadRestorePayload() {
       title: tabTitle(tab),
       path: String(tab.path || "").trim(),
       forceFresh: !String(tab.path || "").trim() || !!tab.forceFresh,
+      ...(tab.dfmMethod ? { dfmMethod: tab.dfmMethod } : {}),
     })),
   };
 }
@@ -218,6 +222,7 @@ function normalizeRestoreTabs(value) {
       path,
       title: title || filenameFromPath(path) || "Untitled Notebook",
       forceFresh: !path || !!entry?.forceFresh,
+      dfmMethod: entry?.dfmMethod || null,
     };
   });
 }
@@ -239,6 +244,7 @@ async function restoreTabsAfterClearCacheReload() {
       path: tab.path,
       title: tab.title,
       forceFresh: tab.forceFresh,
+      dfmMethod: tab.dfmMethod,
     }));
   }
   if (payload.activeWasHome || !openedTabs.length) {
@@ -1580,6 +1586,7 @@ function buildCodeEditorUrl(tab) {
   const params = new URLSearchParams();
   params.set("inst", tab.scInst);
   if (tab.path) params.set("path", tab.path);
+  if (tab.dfmMethod) params.set("dfm", JSON.stringify(tab.dfmMethod));
   params.set("v", UI_VERSION_PARAM);
   return `/ui/arcode/code-editor/?${params.toString()}`;
 }
@@ -1609,10 +1616,12 @@ function createFrameForTab(tab) {
 }
 
 function openCodeTab(options = {}) {
-  const filePath = String(options.path || options.openPath || "").trim();
-  const existing = filePath
-    ? state.tabs.find((tab) => String(tab.path || "").toLowerCase() === filePath.toLowerCase())
-    : null;
+  const dfmMethod = options.dfmMethod || null;
+  const filePath = dfmMethod ? "" : String(options.path || options.openPath || "").trim();
+  const dfmKey = dfmMethod ? JSON.stringify(dfmMethod) : "";
+  const existing = dfmKey
+    ? state.tabs.find((tab) => tab.dfmMethod && JSON.stringify(tab.dfmMethod) === dfmKey)
+    : (filePath ? state.tabs.find((tab) => String(tab.path || "").toLowerCase() === filePath.toLowerCase()) : null);
   if (existing) {
     saveRecentFile(filePath);
     setActiveTab(existing.id);
@@ -1623,9 +1632,12 @@ function openCodeTab(options = {}) {
   const id = `arcode_${state.nextId++}`;
   const tab = {
     id,
-    title: String(options.title || "").trim() || filenameFromPath(filePath) || "Untitled Notebook",
-    type: String(options.type || "").trim() || inferTabType(filePath, "notebook"),
+    title: String(options.title || "").trim()
+      || (dfmMethod ? `${dfmMethod.method_name}.json` : "")
+      || filenameFromPath(filePath) || "Untitled Notebook",
+    type: dfmMethod ? "editor" : (String(options.type || "").trim() || inferTabType(filePath, "notebook")),
     path: filePath,
+    dfmMethod,
     scInst: `${id}_${Date.now()}`,
     dirty: false,
     forceFresh: !!options.forceFresh || !filePath,
@@ -1635,7 +1647,7 @@ function openCodeTab(options = {}) {
   createFrameForTab(tab);
   if (filePath) saveRecentFile(filePath);
   setActiveTab(tab.id);
-  updateStatus(filePath ? `Opening ${filePath}...` : "New notebook opened.");
+  updateStatus(dfmMethod ? `Opening ${tab.title} read only...` : (filePath ? `Opening ${filePath}...` : "New notebook opened."));
   return tab;
 }
 
@@ -1746,7 +1758,8 @@ function initMessages() {
     }
     if (msg.type === "arcode:open-file") {
       const filePath = String(msg.path || "").trim();
-      if (filePath) openCodeTab({ path: filePath });
+      if (msg.dfmMethod) openCodeTab({ dfmMethod: msg.dfmMethod });
+      else if (filePath) openCodeTab({ path: filePath });
       return;
     }
     if (msg.type === "arcode:zoom") {
@@ -1893,8 +1906,10 @@ function updateMenuState() {
     document.querySelector(`.menuItem[data-action="color-theme-${theme}"]`)
       ?.setAttribute("aria-checked", theme === colorTheme ? "true" : "false");
   }
+  // A DFM method opened from its page is read only: it has nothing to save.
+  const readOnly = !!activeTab()?.dfmMethod;
   ["save", "save-as", "close-tab", "close-others", "close-all", "render-markdown", "toggle-line-numbers", "toggle-exec-time", "refresh-tab", "hard-refresh", "rename"].forEach((action) => {
-    setMenuItemDisabled(action, !hasTab);
+    setMenuItemDisabled(action, !hasTab || (readOnly && (action === "save" || action === "save-as")));
   });
   setMenuItemDisabled("open-file-location", !hasPath);
   setMenuItemDisabled("copy-file-path", !hasPath);
@@ -2393,7 +2408,8 @@ async function boot() {
   render();
   initAiAssistant();
   const restored = await restoreTabsAfterClearCacheReload();
-  if (!restored && initialOpenPath) openCodeTab({ path: initialOpenPath });
+  if (!restored && initialDfmMethodParam) openCodeTab({ dfmMethod: JSON.parse(initialDfmMethodParam) });
+  else if (!restored && initialOpenPath) openCodeTab({ path: initialOpenPath });
 }
 
 void boot();

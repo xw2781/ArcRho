@@ -180,6 +180,37 @@ body.ce-resizing-output {
   display: none;
 }
 
+/* A read-only source (a DFM method opened from its page) says so before
+   anything else, so nobody types into it expecting to save. */
+.ce-read-only-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border: 1px solid var(--ark-accent-border);
+  border-radius: 999px;
+  background: var(--ark-accent-soft);
+  color: var(--ark-accent-text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ce-read-only-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.ce-context-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ce-sep {
   flex: 0 0 1px;
   width: 1px;

@@ -1,5 +1,5 @@
 import { inferSqlDialect } from "../../ai-assistant/skills.js?v=20260726a";
-import { createEditorPage } from "./editor_framework.js?v=20260927a";
+import { createEditorPage } from "./editor_framework.js?v=20260927b";
 import { escapeHtml, fetchEngineJson, getSqlEngine, profileFieldValue } from "./sql_engines.js?v=20260818a";
 
 /**

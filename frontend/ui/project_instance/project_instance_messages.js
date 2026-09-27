@@ -420,6 +420,8 @@ function forwardOpenPathRequestToShell(message, sourceWindow) {
   const path = toText(message?.path);
   const preferredApp = toText(message?.preferredApp);
   const readOnly = !!message?.readOnly;
+  // A DFM's "Open DFM JSON" names its method instead of a path.
+  const dfmMethod = message?.dfmMethod || null;
   if (!requestId) return true;
 
   const replyToSource = (payload) => {
@@ -427,7 +429,7 @@ function forwardOpenPathRequestToShell(message, sourceWindow) {
       source?.postMessage({ type: "arcrho:open-path-result", requestId, ...payload }, "*");
     } catch {}
   };
-  if (!path) {
+  if (!path && !dfmMethod) {
     replyToSource({ ok: false, error: "Empty path." });
     return true;
   }
@@ -455,6 +457,7 @@ function forwardOpenPathRequestToShell(message, sourceWindow) {
       path,
       preferredApp,
       readOnly,
+      ...(dfmMethod ? { dfmMethod } : {}),
     }, "*");
   } catch (err) {
     finish({ ok: false, error: toText(err?.message) || "Failed to send open-path request." });

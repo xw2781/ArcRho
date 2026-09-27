@@ -89,6 +89,7 @@ import {
   runRatioUndo,
 } from "/ui/method_pages/dfm/dfm_ratio_history.js";
 import { wireDfmLoadSettingsButton } from "/ui/method_pages/dfm/dfm_load_settings_dialog.js?v=20260923b";
+import { readDfmMethodIdentityFromPage } from "/ui/method_pages/dfm/dfm_method_api.js?v=20260910a";
 import { readDatasetInputQueryValues } from "/ui/shared/tabs/data/data_tab_query_inputs.js";
 
 const DEFAULT_TOKEN = "__DEFAULT__";
@@ -455,9 +456,9 @@ function wireDfmSaveControls() {
   updateDfmSaveUi();
 }
 
-function openPathViaShellBridge(targetPath, preferredApp = "") {
+function openDfmJsonViaShellBridge(dfmMethod) {
   return new Promise((resolve) => {
-    if (!targetPath || !window.parent || window.parent === window) {
+    if (!window.parent || window.parent === window) {
       resolve({ ok: false, error: "Open path requires desktop app." });
       return;
     }
@@ -482,7 +483,7 @@ function openPathViaShellBridge(targetPath, preferredApp = "") {
       finish({ ok: false, error: "Open path timed out." });
     }, 5000);
     try {
-      window.parent.postMessage({ type: "arcrho:open-path", requestId, path: targetPath, preferredApp }, "*");
+      window.parent.postMessage({ type: "arcrho:open-path", requestId, preferredApp: "arcode", dfmMethod }, "*");
     } catch {
       finish({ ok: false, error: "Open path requires desktop app." });
     }
@@ -540,27 +541,24 @@ function forwardChildOpenPathRequest(message, sourceWindow) {
   return true;
 }
 
+// "Open DFM JSON" names the method, not its file: Arcode loads it through the
+// same hosted DFM load this page uses and shows it read only, so the window
+// never reads or writes the method over the share. The method changes here.
 async function openCurrentDfmMethodJson() {
-  let methodPath = "";
-  try {
-    methodPath = await resolveCurrentDfmMethodSavePath();
-  } catch (err) {
-    postDfmStatus(`Open DFM JSON failed: ${String(err?.message || err)}`, "error");
-    return;
-  }
-  if (!methodPath) {
-    postDfmStatus("Open DFM JSON failed: no DFM JSON path is available.", "error");
+  const dfmMethod = readDfmMethodIdentityFromPage();
+  if (!dfmMethod.project_name || !dfmMethod.reserving_class || !dfmMethod.method_name) {
+    postDfmStatus("Open DFM JSON failed: choose a project, reserving class and method first.", "error");
     return;
   }
   try {
     const hostApi = window.ADAHost || null;
     const result = hostApi && typeof hostApi.openPath === "function"
-      ? await hostApi.openPath({ path: methodPath, preferredApp: "arcode" })
-      : await openPathViaShellBridge(methodPath, "arcode");
+      ? await hostApi.openPath({ preferredApp: "arcode", dfmMethod })
+      : await openDfmJsonViaShellBridge(dfmMethod);
     if (result?.ok) {
-      postDfmStatus(`Opened DFM JSON: ${methodPath}`);
+      postDfmStatus(`Opened DFM JSON read only: ${dfmMethod.method_name}`);
     } else {
-      postDfmStatus(`Open DFM JSON failed: ${result?.error || methodPath}`, "error");
+      postDfmStatus(`Open DFM JSON failed: ${result?.error || dfmMethod.method_name}`, "error");
     }
   } catch (err) {
     postDfmStatus(`Open DFM JSON failed: ${String(err?.message || err)}`, "error");

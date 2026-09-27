@@ -57,6 +57,7 @@ contextBridge.exposeInMainWorld("ADAHost", {
   loadRecentSettingsFilePreferences: () => invoke("recent-settings-files-preferences-load"),
   saveRecentSettingsFilePreferences: (preferences) => invoke("recent-settings-files-preferences-save", { preferences }),
   saveJsonFile: (payload) => invoke("save-json-file", payload),
+  formatPersistedJsonText: (payload) => invoke("format-persisted-json-text", payload),
   saveTextFile: (payload) => invoke("save-text-file", payload),
   readTextFile: (payload) => invoke("read-text-file", payload),
   readJsonFile: (payload) => invoke("read-json-file", payload),
@@ -204,7 +205,7 @@ ipcRenderer.on("arcode:zoom", (_event, payload) => {
 
 ipcRenderer.on("arcode:open-file", (_event, payload) => {
   try {
-    window.postMessage({ type: "arcode:open-file", path: payload?.path || "" }, "*");
+    window.postMessage({ type: "arcode:open-file", path: payload?.path || "", dfmMethod: payload?.dfmMethod || null }, "*");
   } catch {
     // ignore
   }

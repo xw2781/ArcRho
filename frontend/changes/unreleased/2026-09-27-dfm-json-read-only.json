@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "\"Open DFM JSON\" now shows the method read only in Arcode.",
+  "details": [
+    "The method is loaded from the server the same way the DFM page loads it, so the window no longer opens the method file over the shared drive.",
+    "A \"Read only\" chip marks the tab, and Save, Ctrl+S and ArcBot edits are turned off there; change the method in its DFM page.",
+    "Other JSON files you open in Arcode keep their normal Save."
+  ]
+}

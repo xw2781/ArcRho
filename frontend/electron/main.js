@@ -997,6 +997,7 @@ function buildArcodeUrl(options = {}) {
   if (theme) params.set("theme", theme);
   const openPath = String(options.path || options.openPath || "").trim();
   if (openPath) params.set("path", openPath);
+  if (options.dfmMethod) params.set("dfm", JSON.stringify(options.dfmMethod));
   if (options.fresh) params.set("fresh", "1");
   return `http://${HOST}:${getBackendPort()}/ui/arcode/main.html?${params.toString()}`;
 }
@@ -1098,8 +1099,8 @@ function createArcodeWindow(options = {}) {
     if (arcodeWin.isMinimized()) arcodeWin.restore();
     arcodeWin.show();
     arcodeWin.focus();
-    if (openPath) {
-      arcodeWin.webContents.send("arcode:open-file", { path: openPath });
+    if (openPath || options.dfmMethod) {
+      arcodeWin.webContents.send("arcode:open-file", { path: openPath, dfmMethod: options.dfmMethod || null });
     }
     return arcodeWin;
   }
@@ -1376,6 +1377,12 @@ ipcMain.handle("open-path", async (_event, payload) => {
     || !!payload?.read_only
     || preferredApp === "excel-read-only"
     || String(payload?.openMode || payload?.open_mode || "").trim().toLowerCase() === "read-only";
+  // "Open DFM JSON" names a method, not a file: Arcode loads it through the
+  // hosted DFM load and shows it read only, so nothing here touches the share.
+  if (preferredApp === "arcode" && payload?.dfmMethod) {
+    createArcodeWindow({ dfmMethod: payload.dfmMethod });
+    return { ok: true, opener: "arcode" };
+  }
   if (!targetPath) return { ok: false, error: "Empty path." };
   try {
     if (!fs.existsSync(targetPath)) {
@@ -1494,6 +1501,10 @@ ipcMain.handle("save-json-file", async (event, payload) => {
     return { path: "", canceled: false, error: String(err?.message || err) };
   }
 });
+
+// Lays out a JSON value the way ArcRho writes it to disk, for a read-only view
+// such as a DFM method opened in Arcode. Nothing is written.
+ipcMain.handle("format-persisted-json-text", (_event, payload) => formatJsonForSave(payload?.data ?? null));
 
 ipcMain.handle("save-text-file", async (event, payload) => {
   const data = payload?.data ?? "";
