@@ -25,7 +25,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 9 | Dataset and method side panels load from the server | [x] | 2026-09-27 | 65 min | 17 min | A dataset's details panel, the live preview of the datasets that depend on an unsaved edit, a DFM's dataset cell references, the % Developed comparison curve and the development pattern BF and Cape Cod read now load from the server. |
 | 10 | "Changed by someone else" alerts stop firing on your own saves | [x] | 2026-09-27 | 55 min | 26 min | The "Updated Outside This Window" alert and the Project Instance "Refresh Table" button now check with the server, so your own saves no longer set them off, and they stay quiet while the server cannot be reached. |
 | 11 | Calculations hand back their results directly instead of via the shared drive | [x] | 2026-09-27 | 60 min | 25 min | A calculation's result and a project's period headings now come straight back from the server instead of through the shared drive, so datasets that need recalculating open faster. |
-| 12 | Deploy the server side of steps 7-11 | [ ] | | 20 min | | |
+| 12 | Deploy the server side of steps 7-11 | [ ] | | 20 min | | Local test server done 2026-09-27 (62 reads, 17 writes, 15 saves offered); production waits for the user |
 | 13 | Project folder create, rename, delete and settings saves run on the server | [ ] | | 75 min | | |
 | 14 | Dataset-type changes and project copies are submitted and tracked through the server | [ ] | | 60 min | | |
 | 15 | Field mapping, source profile and reserving-class refresh run on the server | [ ] | | 70 min | | |
