@@ -4,7 +4,9 @@
 <!-- MANUAL:BEGIN -->
 Table summary generation/cache and refresh domain.
 
-Both routes are addressed by `project_name` only and always summarize that project's imported master table at `<project>/source/master_table.csv`. There is no caller-supplied path: `table_summary_service.resolve_master_table` calls `source_table_service.ensure_master_table`, so a CSV-sourced project re-copies its external file first (`force=True` on refresh), and a SQL Server project without an imported copy answers `409` instead of reading anything external. See [`source_table`](source_table.md).
+Both routes are addressed by `project_name` only and always summarize that project's imported master table at `<project>/source/master_table.csv`. There is no caller-supplied path: `table_summary_service.resolve_master_table` calls `source_table_service.ensure_master_table`, so a CSV-sourced project whose external file changed re-copies it first, and a SQL Server project without an imported copy answers `409` instead of reading anything external. See [`source_table`](source_table.md).
+
+`POST /table_summary/refresh` is the `table_summary_rebuild` workspace mutation (`table_summary_service.rebuild_table_summary`, Gateway-required and idempotent): it rebuilds the summary cache and, with `refresh_reserving`, the reserving-class values on the server host, and never forces a re-import. The import itself belongs to the source refresh job, whose `caches` stage calls `refresh_table_summary` with `import_source=False`; the page asks for this route only after importing a source only this PC can read while no Engine is running.
 
 `GET /table_summary` is served by `table_summary_service.get_table_summary`, which is registered as the `table_summary` Server-hosted workspace read: when the Gateway advertises it, the whole cache check and, on a miss, the full master-table read run on the server host and only the summary payload crosses the network. See [`workspace_reads`](workspace_reads.md). The cache file is written through `persisted_json_text` like every other project-data cache.
 
@@ -27,7 +29,7 @@ A free-form (non-date-role) numeric `distribution` is shaped for reading, not fo
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/table_summary` | `get_table_summary` | `str` | - | `table_summary_service.get_table_summary`, `workspace_read_client.run_workspace_read` |
-| `POST` | `/table_summary/refresh` | `refresh_table_summary` | `TableSummaryRefreshRequest` | [`app_server/schemas/table_summary.py`](../../../app_server/schemas/table_summary.py) | `table_summary_service.refresh_table_summary` |
+| `POST` | `/table_summary/refresh` | `refresh_table_summary` | `TableSummaryRefreshRequest` | [`app_server/schemas/table_summary.py`](../../../app_server/schemas/table_summary.py) | `table_summary_service.rebuild_table_summary`, `workspace_mutation_client.run_workspace_mutation` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files

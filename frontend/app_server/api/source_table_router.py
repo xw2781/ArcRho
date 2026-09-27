@@ -1,9 +1,21 @@
-"""Routes for the project-owned imported source table."""
+"""Routes for the project-owned imported source table.
+
+The project's source settings, its import profile, the shared SQL Server
+connection list and the refresh job are read and written on the server host
+through the Gateway; a Client PC refuses rather than touching the share. What
+stays here is what only this PC can do: translate its own drive letters, stat
+an external CSV on a drive only it has, and talk to SQL Server as the user's
+Windows login. The client-side import of such a source (``/source_table/import``
+and ``/source_table/refresh``) still writes the master table over the share
+until step 22 of docs/plans/client_smb_retirement.md uploads it instead.
+"""
 from __future__ import annotations
 
 from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
+
+from arcrho_api.source_table_contract import normalize_import_source_path
 
 from app_server.schemas.source_table import (
     MssqlConnectionForgetRequest,
@@ -63,17 +75,27 @@ def get_source_table_file_status(project_name: str) -> Dict[str, Any]:
         raise HTTPException(500, f"Failed to read the source file status: {str(error)}")
 
 
+def _mutate(kind: str, kwargs: Dict[str, Any], local) -> Dict[str, Any]:
+    return workspace_mutation_client.run_workspace_mutation(
+        kind, kwargs, local=local, gateway_required=True
+    )
+
+
 @router.post("/source_table/profile")
 def save_source_table_profile(req: SourceProfileSaveRequest) -> Dict[str, Any]:
-    mssql = req.mssql.model_dump() if req.mssql is not None else None
+    kwargs: Dict[str, Any] = {"project_name": req.project_name, "source_type": req.source_type}
+    if req.mssql is not None:
+        kwargs["mssql"] = req.mssql.model_dump()
+    if req.csv_path is not None:
+        # Saved as the share it stands for: only this PC knows its drive letters.
+        kwargs["csv_path"] = normalize_import_source_path(req.csv_path)
     try:
-        source_table_service.save_source_profile(
-            project_name=req.project_name,
-            source_type=req.source_type,
-            mssql=mssql,
-            csv_path=req.csv_path,
+        settings = _mutate(
+            "source_profile_save",
+            kwargs,
+            lambda: source_table_service.save_source_profile(**kwargs),
         )
-        return {"ok": True, **source_table_service.get_source_table_state(req.project_name)}
+        return {"ok": True, **source_table_service.get_source_table_state(req.project_name, settings)}
     except HTTPException:
         raise
     except Exception as error:
@@ -113,10 +135,14 @@ def get_source_table_connections() -> Dict[str, Any]:
 
 @router.post("/source_table/connections/forget")
 def forget_source_table_connection(req: MssqlConnectionForgetRequest) -> Dict[str, Any]:
+    kwargs: Dict[str, Any] = {"server": req.server}
+    if req.database is not None:
+        kwargs["database"] = req.database
     try:
-        return source_table_service.forget_mssql_connection(
-            server=req.server,
-            database=req.database,
+        return _mutate(
+            "mssql_connection_forget",
+            kwargs,
+            lambda: source_table_service.forget_mssql_connection(**kwargs),
         )
     except HTTPException:
         raise
@@ -173,12 +199,38 @@ def refresh_source_table(req: SourceTableRefreshRequest) -> Dict[str, Any]:
 def get_source_refresh_plan(project_name: str) -> Dict[str, Any]:
     """Who imports this project's table, and whether a refresh is already running.
 
-    Deliberately not a hosted read: it may rewrite a CSV path saved in this
-    machine's drive letters into the share it stands for, and only this session
-    has the mapping that makes that translation possible.
+    The settings and the busy check are read on the server host. A CSV path
+    saved in this machine's drive letters is translated here, because only
+    this session has the mapping, and the translation is sent to the server
+    as data to store in place of the drive letter.
     """
     try:
-        return source_refresh_service.describe_source_refresh_plan(project_name)
+        settings = _source_table_settings(project_name)
+        configured = str(settings.get("csv_path") or "").strip()
+        csv_path = normalize_import_source_path(configured)
+        rewritten = False
+        if configured and csv_path != configured:
+            kwargs = {"project_name": project_name, "from_path": configured, "csv_path": csv_path}
+            rewritten = bool(
+                _mutate(
+                    "source_csv_path_rewrite",
+                    kwargs,
+                    lambda: source_table_service.rewrite_source_csv_path(**kwargs),
+                ).get("rewritten")
+            )
+        status = workspace_read_client.run_workspace_read(
+            "source_refresh_status",
+            {"project_name": project_name},
+            local=lambda: source_refresh_service.get_source_table_refresh_status(project_name),
+            gateway_required=True,
+        )
+        return source_refresh_service.describe_source_refresh_plan(
+            project_name,
+            settings,
+            status,
+            csv_path=csv_path,
+            csv_path_rewritten=rewritten,
+        )
     except HTTPException:
         raise
     except Exception as error:
@@ -203,18 +255,21 @@ def submit_source_refresh_job(req: SourceRefreshJobSubmitRequest) -> Dict[str, A
             {"Name": entry.Name, "Level": int(entry.Level)}
             for entry in req.reserving_class_types
         ]
-    return workspace_mutation_client.run_workspace_mutation(
+    return _mutate(
         "source_table_refresh_submit",
         kwargs,
-        local=lambda: source_refresh_service.submit_source_table_refresh_job(**kwargs),
+        lambda: source_refresh_service.submit_source_table_refresh_job(**kwargs),
     )
 
 
 @router.get("/source_table/refresh_job/status")
 def get_source_refresh_job_status(project_name: str, job_id: str = "") -> Dict[str, Any]:
+    # Polled while the job runs; a poll the Gateway cannot answer is
+    # "unknown", never a failed refresh.
     kwargs = {"project_name": project_name, "job_id": job_id}
-    return workspace_read_client.run_workspace_read(
+    return workspace_read_client.run_polled_workspace_read(
         "source_refresh_status",
         kwargs,
         local=lambda: source_refresh_service.get_source_table_refresh_status(**kwargs),
+        unknown={"ok": True, "project_name": project_name, "job_id": job_id, "found": False},
     )

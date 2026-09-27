@@ -270,6 +270,20 @@ export async function waitForSourceRefreshJob({
 
     consecutiveFailures = 0;
     const result = await response.json();
+    if (result?.unknown) {
+      // The server could not be asked. The job runs on regardless, so keep
+      // asking, and do not let this gap count as a status that stopped moving.
+      const unknownNow = Number(now());
+      if (Number.isFinite(unknownNow)) lastActivityAt = unknownNow;
+      onProgress({
+        label: "Refresh is still running; waiting for the server to answer...",
+        completed: 0,
+        total: 0,
+        countText: "Reconnecting...",
+      });
+      await waitForPoll(pollIntervalMs);
+      continue;
+    }
     if (result?.ok === false) {
       throw new Error(String(result.message || result.error || "The source table refresh failed."));
     }

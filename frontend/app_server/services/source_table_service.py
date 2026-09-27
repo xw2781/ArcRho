@@ -36,7 +36,6 @@ from arcrho_api.source_table_contract import (
     SOURCE_TYPE_MSSQL,
     SUPPORTED_MSSQL_AUTH_MODES,
     csv_identity,
-    import_source_path_is_shared,
     mssql_source_label,
     normalize_import_source_path,
     normalize_mssql_profile,
@@ -48,7 +47,7 @@ from arcrho_api.source_table_contract import (
 from arcrho_api.io import persisted_json_text
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
-from app_server.services import mssql_odbc
+from app_server.services import mssql_odbc, workspace_mutation_client, workspace_read_client
 from app_server.services.audit_service import safe_append_project_audit_log
 from app_server.services.user_identity_service import get_windows_login_name
 
@@ -206,7 +205,12 @@ def save_source_profile(
     mssql: Optional[Dict[str, Any]] = None,
     csv_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Persist the project-shared import source selection and SQL Server profile."""
+    """Persist the project-shared import source selection and SQL Server profile.
+
+    Runs on the server host (the ``source_profile_save`` mutation) and answers
+    with the settings as they now stand. *csv_path* arrives already translated
+    from the client's drive letters into the share it stands for.
+    """
     name = _require_project_name(project_name)
     requested_type = str(source_type or "").strip().lower()
     if requested_type not in (SOURCE_TYPE_CSV, SOURCE_TYPE_MSSQL):
@@ -225,7 +229,7 @@ def save_source_profile(
     with _project_lock(name):
         if requested_type == SOURCE_TYPE_CSV and csv_path is not None:
             _save_configured_csv_path(name, csv_path)
-        saved = _write_source_import(
+        _write_source_import(
             name,
             {**current, "project_name": name, "source_type": requested_type, "mssql": profile},
         )
@@ -237,7 +241,7 @@ def save_source_profile(
             + ")"
         ),
     )
-    return saved
+    return read_source_table_settings(name)
 
 
 # --- SQL Server connection ------------------------------------------------
@@ -325,6 +329,24 @@ def remember_mssql_connection(server: str, database: str) -> Dict[str, Any]:
         )
 
 
+def submit_mssql_connection_remember(server: str, database: str) -> Dict[str, Any]:
+    """Remember a pair from whichever process is asking.
+
+    The SQL Server listing and import run on the client, as the user's own
+    Windows login, but the list they add to is shared server data: a Client PC
+    sends the pair to the Gateway and never writes the file over the share.
+    """
+    if workspace_read_client._is_server_process():
+        return remember_mssql_connection(server, database)
+    kwargs = {"server": str(server or "").strip(), "database": str(database or "").strip()}
+    return workspace_mutation_client.run_workspace_mutation(
+        "mssql_connection_remember",
+        kwargs,
+        local=lambda: remember_mssql_connection(**kwargs),
+        gateway_required=True,
+    )
+
+
 def forget_mssql_connection(server: str, database: Optional[str] = None) -> Dict[str, Any]:
     """Drop one saved pair, or every pair for a server when no database is given."""
     clean_server = str(server or "").strip()
@@ -395,9 +417,9 @@ def list_mssql_tables(
 
     # The pair reached a real database, so it is worth offering again.
     try:
-        remember_mssql_connection(profile["server"], profile["database"])
+        submit_mssql_connection_remember(profile["server"], profile["database"])
     except HTTPException:
-        # A read-only config folder must not fail an otherwise good listing.
+        # An unreachable Gateway must not fail an otherwise good listing.
         pass
 
     tables: List[Dict[str, str]] = []
@@ -683,9 +705,9 @@ def import_from_mssql(project_name: str) -> Dict[str, Any]:
         )
 
     try:
-        remember_mssql_connection(profile["server"], profile["database"])
+        submit_mssql_connection_remember(profile["server"], profile["database"])
     except HTTPException:
-        # A read-only config folder must not fail a committed import.
+        # An unreachable Gateway must not fail a committed import.
         pass
 
     safe_append_project_audit_log(
@@ -764,8 +786,8 @@ def get_source_file_status(
     copy was taken, so the Source Data details panel asks the file itself. The
     stat runs here rather than on the Arco Server host because an import
     source is not project data: the configured path may be a Client PC drive
-    the server cannot see, which is the same reason
-    `resolve_import_source_for_server` exists. The import record and the
+    the server cannot see, which is the same reason the refresh plan
+    translates drive letters on the client. The import record and the
     configured path are project data; *settings* is a
     ``read_source_table_settings`` answer already in hand, which a Client PC
     gets through the Gateway.
@@ -798,44 +820,31 @@ def get_source_file_status(
     return status
 
 
-def resolve_import_source_for_server(project_name: str) -> Dict[str, Any]:
-    """Report whether the Arco Server host can perform this project's import.
+def rewrite_source_csv_path(project_name: str, from_path: str, csv_path: str) -> Dict[str, Any]:
+    """Store a saved CSV path as the share path a client translated it to.
 
-    A CSV path saved before this contract existed - or saved by a client whose
-    drive mapping was not resolvable at the time - can still be this machine's
-    own drive letter, which the Engine cannot open. When this session does have
-    that mapping the saved value is rewritten to the share it stands for, so the
-    project stops carrying a machine-local path and the server can read it.
-
-    A SQL Server project is reported as not server-importable on purpose: the
-    import authenticates with the caller's Windows identity, and moving it to a
-    server service account would silently change who reads the table.
+    A path saved before paths were stored as shares - or by a client whose
+    drive mapping could not be resolved then - can still be one machine's own
+    drive letter, which the Engine cannot open. Only a client holding that
+    mapping can translate it, so the client sends both spellings and this
+    runs on the server host (the ``source_csv_path_rewrite`` mutation). The
+    path changes only while it still reads *from_path*, so a repeat, or a
+    path someone changed meanwhile, writes nothing.
     """
 
     name = _require_project_name(project_name)
-    record = read_source_import(name)
-    source_type = normalize_source_type(record.get("source_type"))
-    configured = _configured_csv_path(name)
-    normalized = normalize_import_source_path(configured)
-    rewritten = bool(configured) and normalized != configured
+    old = str(from_path or "").strip()
+    new = str(csv_path or "").strip()
+    with _project_lock(name):
+        rewritten = bool(old and new and old != new and _configured_csv_path(name) == old)
+        if rewritten:
+            _save_configured_csv_path(name, new)
     if rewritten:
-        with _project_lock(name):
-            _save_configured_csv_path(name, normalized)
         safe_append_project_audit_log(
             project_name=name,
             action="Rewrote the source CSV path as its network share path",
         )
-    return {
-        "project_name": name,
-        "source_type": source_type,
-        "csv_path": normalized,
-        "csv_path_rewritten": rewritten,
-        "server_can_import": bool(
-            source_type == SOURCE_TYPE_CSV
-            and normalized
-            and import_source_path_is_shared(normalized)
-        ),
-    }
+    return {"ok": True, "project_name": name, "csv_path": _configured_csv_path(name), "rewritten": rewritten}
 
 
 def imported_master_table_path(project_name: str) -> str:

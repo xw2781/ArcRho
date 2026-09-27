@@ -11,6 +11,8 @@ Field mapping persistence domain for project settings.
 That granularity is the shape an Engine-generated dataset can be rebuilt at, whatever period it was last generated at, so it is what such a dataset's sidecar records as its stored shape (see [`dataset`](dataset.md)). The Engine mirrors the rule in `arcrho_engine.data_processing`, prefers the recorded value over its own reading of the source column, and writes a line to `runtime/logs/engine_requests.log` when the two disagree; `server-components/tests/test_engine_source_granularity.py` fails if the mirror drifts.
 
 `table_path` in `field_mapping.json` is the *external CSV selection* a user picked in Project Settings, not the table anything reads. It is the copy source for a `csv`-sourced project's imported master table; see [`source_table`](source_table.md). Its writer is the import-profile save (`POST /source_table/profile` with `csv_path`); a field-mapping save that omits `table_path` preserves the stored value. Saving a mapping refreshes reserving class values from the imported copy, so no path override is passed.
+
+`POST /field_mapping` is the `field_mapping_save` workspace mutation (Gateway-required, with a receipt because each save appends an audit entry): the mapping is written and the reserving-class values rebuilt on the server host, so a Client PC never writes the mapping or the value caches over the share. Rows travel as plain objects. A `table_path`, when one is sent, is translated from this PC's drive letters into the share on the client first. The standalone reserving-class values refresh route is gone; the values are rebuilt by this save and by the source refresh job.
 <!-- MANUAL:END -->
 
 ## Entry Points
@@ -18,7 +20,7 @@ That granularity is the shape an Engine-generated dataset can be rebuilt at, wha
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/field_mapping` | `get_field_mapping` | `str` | - | `field_mapping_service.get_field_mapping`, `workspace_read_client.run_workspace_read` |
-| `POST` | `/field_mapping` | `save_field_mapping` | `FieldMappingSaveRequest` | [`app_server/schemas/field_mapping.py`](../../../app_server/schemas/field_mapping.py) | `field_mapping_service.save_field_mapping` |
+| `POST` | `/field_mapping` | `save_field_mapping` | `FieldMappingSaveRequest` | [`app_server/schemas/field_mapping.py`](../../../app_server/schemas/field_mapping.py) | `field_mapping_service.save_field_mapping`, `workspace_mutation_client.run_workspace_mutation` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files
@@ -32,6 +34,7 @@ That granularity is the shape an Engine-generated dataset can be rebuilt at, wha
 <!-- MANUAL:BEGIN -->
 - Used by project settings field mapping feature and by data-engine project source CSV lookup.
 - `GET /field_mapping` is the `field_mapping` hosted read (`field_mapping_service.get_field_mapping`), run on the server host through the Gateway; a Client PC answers `503` rather than reading the share.
+- `POST /field_mapping` is the `field_mapping_save` mutation (`field_mapping_service.save_field_mapping`); see [`workspace_mutations`](workspace_mutations.md).
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

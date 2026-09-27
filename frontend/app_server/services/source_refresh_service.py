@@ -49,8 +49,13 @@ from arcrho_source_refresh_contract import (
     write_source_refresh_status,
 )
 
+from arcrho_api.source_table_contract import (
+    SOURCE_TYPE_CSV,
+    import_source_path_is_shared,
+    normalize_source_type,
+)
 from app_server import config
-from app_server.services import source_table_service, user_identity_service
+from app_server.services import user_identity_service
 
 
 SOURCE_REFRESH_BUSY_MESSAGE = (
@@ -134,26 +139,40 @@ def _read_status(server_root: Path, request_id: str) -> Dict[str, Any] | None:
         ) from error
 
 
-def describe_source_refresh_plan(project_name: str) -> Dict[str, Any]:
+def describe_source_refresh_plan(
+    project_name: str,
+    settings: Dict[str, Any],
+    status: Dict[str, Any],
+    *,
+    csv_path: str,
+    csv_path_rewritten: bool,
+) -> Dict[str, Any]:
     """Say who can perform this project's import, and whether one is running.
 
     The caller needs both answers before it offers the button: a CSV on a share
     is imported by the Arco Server host, while a SQL Server profile or a path
     only this machine can open has to be imported here first.
+
+    Everything here is already in hand: *settings* is the project's source
+    settings and *status* its refresh status, both read on the server host,
+    and *csv_path* the saved path as the client translated it from its own
+    drive letters. A SQL Server project is never server-importable: the import
+    authenticates as the caller's Windows login, and moving it to a server
+    service account would silently change who reads the table.
     """
 
     name = _validated_project(project_name)
-    source = source_table_service.resolve_import_source_for_server(name)
-    server_root = _workspace_server_root()
-    hold = find_source_refresh_hold(server_root, name)
+    source_type = normalize_source_type(settings.get("source_type"))
     return {
         "ok": True,
-        "project_name": source["project_name"],
-        "source_type": source["source_type"],
-        "server_can_import": source["server_can_import"],
-        "csv_path_rewritten": source["csv_path_rewritten"],
-        "busy": hold is not None,
-        "busy_reason": hold["reason"] if hold is not None else "",
+        "project_name": name,
+        "source_type": source_type,
+        "server_can_import": bool(
+            source_type == SOURCE_TYPE_CSV and csv_path and import_source_path_is_shared(csv_path)
+        ),
+        "csv_path_rewritten": bool(csv_path_rewritten),
+        "busy": bool(status.get("busy")),
+        "busy_reason": str(status.get("busy_reason") or ""),
     }
 
 

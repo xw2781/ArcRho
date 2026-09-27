@@ -941,15 +941,17 @@ test("used server/database pairs are remembered in the server-shared config", ()
     assert.ok(!entryShape.includes(forbidden), `the saved entry carries ${forbidden}`);
   }
 
-  // Recorded on a successful connect and on a committed import.
+  // Recorded on a successful connect and on a committed import, both of which
+  // run on this PC; the shared list itself is written on the server host.
   assert.match(sourceTableService, /def remember_mssql_connection\(/);
   assert.equal(
-    (sourceTableService.match(/remember_mssql_connection\(profile\["server"\], profile\["database"\]\)/g) || []).length,
+    (sourceTableService.match(/submit_mssql_connection_remember\(profile\["server"\], profile\["database"\]\)/g) || []).length,
     2,
     "the pair is not recorded on both connect and import",
   );
-  // A read-only config folder must not fail an otherwise good operation.
-  assert.match(sourceTableService, /except HTTPException:\s*\n\s*# A read-only config folder/);
+  assert.match(sourceTableService, /"mssql_connection_remember",/);
+  // An unreachable Gateway must not fail an otherwise good operation.
+  assert.match(sourceTableService, /except HTTPException:\s*\n\s*# An unreachable Gateway/);
 
   assert.match(sourceTableRouter, /@router\.get\("\/source_table\/connections"\)/);
   assert.match(sourceTableRouter, /@router\.post\("\/source_table\/connections\/forget"\)/);
@@ -1160,6 +1162,19 @@ test("Import Data is preceded by an Import Scope step that narrows the refresh",
   assert.match(projectSettingsJs, /reservingClassTypes: scope\?\.reservingClassTypes \|\| \[\]/);
   assert.match(sourceTableRouter, /if req\.dataset_types:/);
   assert.match(sourceTableRouter, /if req\.reserving_class_types:/);
+
+  // A source the server can read is imported only by the job: with no plan or
+  // no Engine this PC imports nothing rather than copy it over the share.
+  const importFlow = projectSettingsJs.slice(
+    projectSettingsJs.indexOf("async function importSourceData("),
+    projectSettingsJs.indexOf("// ============ Table Summary ============"),
+  );
+  assert.match(importFlow, /if \(!plan\) return \{ ok: false, error: "Could not reach Arco Server/);
+  assert.match(importFlow, /if \(job\.unavailable\) \{[\s\S]*?if \(importOnServer\) \{\s*return \{\s*ok: false,/);
+  assert.equal(importFlow.match(/importSourceDataLocally\(/g).length, 1, "a second local import came back");
+  // The rebuild a client-only import still asks for runs on the server.
+  assert.match(summaryRouter, /"table_summary_rebuild"/);
+  assert.match(summaryRouter, /gateway_required=True/);
 });
 
 test("the Import Scope step opens on the project's last refresh scope, shared by every user", () => {

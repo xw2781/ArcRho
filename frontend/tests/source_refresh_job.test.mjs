@@ -132,6 +132,32 @@ test("a locked or failing status endpoint is retried, then reported as unavailab
   assert.equal(calls, 3);
 });
 
+test("an unknown status keeps polling and never counts as a failure or a stall", async () => {
+  let clock = 0;
+  const unknown = () => response({ ok: true, project_name: "Demo Project", job_id: "psrefresh_1", found: false, unknown: true });
+  const replies = [
+    response(statusPayload("processing")),
+    ...Array.from({ length: 20 }, unknown),
+    response(statusPayload("processing")),
+    response(statusPayload("success", { progress: { stage: "complete", completed: 5, total: 5, label: "Done" } })),
+  ];
+  const labels = [];
+  const terminal = await waitForSourceRefreshJob({
+    fetchImpl: async () => replies.shift(),
+    projectName: "Demo Project",
+    jobId: "psrefresh_1",
+    onProgress: (progress) => labels.push(progress.label),
+    waitForPoll: () => {
+      clock += 10_000;
+      return Promise.resolve();
+    },
+    now: () => clock,
+    maxStatusRetries: 2,
+  });
+  assert.equal(terminal.status, "success");
+  assert.ok(labels.includes("Refresh is still running; waiting for the server to answer..."));
+});
+
 test("a status that stops moving is treated as a stalled worker", async () => {
   let clock = 0;
   await assert.rejects(

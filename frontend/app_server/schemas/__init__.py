@@ -15,7 +15,6 @@ from .project_settings import (
 from .field_mapping import FieldMappingRow, FieldMappingSaveRequest
 from .reserving_class import (
     ReservingClassTypesSaveRequest,
-    RefreshReservingClassValuesRequest,
     ReservingClassHiddenPathsSaveRequest,
     ReservingClassFilterSpecSaveRequest,
 )
@@ -51,7 +50,7 @@ __all__ = [
     "ProjectDuplicationJobStatusResponse", "DeleteProjectFolderRequest",
     "GeneratedDatasetCacheClearRequest", "GeneralSettingsUpdateRequest",
     "FieldMappingRow", "FieldMappingSaveRequest",
-    "ReservingClassTypesSaveRequest", "RefreshReservingClassValuesRequest",
+    "ReservingClassTypesSaveRequest",
     "ReservingClassHiddenPathsSaveRequest", "ReservingClassFilterSpecSaveRequest",
     "DatasetTypesSaveRequest",
     "TableSummaryRefreshRequest",

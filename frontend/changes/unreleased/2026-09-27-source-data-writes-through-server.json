@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Saving the field mapping, the import settings and the reserving class types now happens on the server, and Import Data no longer copies a shared source file through your PC when the server's import cannot run. While the server cannot be reached, the source refresh progress window keeps waiting instead of reporting a failure."
+}

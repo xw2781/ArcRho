@@ -5,7 +5,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException
 
 from app_server.schemas.table_summary import TableSummaryRefreshRequest
-from app_server.services import table_summary_service, workspace_read_client
+from app_server.services import table_summary_service, workspace_mutation_client, workspace_read_client
 
 router = APIRouter()
 
@@ -21,24 +21,19 @@ def get_table_summary(project_name: str) -> Dict[str, Any]:
 
 @router.post("/table_summary/refresh")
 def refresh_table_summary(req: TableSummaryRefreshRequest) -> Dict[str, Any]:
-    project_name = str(req.project_name or "").strip()
-    refresh_reserving = bool(req.refresh_reserving)
+    """Rebuild the summary (and the reserving-class values) on the server host.
 
+    It does not force a re-import: a server-readable source is imported by
+    the source refresh job, and one only this PC can read is imported here
+    first. Import Data calls this only when the job cannot run.
+    """
+    project_name = str(req.project_name or "").strip()
     if not project_name:
         raise HTTPException(400, "project_name is required")
-
-    try:
-        return table_summary_service.refresh_table_summary(
-            project_name,
-            refresh_reserving=refresh_reserving,
-        )
-    except ValueError as e:
-        raise HTTPException(404, str(e))
-    except FileNotFoundError as e:
-        raise HTTPException(404, str(e))
-    except PermissionError:
-        raise HTTPException(423, "File is locked. Another user may have it open.")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, f"Error refreshing table summary: {str(e)}")
+    kwargs = {"project_name": project_name, "refresh_reserving": bool(req.refresh_reserving)}
+    return workspace_mutation_client.run_workspace_mutation(
+        "table_summary_rebuild",
+        kwargs,
+        local=lambda: table_summary_service.rebuild_table_summary(**kwargs),
+        gateway_required=True,
+    )

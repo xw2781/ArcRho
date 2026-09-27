@@ -24,7 +24,6 @@ Index cache/data files and refresh points used by app-server services.
 | `POST` | `/excel_links/refresh` | `excel_link` | `excel_links_refresh` |
 | `POST` | `/excel_links/refresh/plan` | `excel_link` | `plan_excel_links_refresh` |
 | `POST` | `/project_settings/{source}/generated_dataset_cache/clear` | `project_settings` | `clear_generated_dataset_csv_caches` |
-| `POST` | `/reserving_class_values/refresh` | `reserving_class` | `refresh_reserving_class_values` |
 | `POST` | `/source_table/refresh` | `source_table` | `refresh_source_table` |
 | `POST` | `/source_table/refresh_job` | `source_table` | `submit_source_refresh_job` |
 | `GET` | `/source_table/refresh_job/plan` | `source_table` | `get_source_refresh_plan` |

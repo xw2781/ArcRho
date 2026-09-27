@@ -907,27 +907,6 @@ export function createFieldMappingFeature(deps = {}) {
     }
   }
 
-  /** Values come from the project-owned imported table, so only the project is sent. */
-  async function refreshReservingClassValues(projectName) {
-    const res = await fetchImpl("/reserving_class_values/refresh", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ project_name: projectName }),
-    });
-    if (!res.ok) {
-      let detail = "";
-      try {
-        const body = await res.json();
-        detail = String(body?.detail || "").trim();
-      } catch {
-        const text = await res.text();
-        detail = String(text || "").trim();
-      }
-      throw new Error(detail || `HTTP ${res.status}`);
-    }
-    return res.json();
-  }
-
   return {
     setFieldMappingStatus,
     renderFieldMappingEmpty,
@@ -939,6 +918,5 @@ export function createFieldMappingFeature(deps = {}) {
     renderFieldMappingTable,
     saveFieldMapping,
     hasUnsavedFieldMappingChanges,
-    refreshReservingClassValues,
   };
 }

@@ -11,8 +11,8 @@
  *   - shared table column sizing              -> project_settings_table_columns.js
  */
 import { AuditLogStore } from "/ui/project_settings/project_settings_audit.js?v=20260901dup1";
-import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260901dup1";
-import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260927job1";
+import { createFieldMappingFeature } from "/ui/project_settings/project_settings_field_mapping.js?v=20260927src1";
+import { createDatasetTypesFeature } from "/ui/project_settings/project_settings_dataset_types.js?v=20260927src1";
 import { createReservingClassTypesFeature } from "/ui/project_settings/project_settings_reserving_class_types.js?v=20260901dup1";
 import { createDataProcessingRulesFeature } from "/ui/project_settings/project_settings_data_processing_rules.js?v=20260905rules2";
 import { createSourceDataFeature } from "/ui/project_settings/project_settings_source_data.js?v=20260905scope1";
@@ -23,17 +23,17 @@ import {
   normalizeTableColumnPreferenceKey,
   resizeCellTextarea,
   wireProjectSettingsTableScrollbarActivity,
-} from "/ui/project_settings/project_settings_table_columns.js?v=20260927job1";
+} from "/ui/project_settings/project_settings_table_columns.js?v=20260927src1";
 import {
   createGeneralSettingsFeature,
   formatBoundaryYmDisplay,
   normalizeBoundaryYmCanonical,
-} from "/ui/project_settings/project_settings_general_settings.js?v=20260927job1";
-import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260927job1";
-import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260927job1";
-import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260927job1";
+} from "/ui/project_settings/project_settings_general_settings.js?v=20260927src1";
+import { createProjectMapStore } from "/ui/project_settings/project_settings_project_map.js?v=20260927src1";
+import { createTreeViewFeature } from "/ui/project_settings/project_settings_tree_view.js?v=20260927src1";
+import { createProjectOpsFeature } from "/ui/project_settings/project_settings_project_ops.js?v=20260927src1";
 import { createAutoSaveScheduler } from "/ui/project_settings/project_settings_auto_save.js?v=20260901dup1";
-import { createSourceRefreshFeature } from "/ui/project_settings/project_settings_source_refresh.js?v=20260927job1";
+import { createSourceRefreshFeature } from "/ui/project_settings/project_settings_source_refresh.js?v=20260927src1";
 import { loadProjectUserPreferences } from "/ui/shared/services/project_user_preferences.js?v=20260816a";
 import "/ui/shared/integrations/zoom_bridge.js?v=20260521a";
 
@@ -1007,9 +1007,11 @@ async function reloadSourceDataViews(name, { forceRefresh }) {
  * to regenerate and the reserving class types whose classes are refreshed.
  * Either list left empty means all of them.
  *
- * With no Engine available the whole operation falls back to the local import
- * plus the lazy cache clear this page has always done, which covers the whole
- * project regardless of the chosen scope.
+ * With no Engine available, a source the server can read is not imported at
+ * all: the import is the job. A source only this PC can read has already been
+ * copied in by then, so the server rebuilds the table summary and the
+ * reserving-class values from it and the generated caches are cleared, which
+ * covers the whole project regardless of the chosen scope.
  */
 async function importSourceData(sourceType, scope = {}) {
   const name = String(selectedProject?.name || "").trim();
@@ -1018,7 +1020,10 @@ async function importSourceData(sourceType, scope = {}) {
 
   const isSql = sourceType === "mssql";
   const plan = await sourceRefreshFeature.loadPlan(name);
-  if (plan?.busy) {
+  // Without the plan this page cannot tell a source the server imports from
+  // one only this PC can read, so it imports nothing rather than guess.
+  if (!plan) return { ok: false, error: "Could not reach Arco Server to plan the import. Try again." };
+  if (plan.busy) {
     return {
       ok: false,
       error: "A source table refresh is already running for this project. Wait for it to finish.",
@@ -1044,11 +1049,13 @@ async function importSourceData(sourceType, scope = {}) {
     reservingClassTypes: scope?.reservingClassTypes || [],
   });
   if (job.unavailable) {
-    // No Engine: keep the behaviour this page has always had.
+    // No Engine. A server-readable source is imported only by the job, so
+    // nothing ran; this PC never copies it over the share instead.
     if (importOnServer) {
-      const local = await importSourceDataLocally(name, isSql);
-      if (!local.ok) return local;
-      rowCount = local.rowCount;
+      return {
+        ok: false,
+        error: "Arco Engine is unavailable, so the table could not be imported. Try again once it is running.",
+      };
     }
     setStatus(
       `Imported ${rowCount.toLocaleString("en-US")} row(s) into "${name}". `

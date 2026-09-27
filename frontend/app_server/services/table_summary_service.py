@@ -212,6 +212,31 @@ def refresh_table_summary(
     return summary
 
 
+def rebuild_table_summary(project_name: str, refresh_reserving: bool = True) -> Dict[str, Any]:
+    """``POST /table_summary/refresh``: rebuild what is summarized from the imported table.
+
+    Runs on the server host (the ``table_summary_rebuild`` mutation) and does
+    not force a re-import: the table is imported by the source refresh job, or
+    on the client for a source only it can read. A repeat rebuilds the same
+    caches.
+    """
+
+    try:
+        return refresh_table_summary(
+            project_name,
+            refresh_reserving=bool(refresh_reserving),
+            import_source=False,
+        )
+    except (ValueError, FileNotFoundError) as error:
+        raise HTTPException(404, str(error))
+    except PermissionError:
+        raise HTTPException(423, "File is locked. Another user may have it open.")
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(500, f"Error refreshing table summary: {str(error)}")
+
+
 def _date_year_distribution(values: pd.Series) -> Optional[Dict[str, Any]]:
     """One linear bar per calendar year for a YYYYMM date-role column.
 

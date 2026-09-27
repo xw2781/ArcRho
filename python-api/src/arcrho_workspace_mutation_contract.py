@@ -389,6 +389,59 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         "cancel_duplicate_project_folder",
         ("source", "request_id"),
     ),
+    # Source Data writes. The field mapping, import profile and reserving
+    # class types saves each append an audit entry, so they carry a receipt.
+    # A CSV path reaches the server already translated from this PC's drive
+    # letter into the share it stands for: the translation needs the client's
+    # own drive mapping, so it is done there and sent as data. The path
+    # rewrite changes the stored path only while it still reads ``from_path``,
+    # so a repeat finds it done and writes nothing. Rebuilding the table
+    # summary and reserving-class values derives both from the imported table
+    # alone, and remembering or forgetting a SQL Server pair sets the same
+    # list again, so those are idempotent. The rows and columns may be empty.
+    "field_mapping_save": WorkspaceMutationKind(
+        "field_mapping_service",
+        "save_field_mapping",
+        ("project_name",),
+        ("table_path", "rows"),
+        receipt=True,
+    ),
+    "source_profile_save": WorkspaceMutationKind(
+        "source_table_service",
+        "save_source_profile",
+        ("project_name", "source_type"),
+        ("mssql", "csv_path"),
+        receipt=True,
+    ),
+    "source_csv_path_rewrite": WorkspaceMutationKind(
+        "source_table_service",
+        "rewrite_source_csv_path",
+        ("project_name", "from_path", "csv_path"),
+    ),
+    "reserving_class_types_save": WorkspaceMutationKind(
+        "reserving_class_service",
+        "save_reserving_class_types",
+        ("project_name",),
+        ("columns", "rows"),
+        receipt=True,
+    ),
+    "table_summary_rebuild": WorkspaceMutationKind(
+        "table_summary_service",
+        "rebuild_table_summary",
+        ("project_name",),
+        ("refresh_reserving",),
+    ),
+    "mssql_connection_remember": WorkspaceMutationKind(
+        "source_table_service",
+        "remember_mssql_connection",
+        ("server", "database"),
+    ),
+    "mssql_connection_forget": WorkspaceMutationKind(
+        "source_table_service",
+        "forget_mssql_connection",
+        ("server",),
+        ("database",),
+    ),
 }
 
 HTTP_WORKSPACE_MUTATION_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_MUTATION_KINDS))

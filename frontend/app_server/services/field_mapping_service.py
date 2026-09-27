@@ -182,9 +182,15 @@ def get_field_mapping(project_name: str) -> Dict[str, Any]:
 
 def save_field_mapping(
     project_name: str,
-    table_path: Optional[str],
-    rows: list,
+    table_path: Optional[str] = None,
+    rows: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
+    """``POST /field_mapping``: save the mapping and rebuild the reserving-class values.
+
+    Runs on the server host (the ``field_mapping_save`` mutation). A
+    ``table_path`` is already the share path: the client translates its own
+    drive letters before sending it.
+    """
     project_name = (project_name or "").strip()
     if not project_name:
         raise HTTPException(400, "project_name is required")
@@ -210,12 +216,13 @@ def save_field_mapping(
     allowed_dataset_types = set(get_dataset_type_names(project_name))
     used_dataset_types: Dict[str, str] = {}
     normalized_rows: List[Dict[str, Any]] = []
-    for row in rows:
-        field_name = (row.field_name or "").strip()
+    # Rows arrive as plain objects: the route sends them through the Gateway.
+    for row in rows or []:
+        field_name = str(row.get("field_name") or "").strip()
         if not field_name:
             continue
 
-        significance = (row.significance or "").strip()
+        significance = str(row.get("significance") or "").strip()
         if not significance or significance == "Not Used":
             continue
         if significance not in config.FIELD_MAPPING_SIGNIFICANCES:
@@ -224,11 +231,11 @@ def save_field_mapping(
         level = None
         dataset_type = None
         if significance == "Reserving Class":
-            if row.level is None or int(row.level) < 1:
+            if row.get("level") is None or int(row["level"]) < 1:
                 raise HTTPException(400, f"Level must be integer >= 1 for field '{field_name}'")
-            level = int(row.level)
+            level = int(row["level"])
         if significance == "Dataset":
-            dataset_type = str(row.dataset_type or "").strip()
+            dataset_type = str(row.get("dataset_type") or "").strip()
             if not dataset_type:
                 raise HTTPException(400, f"Dataset Type is required for field '{field_name}'")
             if allowed_dataset_types and dataset_type not in allowed_dataset_types:

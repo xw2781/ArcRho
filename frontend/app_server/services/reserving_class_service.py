@@ -53,6 +53,7 @@ from app_server.services.project_user_preferences_service import (
     update_preferences as update_project_user_preferences,
 )
 from app_server.services import source_table_service
+from app_server.services.audit_service import safe_append_project_audit_log
 
 PROJECT_USER_RESERVING_CLASS_TREE_KEY = "reservingClassTree"
 
@@ -323,6 +324,44 @@ def read_reserving_class_types(project_name: str) -> Dict[str, Any]:
             "data": out.get("ui_data", {"columns": list(RESERVING_CLASS_TYPES_COLUMNS), "rows": []}),
             "source_derived_names": out.get("source_derived_names", []),
         }
+
+
+def save_reserving_class_types(
+    project_name: str,
+    columns: Optional[List[str]] = None,
+    rows: Optional[List[List[Any]]] = None,
+) -> Dict[str, Any]:
+    """``POST /reserving_class_types``: save the table, merged with the source-derived rows.
+
+    Runs on the server host (the ``reserving_class_types_save`` mutation).
+    """
+    name = str(project_name or "").strip()
+    if not name:
+        raise HTTPException(400, "project_name is required")
+    normalized = normalize_reserving_class_types_data({"columns": columns or [], "rows": rows or []})
+    filepath = _project_file_path(get_reserving_class_types_path, name)
+    with _route_errors(
+        "Reserving class types file is locked. Another user may have it open.",
+        "Failed to save reserving class types",
+    ):
+        out = refresh_reserving_class_types_json(
+            name,
+            source_fields_override=None,
+            rows_override=normalized.get("rows", []),
+        )
+    safe_append_project_audit_log(
+        project_name=name,
+        action=f"Saved Reserving Class Types ({out.get('row_count', 0)} rows)",
+    )
+    return {
+        "ok": True,
+        "path": filepath,
+        "xlsx_path": out.get("xlsx_path", ""),
+        "row_count": out.get("row_count", 0),
+        "source_derived_count": out.get("source_derived_count", 0),
+        "source_derived_names": out.get("source_derived_names", []),
+        "data": out.get("ui_data", {"columns": list(RESERVING_CLASS_TYPES_COLUMNS), "rows": []}),
+    }
 
 
 def _hidden_paths_answer(project_name: str, out: Dict[str, Any]) -> Dict[str, Any]:

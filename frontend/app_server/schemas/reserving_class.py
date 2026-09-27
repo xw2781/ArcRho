@@ -13,12 +13,6 @@ class ReservingClassTypesImportLocalFileRequest(BaseModel):
     file_path: str
 
 
-class RefreshReservingClassValuesRequest(BaseModel):
-    # Values always come from the project-owned imported master table.
-    project_name: str
-    force: bool = False
-
-
 class ReservingClassHiddenPathsSaveRequest(BaseModel):
     project_name: str
     hidden_paths: List[str] = Field(default_factory=list)
