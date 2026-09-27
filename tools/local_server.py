@@ -32,7 +32,6 @@ against production.
 from __future__ import annotations
 
 import argparse
-import ctypes
 import json
 import os
 import shutil
@@ -57,6 +56,7 @@ from arcrho_hosted_save_http_contract import (  # noqa: E402
     normalize_gateway_config,
     server_config_path as gateway_registry_path,
 )
+from arcrho_server_component_status import is_on_local_fixed_disk  # noqa: E402
 from server_config import ensure_server_config, read_server_config, write_server_config  # noqa: E402
 from utils import component_app_name  # noqa: E402
 
@@ -79,7 +79,6 @@ SHARED_CONFIG_FILES = (
 SUPERVISED_ROLES = ("orchestrator", "engine", "gateway")
 BUILDABLE = ("engine", "gateway", "orchestrator")
 HEARTBEAT_FRESH_SECONDS = 30
-DRIVE_FIXED = 3
 # Every override that could point a child process at another root. The tool
 # sets the ones it means; nothing inherited from the calling shell survives.
 ROOT_ENV_VARS = (
@@ -113,8 +112,7 @@ def require_local_root(root: Path, production_root: Path) -> Path:
         raise LocalServerError(f"{text} is a network path; a local test root must be on this PC.")
     if text.casefold() == str(Path(production_root).expanduser().resolve()).casefold():
         raise LocalServerError(f"{text} is the production root.")
-    drive = resolved.drive
-    if not drive or ctypes.windll.kernel32.GetDriveTypeW(drive + "\\") != DRIVE_FIXED:
+    if not is_on_local_fixed_disk(resolved):
         raise LocalServerError(f"{text} is not on a local fixed disk.")
     return resolved
 

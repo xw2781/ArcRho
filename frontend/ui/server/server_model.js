@@ -92,3 +92,72 @@ export function switchResultMessage(result, label) {
   }
   return { text: String(result?.error || "The server could not be switched."), tone: "error" };
 }
+
+// Components panel -----------------------------------------------------------------------------
+
+// How often the panel asks again while it is on screen, and how often it checks whether it is.
+export const COMPONENT_REFRESH_MS = 5000;
+export const COMPONENT_VISIBILITY_TICK_MS = 1000;
+
+// "4 s ago", "3 min ago", "2 h ago"; a heartbeat with no readable time is "Unknown".
+export function heardAgo(ageSeconds) {
+  if (typeof ageSeconds !== "number" || !Number.isFinite(ageSeconds)) return "Unknown";
+  const seconds = Math.max(0, Math.round(ageSeconds));
+  if (seconds < 60) return `${seconds} s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+  return `${Math.floor(seconds / 3600)} h ago`;
+}
+
+function roleSummary(rows) {
+  if (!rows.length) return "Not running";
+  const active = rows.filter((row) => !row.stale).length;
+  const stale = rows.length - active;
+  const parts = [];
+  if (active) parts.push(`${active} active`);
+  if (stale) parts.push(`${stale} stale`);
+  return parts.join(", ");
+}
+
+// One group per role, in the server's order, each with its stop switch and one row per heartbeat.
+export function buildComponentGroups(status) {
+  const roles = Array.isArray(status?.roles) ? status.roles : [];
+  return roles.map((role) => {
+    const rows = (Array.isArray(role.instances) ? role.instances : []).map((item) => {
+      const stale = item.status === "Stale";
+      return {
+        key: `${role.role}/${item.name || item.server}`,
+        machine: item.machine || "Unknown",
+        user: item.user || "Unknown",
+        heard: heardAgo(item.age_seconds),
+        status: stale ? "Stale" : "Active",
+        stale,
+      };
+    });
+    return {
+      role: role.role,
+      label: role.label || role.role,
+      stopSwitch: !!role.stop_switch,
+      summary: roleSummary(rows),
+      rows,
+    };
+  });
+}
+
+// What the panel header and body say: still loading, a failed request, a silent Gateway, or rows.
+export function componentPanelState(status, error = "") {
+  if (error) return { kind: "error", message: String(error) };
+  if (!status) return { kind: "loading", message: "Reading component status..." };
+  if (status.answering === false) {
+    return { kind: "silent", message: String(status.detail || "Gateway not answering.") };
+  }
+  const source = status.source === "disk" ? "Read from this PC's server folder" : "Reported by the server's Gateway";
+  return { kind: "ready", message: "", source: `${source} at ${String(status.checked_at || "").slice(11)}` };
+}
+
+// Whether the panel should ask now: never while hidden or already asking; at once when it comes
+// back into view; otherwise once the refresh interval has passed.
+export function shouldRefreshComponents({ visible, wasHidden, inFlight, lastFetchAt, now }) {
+  if (!visible || inFlight) return false;
+  if (wasHidden || !lastFetchAt) return true;
+  return now - lastFetchAt >= COMPONENT_REFRESH_MS;
+}

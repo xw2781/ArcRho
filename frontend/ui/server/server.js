@@ -1,15 +1,20 @@
-// Server tab: the servers this PC knows, which one is in use, adding one, and switching.
-// The listing, health checks and folder reads come from the app server; switching goes through
-// the shell, which owns the unsaved-changes guard and the restart.
+// Server tab: the servers this PC knows, which one is in use, adding one, and switching, plus the
+// components of the server in use. The listing, health checks, folder reads and component status
+// come from the app server; switching goes through the shell, which owns the unsaved-changes
+// guard and the restart.
 import {
+  COMPONENT_VISIBILITY_TICK_MS,
   addServerProblem,
+  buildComponentGroups,
   buildServerRows,
+  componentPanelState,
   healthQuery,
   isSetAtLaunch,
   serverAddress,
   serverLabel,
+  shouldRefreshComponents,
   switchResultMessage,
-} from "./server_model.js?v=20260926a";
+} from "./server_model.js?v=20260926b";
 
 const $ = (id) => document.getElementById(id);
 const hostApi = () => window.ADAHost || window.parent?.ADAHost || null;
@@ -23,6 +28,14 @@ const state = {
   autoName: "",
   inspectSeq: 0,
   pendingSwitch: null,
+};
+
+const components = {
+  status: null,
+  error: "",
+  inFlight: false,
+  lastFetchAt: 0,
+  wasHidden: false,
 };
 
 function setMessage(text, tone = "") {
@@ -151,6 +164,95 @@ async function loadServers() {
   state.health.clear();
   render();
   void checkHealth(buildServerRows(state.listing));
+}
+
+// Components ---------------------------------------------------------------------------------
+
+function renderComponentGroup(group) {
+  const body = makeEl("tbody", "svCompGroup");
+  const head = makeEl("tr", "svCompGroupRow");
+  const cell = makeEl("th", "");
+  cell.colSpan = 5;
+  cell.scope = "rowgroup";
+  const line = makeEl("div", "svCompGroupLine");
+  const stop = group.stopSwitch
+    ? makeEl("span", "svStopChip", "Stop Switch On")
+    : makeEl("span", "svStopOff", "Stop switch off");
+  line.append(makeEl("span", "svCompRole", group.label), makeEl("span", "svCount", group.summary), stop);
+  cell.append(line);
+  head.append(cell);
+  body.append(head);
+  for (const row of group.rows) {
+    const tr = makeEl("tr", "svCompRow");
+    const status = makeEl("span", `svStatus ${row.stale ? "stale" : "active"}`, row.status);
+    const statusCell = makeEl("td", "");
+    statusCell.append(status);
+    tr.append(
+      makeEl("td", "svCompName", group.label),
+      makeEl("td", "", row.machine),
+      makeEl("td", "", row.user),
+      makeEl("td", "svCompHeard", row.heard),
+      statusCell,
+    );
+    body.append(tr);
+  }
+  return body;
+}
+
+function renderComponents() {
+  const host = $("svComponents");
+  const view = componentPanelState(components.status, components.error);
+  $("svComponentsSource").textContent = view.kind === "ready" ? view.source : "";
+  if (view.kind !== "ready") {
+    host.replaceChildren(makeEl("div", `svEmpty${view.kind === "loading" ? "" : " error"}`, view.message));
+    return;
+  }
+  const table = makeEl("table", "svCompTable");
+  const headRow = makeEl("tr", "");
+  for (const label of ["Component", "Machine", "User", "Last Heard", "Status"]) {
+    const th = makeEl("th", "", label);
+    th.scope = "col";
+    headRow.append(th);
+  }
+  const thead = makeEl("thead", "");
+  thead.append(headRow);
+  table.append(thead, ...buildComponentGroups(components.status).map(renderComponentGroup));
+  host.replaceChildren(table);
+}
+
+async function loadComponents() {
+  components.inFlight = true;
+  try {
+    const response = await fetch("/server/status", { cache: "no-store" });
+    components.status = await readJson(response);
+    components.error = "";
+  } catch (error) {
+    components.error = String(error?.message || error);
+  } finally {
+    components.inFlight = false;
+    components.lastFetchAt = Date.now();
+  }
+  renderComponents();
+}
+
+// An inactive shell tab keeps its page loaded but hides its frame, which the page's own
+// visibility state does not report, so the frame's layout is checked too.
+function componentsOnScreen() {
+  if (document.visibilityState !== "visible") return false;
+  let frame = null;
+  try { frame = window.frameElement; } catch { frame = null; }
+  return !frame || frame.getClientRects().length > 0;
+}
+
+function componentTick() {
+  const visible = componentsOnScreen();
+  if (!visible) {
+    components.wasHidden = true;
+    return;
+  }
+  const ask = shouldRefreshComponents({ ...components, visible, now: Date.now() });
+  components.wasHidden = false;
+  if (ask) void loadComponents();
 }
 
 // Add server ---------------------------------------------------------------------------------
@@ -291,7 +393,12 @@ async function confirmSwitch() {
 }
 
 function wire() {
-  $("svRefreshBtn").addEventListener("click", () => void loadServers());
+  $("svRefreshBtn").addEventListener("click", () => {
+    void loadServers();
+    if (!components.inFlight) void loadComponents();
+  });
+  document.addEventListener("visibilitychange", componentTick);
+  window.setInterval(componentTick, COMPONENT_VISIBILITY_TICK_MS);
   $("svAddBtn").addEventListener("click", openAddForm);
   $("svAddCancel").addEventListener("click", closeAddForm);
   $("svAddBrowse").addEventListener("click", () => void browseFolder());
@@ -309,3 +416,4 @@ function wire() {
 
 wire();
 void loadServers();
+componentTick();

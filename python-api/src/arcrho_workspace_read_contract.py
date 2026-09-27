@@ -309,6 +309,14 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         (),
         ("queue", "request_id"),
     ),
+    # The Server tab's component panel: every heartbeat under the runtime
+    # folder and each role's stop switch, read on the server host so a
+    # Client PC never lists the runtime folder over the share.
+    "server_component_status": WorkspaceReadKind(
+        "server_component_status_service",
+        "get_server_component_status",
+        (),
+    ),
 }
 
 HTTP_WORKSPACE_READ_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_READ_KINDS))

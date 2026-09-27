@@ -6,6 +6,7 @@
   "details": [
     "Add a server by choosing its folder; its address is read from the folder.",
     "Switching restarts the app and is blocked while any tab has unsaved changes.",
-    "The Server Connection dialog now links to the Server tab."
+    "The Server Connection dialog now links to the Server tab.",
+    "A Components panel shows which parts of the server in use are running, on which machine, and how long since each was last heard from."
   ]
 }

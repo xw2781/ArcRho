@@ -281,6 +281,114 @@ body {
   display: none;
 }
 
+/* Components panel: one group per role, one row per heartbeat. */
+.svEmpty.error {
+  color: var(--ar-color-danger);
+}
+
+.svComponents {
+  overflow-x: auto;
+}
+
+.svCompTable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+
+.svCompTable thead th {
+  height: 29px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--ar-color-border);
+  background: var(--ar-color-table-header);
+  color: var(--ar-color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.svCompGroupRow th {
+  padding: 0 12px;
+  border-top: 1px solid var(--ar-color-border);
+  background: var(--ar-color-surface-raised);
+  font-weight: 400;
+  text-align: left;
+}
+
+.svCompGroup:first-of-type .svCompGroupRow th {
+  border-top: 0;
+}
+
+.svCompGroupLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.svCompRole {
+  color: var(--ar-color-text-strong);
+  font-weight: 700;
+}
+
+.svStopOff {
+  margin-left: auto;
+  color: var(--ar-color-text-muted);
+  font-size: 11px;
+}
+
+.svStopChip {
+  margin-left: auto;
+  padding: 1px 8px;
+  border: 1px solid var(--ar-color-warning);
+  border-radius: 999px;
+  background: var(--ar-color-warning-soft);
+  color: var(--ar-color-warning);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.svCompRow td {
+  height: 31px;
+  padding: 0 12px;
+  border-top: 1px solid var(--ar-color-border);
+  color: var(--ar-color-text);
+  white-space: nowrap;
+}
+
+.svCompRow:hover td {
+  background: var(--ar-color-surface-hover);
+}
+
+.svCompRow .svCompName {
+  padding-left: 24px;
+  color: var(--ar-color-text-muted);
+}
+
+.svCompHeard {
+  font-variant-numeric: tabular-nums;
+}
+
+.svStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.svStatus::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.svStatus.active { color: var(--ar-color-success); }
+.svStatus.stale { color: var(--ar-color-warning); }
+
 /* Add server form. */
 .svAddForm {
   padding: 12px;

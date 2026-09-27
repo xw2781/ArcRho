@@ -22,6 +22,19 @@ The offline companion installer and lifecycle contract are documented in
 [Server Components Deployment](docs/server-components-deployment.md). The
 frontend installer never owns these shared binaries.
 
+## Component heartbeats and status
+
+Every long-running component rewrites a heartbeat under
+`<root>\runtime\instances\arcrho_<role>\` while it runs, and each role has a
+stop switch at `apps.<role>.kill_all` in `<root>\config\config.json`.
+`python-api/src/arcrho_server_component_status.py` is the one reader of both:
+it lists the heartbeats with their machine, user and age, marks a heartbeat
+stale after 6 seconds for Engines and Bridge workers and 60 seconds for every
+other role, and reads the stop switches. Admin Control's instance table and the
+desktop app's Server tab (through the Gateway's `server_component_status`
+workspace read, or straight from disk when the server folder is on the same PC)
+both use it, so the two cannot disagree about which component is stale.
+
 ## Component build deployment
 
 `build_runtime.py` owns the copy-and-swap transaction every `build_exe.py`

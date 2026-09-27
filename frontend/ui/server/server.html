@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="/ui/shared/services/color_theme.js?v=20260923c"></script>
   <title>Server</title>
-  <link rel="stylesheet" href="/ui/server/server.css?v=20260926a"/>
+  <link rel="stylesheet" href="/ui/server/server.css?v=20260926b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260923c">
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260923c">
   <link rel="stylesheet" href="/ui/shared/styles/themes/revolutionary.css?v=20260923c">
@@ -56,8 +56,11 @@
       <section id="svComponentsPanel" class="svPanel" aria-labelledby="svComponentsTitle">
         <div class="svPanelHeader">
           <h2 id="svComponentsTitle">Components</h2>
+          <span id="svComponentsSource" class="svCount"></span>
         </div>
-        <div class="svEmpty">Component status is not shown here yet.</div>
+        <div id="svComponents" class="svComponents" aria-live="polite">
+          <div class="svEmpty">Reading component status...</div>
+        </div>
       </section>
     </main>
   </div>
@@ -71,6 +74,6 @@
       </div>
     </div>
   </div>
-  <script type="module" src="./server.js?v=20260926a"></script>
+  <script type="module" src="./server.js?v=20260926b"></script>
 </body>
 </html>

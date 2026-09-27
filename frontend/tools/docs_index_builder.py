@@ -496,12 +496,13 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
         "doc": "docs/ui/server.md",
         "html": ["ui/server/server.html"],
         "files": [
-            ("ui/server/server.html", "Server tab iframe entrypoint: server list, add form, components placeholder, switch dialog."),
-            ("ui/server/server.js", "Server tab controller: listing, health, add server, and the switch request to the shell."),
-            ("ui/server/server_model.js", "Pure rules for rows, labels, set-at-launch, add validation, and switch messages."),
+            ("ui/server/server.html", "Server tab iframe entrypoint: server list, add form, components panel, switch dialog."),
+            ("ui/server/server.js", "Server tab controller: listing, health, add server, the switch request to the shell, and component polling while on screen."),
+            ("ui/server/server_model.js", "Pure rules for rows, labels, set-at-launch, add validation, switch messages, and component groups."),
             ("ui/server/server.css", "Server tab styling on the shared theme tokens."),
             ("ui/shell/shell_messages.js", "Shell side of a switch: unsaved-changes guard, activation, and restart."),
-            ("app_server/services/server_profile_service.py", "Server profile listing, health probe, folder inspection, and activation."),
+            ("app_server/services/server_profile_service.py", "Server profile listing, health probe, folder inspection, activation, and component-status transport."),
+            ("app_server/services/server_component_status_service.py", "Component heartbeats and stop switches of the server folder this process serves."),
         ],
     },
     "dataset": {

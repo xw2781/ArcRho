@@ -241,3 +241,74 @@ test("Home, the tab host, the icons and the Server Connection dialog all reach t
   assert.match(page, /\/server_profiles\/health/u);
   assert.doesNotMatch(page, /\/api\/health/u);
 });
+
+test("component rows group by role with the stop switch, and stale heartbeats read as stale", () => {
+  const groups = model.buildComponentGroups({
+    source: "disk",
+    checked_at: "2026-09-26 22:00:00",
+    roles: [
+      {
+        role: "engine",
+        label: "Engine",
+        stop_switch: false,
+        instances: [
+          { name: "a.json", machine: "PC1", user: "alice", age_seconds: 2, status: "Active" },
+          { name: "b.json", machine: "PC1", user: "alice", age_seconds: 9, status: "Stale" },
+        ],
+      },
+      { role: "bridge", label: "Bridge", stop_switch: true, instances: [] },
+      { role: "gateway", label: "Gateway", stop_switch: false, instances: [{ name: "g.json", machine: "", user: "", age_seconds: null, status: "Active" }] },
+    ],
+  });
+
+  assert.deepEqual(groups.map((group) => [group.label, group.summary, group.stopSwitch]), [
+    ["Engine", "1 active, 1 stale", false],
+    ["Bridge", "Not running", true],
+    ["Gateway", "1 active", false],
+  ]);
+  assert.deepEqual(groups[0].rows.map((row) => [row.machine, row.user, row.heard, row.status, row.stale]), [
+    ["PC1", "alice", "2 s ago", "Active", false],
+    ["PC1", "alice", "9 s ago", "Stale", true],
+  ]);
+  assert.deepEqual([groups[2].rows[0].machine, groups[2].rows[0].heard], ["Unknown", "Unknown"]);
+});
+
+test("last heard reads in seconds, minutes, then hours", () => {
+  assert.equal(model.heardAgo(0), "0 s ago");
+  assert.equal(model.heardAgo(59), "59 s ago");
+  assert.equal(model.heardAgo(125), "2 min ago");
+  assert.equal(model.heardAgo(7300), "2 h ago");
+  assert.equal(model.heardAgo(null), "Unknown");
+});
+
+test("the component panel says where its answer came from, or why there is none", () => {
+  assert.equal(model.componentPanelState(null).kind, "loading");
+  assert.deepEqual(model.componentPanelState(null, "Request failed (409)."), { kind: "error", message: "Request failed (409)." });
+  assert.deepEqual(
+    model.componentPanelState({ answering: false, detail: "Gateway not answering.", roles: [] }),
+    { kind: "silent", message: "Gateway not answering." },
+  );
+  assert.equal(
+    model.componentPanelState({ answering: true, source: "disk", checked_at: "2026-09-26 22:00:05", roles: [] }).source,
+    "Read from this PC's server folder at 22:00:05",
+  );
+  assert.match(model.componentPanelState({ answering: true, source: "gateway", checked_at: "", roles: [] }).source, /Gateway/u);
+});
+
+test("the component panel asks only while on screen, at once on return, then every five seconds", () => {
+  const base = { visible: true, wasHidden: false, inFlight: false, lastFetchAt: 1000, now: 1000 + model.COMPONENT_REFRESH_MS - 1 };
+  assert.equal(model.COMPONENT_REFRESH_MS, 5000);
+  assert.equal(model.shouldRefreshComponents(base), false);
+  assert.equal(model.shouldRefreshComponents({ ...base, now: 1000 + model.COMPONENT_REFRESH_MS }), true);
+  assert.equal(model.shouldRefreshComponents({ ...base, visible: false, lastFetchAt: 0 }), false);
+  assert.equal(model.shouldRefreshComponents({ ...base, wasHidden: true }), true);
+  assert.equal(model.shouldRefreshComponents({ ...base, lastFetchAt: 0 }), true);
+  assert.equal(model.shouldRefreshComponents({ ...base, lastFetchAt: 0, inFlight: true }), false);
+});
+
+test("the page asks the app server for component status and checks its own frame is shown", async () => {
+  const page = await read("../ui/server/server.js");
+  assert.match(page, /fetch\("\/server\/status"/u);
+  assert.match(page, /frameElement[\s\S]*getClientRects\(\)\.length/u);
+  assert.match(page, /visibilitychange/u);
+});

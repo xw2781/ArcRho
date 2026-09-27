@@ -17,12 +17,22 @@ from fastapi import HTTPException
 from arcrho_api import config as api_config
 from arcrho_api.exceptions import InvalidArcRhoServerError
 from arcrho_api.hosted_save_enrollment import load_server_gateway_config
+from arcrho_hosted_save_http_contract import HostedSaveHttpContractError
+from arcrho_server_component_status import is_on_local_fixed_disk
 
 from app_server import config
-from app_server.services import hosted_save_enrollment_service, hosted_save_http_client
+from app_server.services import (
+    hosted_save_enrollment_service,
+    hosted_save_http_client,
+    server_component_status_service,
+    workspace_read_client,
+)
 
 # A registry bound to every interface names no address a client can dial.
 WILDCARD_HOSTS = {"0.0.0.0", "::", ""}
+COMPONENT_STATUS_READ_KIND = "server_component_status"
+GATEWAY_NOT_ANSWERING = "Gateway not answering."
+GATEWAY_NEEDS_UPDATE = "The Gateway is answering but cannot report components until it is updated."
 
 
 def _launch_overrides() -> Dict[str, str]:
@@ -170,3 +180,47 @@ def save_server_profile(*, name: str, root: str, profile_id: str = "", gateway_c
 
 def activate_server_profile(profile_id: str) -> Dict[str, Any]:
     return _change_profiles(lambda path: api_config.activate_server_profile(profile_id, path))
+
+
+def _silent_gateway_detail() -> str:
+    """Why the Gateway gave no component status: it is silent, or too old to know the read."""
+
+    try:
+        gateway = config.load_gateway_config()
+    except HostedSaveHttpContractError:
+        return GATEWAY_NOT_ANSWERING
+    if gateway.get("enabled") is not True:
+        return GATEWAY_NOT_ANSWERING
+    capabilities = workspace_read_client.cached_gateway_capabilities(gateway)
+    if capabilities is not None and not workspace_read_client.gateway_supports_read_kind(
+        capabilities, COMPONENT_STATUS_READ_KIND
+    ):
+        return GATEWAY_NEEDS_UPDATE
+    return GATEWAY_NOT_ANSWERING
+
+
+def server_component_status() -> Dict[str, Any]:
+    """This window's server's components, from its folder when that is on this PC, else its Gateway.
+
+    A folder on a fixed disk of this PC is read directly, so the tab still
+    reports while that server's Gateway is down. Any other server is asked
+    through its Gateway only; when the Gateway does not answer the panel says
+    so, and nothing is read over the share.
+    """
+
+    root = config.get_root_path()
+    if is_on_local_fixed_disk(root):
+        status = server_component_status_service.get_server_component_status()
+        return {**status, "source": "disk", "answering": True, "detail": ""}
+    try:
+        status = workspace_read_client.run_workspace_read(
+            COMPONENT_STATUS_READ_KIND,
+            {},
+            local=server_component_status_service.get_server_component_status,
+            gateway_required=True,
+        )
+    except HTTPException as exc:
+        if exc.status_code not in (503, 504):
+            raise
+        return {"ok": True, "source": "gateway", "answering": False, "detail": _silent_gateway_detail(), "roles": []}
+    return {**status, "source": "gateway", "answering": True, "detail": ""}

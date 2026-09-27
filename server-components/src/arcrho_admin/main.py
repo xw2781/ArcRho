@@ -51,7 +51,7 @@ try:
         with_server_id,
         write_server_config,
     )
-    from src.utils import get_config_value, get_project_root, resolve_app_exe, resolve_app_path
+    from src.utils import get_config_value, get_project_root, resolve_app_exe
 except ModuleNotFoundError:
     from server_config import (
         default_server_config,
@@ -61,9 +61,16 @@ except ModuleNotFoundError:
         with_server_id,
         write_server_config,
     )
-    from utils import get_config_value, get_project_root, resolve_app_exe, resolve_app_path
+    from utils import get_config_value, get_project_root, resolve_app_exe
 
 from arcrho_log_retention_contract import apply_log_retention
+from arcrho_server_component_status import (
+    COMPONENT_ROLES,
+    DEFAULT_STALE_AFTER_SECONDS,
+    instance_folder,
+    list_instances as list_component_instances,
+    stale_after_seconds_by_role,
+)
 
 def env_int(name, default):
     try:
@@ -73,8 +80,6 @@ def env_int(name, default):
 
 
 DEFAULT_PORT = env_int("ARCRHO_ADMIN_PORT", 28766)
-DEFAULT_STALE_AFTER_SECONDS = 60
-ENGINE_STALE_AFTER_SECONDS = 6
 HEARTBEAT_INTERVAL_SECONDS = 2
 # Deploys stop Admin Control through this switch so the live folder can be
 # swapped; nothing else sets it, and the build clears it again afterwards.
@@ -252,14 +257,8 @@ def start_admin_heartbeat(server, instance_path):
 
 
 def instance_sources():
-    return {
-        "admin": ("Admin Control", resolve_app_path("admin", "instances")),
-        "engine": ("Engine", resolve_app_path("engine", "instances")),
-        "orchestrator": ("Orchestrator", resolve_app_path("orchestrator", "instances")),
-        "bridge": ("Bridge", resolve_app_path("bridge", "instances")),
-        "bridge_worker": ("Bridge Worker", resolve_app_path("bridge_worker", "instances")),
-        "gateway": ("Gateway", resolve_app_path("gateway", "instances")),
-    }
+    root = get_project_root()
+    return {role: (label, instance_folder(root, role)) for role, label in COMPONENT_ROLES.items()}
 
 
 def resolve_source_main(role):
@@ -267,71 +266,8 @@ def resolve_source_main(role):
     return path if path.exists() else None
 
 
-def instance_age(last_seen):
-    if not last_seen:
-        return None
-    try:
-        seen = datetime.strptime(last_seen, "%Y-%m-%d %H:%M:%S")
-    except ValueError:
-        return None
-    return max(0, int((datetime.now() - seen).total_seconds()))
-
-
-def instance_user(server_name):
-    parts = str(server_name or "").split("@")
-    return parts[1] if len(parts) >= 3 and parts[1] else ""
-
-
-def instance_created(server_name, path):
-    token = str(server_name or "").split("@")[-1]
-    try:
-        created = datetime.strptime("-".join(token.split("-")[:2]), "%y%m%d-%H%M%S")
-    except ValueError:
-        try:
-            created = datetime.fromtimestamp(path.stat().st_ctime)
-        except OSError:
-            return ""
-    return created.strftime("%Y-%m-%d %H:%M:%S")
-
-
-def stale_after_seconds(role):
-    return ENGINE_STALE_AFTER_SECONDS if role in ("engine", "bridge_worker") else DEFAULT_STALE_AFTER_SECONDS
-
-
-def read_instance_file(path):
-    try:
-        with open(path, mode="r", encoding="utf-8") as file:
-            return json.load(file)
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
 def list_instances():
-    rows = []
-    for role_key, (role_label, folder) in instance_sources().items():
-        if not folder.exists():
-            continue
-        for path in sorted(folder.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
-            data = read_instance_file(path)
-            last_seen = data.get("Last seen", "")
-            server = data.get("Server") or path.stem
-            age = instance_age(last_seen)
-            stale_after = stale_after_seconds(role_key)
-            rows.append(
-                {
-                    "role": role_key,
-                    "role_label": role_label,
-                    "name": path.name,
-                    "server": server,
-                    "user": data.get("User") or instance_user(server),
-                    "created": data.get("Created") or instance_created(server, path),
-                    "last_seen": last_seen,
-                    "age_seconds": age,
-                    "stale_after_seconds": stale_after,
-                    "status": "Active" if age is None or age <= stale_after else "Stale",
-                }
-            )
-    return rows
+    return list_component_instances(get_project_root())
 
 
 def remove_instance(role, name):
@@ -615,14 +551,7 @@ class AdminHandler(BaseHTTPRequestHandler):
                 {
                     "instances": list_instances(),
                     "stale_after_seconds": DEFAULT_STALE_AFTER_SECONDS,
-                    "stale_after_seconds_by_role": {
-                        "admin": DEFAULT_STALE_AFTER_SECONDS,
-                        "engine": ENGINE_STALE_AFTER_SECONDS,
-                        "orchestrator": DEFAULT_STALE_AFTER_SECONDS,
-                        "bridge": DEFAULT_STALE_AFTER_SECONDS,
-                        "bridge_worker": ENGINE_STALE_AFTER_SECONDS,
-                        "gateway": DEFAULT_STALE_AFTER_SECONDS,
-                    },
+                    "stale_after_seconds_by_role": stale_after_seconds_by_role(),
                 }
             )
         else:

@@ -1,6 +1,6 @@
 # Local Server Root and Server Switcher
 
-Status: Steps 1-3 done 2026-09-26 — a private test server runs on the developer PC at `C:\Arco Server` beside production, with its own Gateway, credential and app profile, built from the working tree by `tools/local_server.py`; the app keeps a list of servers, one active, each with its own credential, behind three new app-server routes; every server root carries an id its Gateway reports, and the app refuses a Gateway whose id differs from its folder's (the server side reaches production with the step 6 deploy). Step 4 done 2026-09-26: a Server tab opened from Home lists the servers by name and address with a health dot, adds a server from its folder, and switches by restarting the app once no tab has unsaved changes. Steps 5-8 (the active-server badge, the component monitor, starting and stopping a server on this PC, the release) are planned and not started; the Server tab was added 2026-09-26 at the user's request; offline use for every user is recorded as a direction with open decisions, not yet broken into steps.
+Status: Steps 1-3 done 2026-09-26 — a private test server runs on the developer PC at `C:\Arco Server` beside production, with its own Gateway, credential and app profile, built from the working tree by `tools/local_server.py`; the app keeps a list of servers, one active, each with its own credential, behind three new app-server routes; every server root carries an id its Gateway reports, and the app refuses a Gateway whose id differs from its folder's (the server side reaches production with the step 6 deploy). Step 4 done 2026-09-26: a Server tab opened from Home lists the servers by name and address with a health dot, adds a server from its folder, and switches by restarting the app once no tab has unsaved changes. Step 7 done 2026-09-26: the tab's Components panel lists the server's running components with machine, user, last heard and stale state, grouped by role with each stop switch, read from disk for a folder on this PC and through the Gateway otherwise (the Gateway side reaches production with the step 6 deploy). Steps 5, 6 and 8 (the active-server badge, starting and stopping a server on this PC, the release) are planned and not started; the Server tab was added 2026-09-26 at the user's request; offline use for every user is recorded as a direction with open decisions, not yet broken into steps.
 Last updated: 2026-09-26
 Related: [client_smb_retirement.md](client_smb_retirement.md) (the first work tested this way), [hosted_workspace_http_transport.md](hosted_workspace_http_transport.md)
 
@@ -18,10 +18,10 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 4 | A Server tab opened from Home lists servers by name and address and switches between them | [x] | 2026-09-26 | 90 min | 37 min | Home has a Server card that opens a Server tab listing each server by name and address with a live health dot; a server can be added by choosing its folder, and switching restarts the app but waits until no tab has unsaved changes. |
 | 5 | The window shows which server it is using whenever it is not production | [ ] | | 30 min | | |
 | 6 | Deploy the server side and ship the app | [ ] | | 30 min | | |
-| 7 | The Server tab shows which server components are running and how long since each was last heard from | [ ] | | 60 min | | |
+| 7 | The Server tab shows which server components are running and how long since each was last heard from | [x] | 2026-09-26 | 60 min | 26 min | The Server tab lists each running part of the server with its machine, user and how long since it was last heard from, flags silent ones as stale, and shows when a part's stop switch is on. |
 | 8 | A server on this PC can be started and stopped from the Server tab | [ ] | | 45 min | | |
 
-Overall: 4 of 8 steps done. Estimated 470 min; actual so far 82 min (step 1 was not clocked). Order: 2, 3, 4, 7, 8, 5, then 6.
+Overall: 5 of 8 steps done. Estimated 470 min; actual so far 108 min (step 1 was not clocked). Order: 2, 3, 4, 7, 8, 5, then 6.
 
 ## How agents work this plan
 
@@ -205,18 +205,20 @@ Estimate: code edit 5 min, test/validation 25 min, total 30 min.
 
 **Goal.** The Server tab shows the active server's components (Orchestrator, Engines, Gateway, Bridge and its workers, Admin Control): one row per running instance with its machine, user, when it was last heard from and whether that is stale, plus each role's stop switch. Fits after step 4 and before the step 6 deploy.
 
-**Read first.** `server-components/src/arcrho_admin/main.py` `list_instances`, `instance_sources`, `stale_after_seconds` (the rules this must match); `server-components/src/server_config.py` (the `apps.<role>.kill_all` switches); memory `adding-a-hosted-workspace-read`; `docs/plans/client_smb_retirement.md` (every new kind is `gateway_required=True`).
+**Read first.** `server-components/src/arcrho_admin/main.py` `list_instances`, `instance_sources`, `stale_after_seconds` (the rules this must match); `server-components/src/server_config.py` (the `apps.<role>.kill_all` switches); memory `adding-a-hosted-workspace-read`; `docs/plans/client_smb_retirement.md` (every new kind is `gateway_required=True`); `frontend/app_server/services/workspace_read_client.py` `run_workspace_read` (what a Gateway-required read raises when the Gateway is silent); `server-components/src/arcrho_admin/build_exe.py` (Admin Control's frozen build already has `python-api/src` on its path); `tools/local_server.py` `require_local_root`.
 
 **Do.**
-- [ ] One reader of `<root>\runtime\instances\arcrho_<role>\*.json` and the kill switches, in `python-api` so the Admin tool, the Gateway and the app server share it; Admin Control uses it too.
-- [ ] A `server_component_status` workspace read kind, `gateway_required=True`, and `GET /server/status`. For a server whose folder is on this PC the app server reads the disk directly, so the tab still reports when that server's Gateway is down; for any other server, a Gateway that does not answer shows as "Gateway not answering" and nothing is read over the share.
-- [ ] The tab refreshes the panel every few seconds while it is visible.
+- [x] One reader of `<root>\runtime\instances\arcrho_<role>\*.json` and the kill switches, in `python-api` so the Admin tool, the Gateway and the app server share it; Admin Control uses it too.
+- [x] A `server_component_status` workspace read kind, `gateway_required=True`, and `GET /server/status`. For a server whose folder is on this PC the app server reads the disk directly, so the tab still reports when that server's Gateway is down; for any other server, a Gateway that does not answer shows as "Gateway not answering" and nothing is read over the share.
+- [x] The tab refreshes the panel every few seconds while it is visible.
 
 **Tests.** Reader tests for active and stale rows and missing folders; transport tests (Gateway used for a remote server, the disk for a local one, never the share).
 
 **Done when.** The tab shows the local root's live Orchestrator, Engines and Gateway, and a stopped Engine turns stale within its role's threshold.
 
-Estimate: code edit 40 min, test/validation 20 min, total 60 min.
+Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code edit 14 min, test/validation 12 min, total 26 min; under half the estimate because the workspace-read registry, the Gateway build and Admin Control's import path needed no changes to take a new shared module.
+
+**What was built.** The reader is `python-api/src/arcrho_server_component_status.py` (heartbeats, stale rule, stop switches, and the fixed-disk check `tools/local_server.py` now uses too); Admin Control's instance table calls it. The app server's `server_profile_service.server_component_status` picks the transport; a Gateway too old to advertise the read says it needs updating rather than "not answering", which is what production shows until step 6. The panel checks its own frame's layout as well as the page's visibility, because an inactive shell tab hides its frame without changing the page's visibility state. The local tool's own `status` and `stop` still judge heartbeats by file age (30 s); step 8 moves them onto this reader. The Server tab's release fragment gained one line for the panel.
 
 ### Step 8 — Start and stop a server on this PC
 

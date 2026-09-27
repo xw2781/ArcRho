@@ -9,6 +9,7 @@ Runtime workspace path read/update domain, and the server profiles: the servers 
 <!-- AUTO-GEN:BEGIN app_server.workspace_paths.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
+| `GET` | `/server/status` | `get_server_component_status` | - | - | `server_profile_service.server_component_status` |
 | `GET` | `/server_profiles` | `get_server_profiles` | - | - | `server_profile_service.list_server_profiles` |
 | `POST` | `/server_profiles` | `save_server_profile` | `ServerProfileSaveRequest` | [`app_server/schemas/workspace_paths.py`](../../../app_server/schemas/workspace_paths.py) | `server_profile_service.save_server_profile` |
 | `POST` | `/server_profiles/activate` | `activate_server_profile` | `ServerProfileActivateRequest` | [`app_server/schemas/workspace_paths.py`](../../../app_server/schemas/workspace_paths.py) | `server_profile_service.activate_server_profile` |

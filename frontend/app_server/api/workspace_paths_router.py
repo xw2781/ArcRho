@@ -67,6 +67,11 @@ def get_server_health(id: str = "") -> Dict[str, Any]:
     return server_profile_service.server_health(id)
 
 
+@router.get("/server/status")
+def get_server_component_status() -> Dict[str, Any]:
+    return server_profile_service.server_component_status()
+
+
 @router.get("/server_profiles/inspect")
 def inspect_server_folder(root: str) -> Dict[str, Any]:
     return server_profile_service.inspect_server_folder(root)
