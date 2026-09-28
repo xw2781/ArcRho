@@ -325,6 +325,27 @@ class ExcelDatasetPolicyTests(unittest.TestCase):
         self.assertEqual(pd.read_csv(io.StringIO(result["csv_text"]), header=None)[0].tolist(), [30, 70, 50])
         self.assertEqual(self.snapshot(), before)
 
+    def test_method_output_vector_reads_its_published_coarser_variant(self):
+        self.publish(source_kind="result_selection")
+        sidecar = self.sidecars / "Paid.json"
+        payload = json.loads(sidecar.read_text())
+        payload.update(data_format="Vector", period_length=3, stored_period_length=3, csv_file="Paid@3.csv")
+        sidecar.write_text(persisted_json_text(payload), encoding="utf-8")
+        (self.cache / "Paid@3.csv").write_text("1\n2\n3\n4\n", encoding="utf-8")
+        pairs = [(key, "ArcRhoVec" if key == "Function" else value) for key, value in self.pairs(period=12)]
+        with patch.object(engine, "run_engine_calculation", side_effect=AssertionError("No Engine")):
+            refused = excel.read_dataset_csv(pairs, 1)
+            self.assertFalse(refused["ok"])
+            self.assertEqual(refused["status"], excel.PUBLICATION_SHAPE_STATUS)
+            (self.cache / "Paid@12.csv").write_text("10\n", encoding="utf-8")
+            before = self.snapshot()
+            result = excel.read_dataset_csv(pairs, 1)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["local_cache_status"], "cache_exact")
+        self.assertEqual(Path(result["data_path"]), self.cache / "Paid@12.csv")
+        self.assertEqual(result["csv_text"].split(), ["10"])
+        self.assertEqual(self.snapshot(), before)
+
     def test_generated_publication_at_another_period_is_built_by_the_engine(self):
         self.publish()
         before = self.snapshot()

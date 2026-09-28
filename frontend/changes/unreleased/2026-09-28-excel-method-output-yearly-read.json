@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "excel add-in",
+  "audience": "user",
+  "summary": "Excel refresh reads a quarterly method output, such as a Result Selection, at 6 or 12 months from the copies the method saves, and a failed refresh no longer stops with a status bar error."
+}

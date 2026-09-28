@@ -93,6 +93,26 @@ def _csv(values: Any) -> str:
     return buffer.getvalue()
 
 
+def _is_method_output(source_kind: str) -> bool:
+    return dataset_sidecar_status_service.normalize_method_type("", source_kind) \
+        != dataset_sidecar_status_service.METHOD_TYPE_NONE
+
+
+def _method_output_variant(pairs: list, payload: dict, period: int) -> str:
+    """The coarser vector a method output published beside its own CSV, or ``""``.
+
+    Result Selection and the other methods rewrite these variants on every
+    save, so the file is read as it is, the way method precedents read it.
+    """
+    try:
+        return precedent_cache_service.precedent_csv_path(
+            runtime._pair_value(pairs, "ProjectName"), runtime._pair_value(pairs, "Path"),
+            str(payload.get("dataset_name") or ""), payload, period, exact=False,
+        )
+    except RuntimeError:
+        return ""
+
+
 def _validated_csv_text(path: str) -> str:
     """Preserve CSV spelling, but refuse Engine error text masquerading as data."""
     text = runtime._csv_file_text(path)
@@ -132,6 +152,10 @@ def _published(data_path: str, pairs: list, payload: dict, allow_derived: bool) 
     ):
         reason = "the requested cumulative or calendar mode differs from the publication"
     same_periods = target_origin == source_origin and (vector or target_development == source_development)
+    if not reason and not same_periods and vector and _is_method_output(source_kind):
+        variant_path = _method_output_variant(pairs, payload, target_origin)
+        if variant_path:
+            source_path, same_periods = variant_path, True
     if not reason and not same_periods:
         if not allow_derived:
             reason = "derived views are disabled"
