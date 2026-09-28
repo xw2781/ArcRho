@@ -214,6 +214,18 @@ if (-not (Test-Path -LiteralPath $customUIPathFull -PathType Leaf)) {
     throw "Ribbon XML not found: $customUIPathFull"
 }
 
+# Each release is a new version: its notes come from the beta build, and a
+# version already on the share is refused.
+$betaNotesPath = Get-ReleaseNotesPath $betaPathFull
+$releaseNotesPath = Get-ReleaseNotesPath $releasePathFull
+if (-not (Test-Path -LiteralPath $betaNotesPath -PathType Leaf)) {
+    throw "Release notes not found beside the beta add-in: $betaNotesPath. Build the beta add-in again."
+}
+$version = Get-ReleaseNotesVersion $betaNotesPath
+if ((Test-Path -LiteralPath $releaseNotesPath -PathType Leaf) -and (Get-ReleaseNotesVersion $releaseNotesPath) -eq $version) {
+    throw "Version $version is already released. Raise ARCRHO_VERSION in src_vba\Core.bas, add its release notes, and build again."
+}
+
 if (-not (Test-Path -LiteralPath $signatureDirFull -PathType Container)) {
     throw "Signature folder not found: $signatureDirFull"
 }
@@ -272,6 +284,11 @@ try {
         Assert-XlamPackage $releasePathFull
     } | Out-Null
     Set-FileReadOnlyWithRetry $releasePathFull
+    Invoke-FileOperationWithRetry "Copy release notes: $releaseNotesPath" {
+        Clear-ReadOnly $releaseNotesPath
+        Copy-Item -LiteralPath $betaNotesPath -Destination $releaseNotesPath -Force
+    } | Out-Null
+    Set-FileReadOnlyWithRetry $releaseNotesPath
 }
 finally {
     if (Test-Path -LiteralPath $stageDirFull -PathType Container) {
@@ -279,4 +296,4 @@ finally {
     }
 }
 
-Write-Host "Released XLAM: $releasePathFull"
+Write-Host "Released XLAM: $releasePathFull (version $version)"

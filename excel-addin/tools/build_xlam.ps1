@@ -1,7 +1,8 @@
 ﻿param(
     [string]$SourceDir = (Join-Path $PSScriptRoot "..\src_vba"),
     [string]$TargetPath = (Join-Path $PSScriptRoot "..\beta\ARCRHO_BETA.xlam"),
-    [string]$CustomUIPath = (Join-Path $PSScriptRoot "customUI.xml")
+    [string]$CustomUIPath = (Join-Path $PSScriptRoot "customUI.xml"),
+    [string]$NotesPath = (Join-Path $SourceDir "..\RELEASE_NOTES.md")
 )
 
 $ErrorActionPreference = "Stop"
@@ -247,6 +248,14 @@ if (-not (Test-Path -LiteralPath $targetPathFull -PathType Leaf)) {
     throw "Target XLAM not found: $targetPathFull"
 }
 
+# A build carries release notes whose newest entry is the version it builds.
+$notesPathFull = Resolve-FullPath $NotesPath
+$coreText = Get-Content -LiteralPath (Join-Path $sourceDirFull "Core.bas") -Raw
+$version = [regex]::Match($coreText, 'ARCRHO_VERSION As String = "([^"]+)"').Groups[1].Value
+if ((Get-ReleaseNotesVersion $notesPathFull) -ne $version) {
+    throw "Add a '## $version - <date>' entry at the top of $notesPathFull before building."
+}
+
 $targetName = Split-Path -Leaf $targetPathFull
 if ([string]::Compare($targetName, "ArcRho.xlam", $true) -eq 0) {
     throw "Refusing to update ArcRho.xlam. This script updates ARCRHO_BETA.xlam only."
@@ -343,8 +352,9 @@ try {
     Copy-Item -LiteralPath $tempTargetPath -Destination $targetPathFull -Force
     Remove-Item -LiteralPath $tempTargetPath -Force
     Assert-XlamPackage $targetPathFull
+    Copy-Item -LiteralPath $notesPathFull -Destination (Get-ReleaseNotesPath $targetPathFull) -Force
 
-    Write-Host "Updated XLAM: $targetPathFull"
+    Write-Host "Updated XLAM: $targetPathFull (version $version)"
 }
 finally {
     if ($null -ne $workbook) {

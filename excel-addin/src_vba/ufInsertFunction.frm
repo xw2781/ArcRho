@@ -472,8 +472,8 @@ Private Sub UpdateFormula()
 End Sub
 
 ' The formula the current page describes. Blank optional arguments after the
-' last one set are left out; blank ones before it are written as their
-' defaults, so every argument keeps its position.
+' last one set are left out; blank ones before it stay empty slots, so every
+' argument keeps its position and the function applies its own default.
 Private Function BuildFormula(ByRef problem As String) As String
     Dim items As Collection, argInput As ArcoArgumentInput
     Dim texts() As String, i As Long, lastSet As Long, missing As String
@@ -494,8 +494,6 @@ Private Function BuildFormula(ByRef problem As String) As String
                 If Len(missing) > 0 Then missing = missing & ", "
                 missing = missing & argInput.Arg("Name")
                 If i > lastSet Then lastSet = i
-            ElseIf i < lastSet Then
-                texts(i) = argInput.Arg("Default")
             End If
         ElseIf Not EncodeArgument(argInput.Arg("Kind"), texts(i)) Then
             If Len(invalid) = 0 Then invalid = argInput.Arg("Name")

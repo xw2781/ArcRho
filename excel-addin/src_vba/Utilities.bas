@@ -79,11 +79,9 @@ Function RateLimited(ByVal key As String, _
     RateLimited = False
 End Function
 
-Sub StatusBar(ByVal strMsg As String)
-    Application.StatusBar = False
-    DoEvents
-    Application.StatusBar = strMsg
-    DoEvents
+' Excel raises error 1004 for status-bar text longer than 255 characters.
+Public Sub ShowStatus(ByVal text As String)
+    Application.StatusBar = Left$(text, 255)
 End Sub
 
 Public Sub WaitSec(ByVal seconds As Double)

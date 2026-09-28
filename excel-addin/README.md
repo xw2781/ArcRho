@@ -239,7 +239,8 @@ still opened directly, so a PC that cannot reach the share loses them:
 
 - the add-in itself, `Excel Add-ins\ArcRho.xlam` and the beta beside it;
 - `apps\Arco Credential\Arco Credential.exe`, the first-run helper;
-- `library\Version Track.docx`, opened by the About window;
+- `Excel Add-ins\ArcRho Release Notes.md`, opened by the About window and
+  published from [`RELEASE_NOTES.md`](RELEASE_NOTES.md) by each release;
 - `Team Profile\Actuarial_NJ.xlsm`, the default team profile in Settings.
 
 ## The recorded checks

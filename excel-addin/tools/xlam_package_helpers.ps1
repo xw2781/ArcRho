@@ -1,3 +1,17 @@
+# Release notes travel beside the add-in they describe, as
+# "<add-in name> Release Notes.md"; the About window opens the same name.
+function Get-ReleaseNotesPath([string]$XlamPath) {
+    $name = [System.IO.Path]::GetFileNameWithoutExtension($XlamPath) + " Release Notes.md"
+    Join-Path (Split-Path -Parent $XlamPath) $name
+}
+
+# The version of the newest entry, read from its "## <version> - <date>" heading.
+function Get-ReleaseNotesVersion([string]$NotesPath) {
+    $heading = Select-String -LiteralPath $NotesPath -Pattern '^##\s+(\S+)' | Select-Object -First 1
+    if ($null -eq $heading) { return "" }
+    $heading.Matches[0].Groups[1].Value
+}
+
 function Compress-XlamPackage(
     [string]$SourceDirectory,
     [string]$DestinationPath

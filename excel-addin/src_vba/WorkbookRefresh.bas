@@ -112,8 +112,8 @@ Finish:
     cancelUpdate = False
     refreshing = False
     If Not savedSheet Is Nothing Then savedSheet.Activate
-    Application.StatusBar = "Arco [" & book.Name & "]: " & message
-    If Not completed And Len(message) > 0 Then Debug.Print Application.StatusBar
+    ShowStatus "Arco [" & book.Name & "]: " & message
+    If Not completed And Len(message) > 0 Then Debug.Print "Arco [" & book.Name & "]: " & message
     Exit Sub
 Failed:
     message = "Refresh failed; the previous snapshot is unchanged. " & Err.Description
@@ -260,7 +260,7 @@ End Function
 
 Public Sub RefreshProgress(ByVal showProgress As Boolean, ByVal title As String, _
                             ByVal body As String, ByVal details As String, ByVal percent As Double)
-    Application.StatusBar = "Arco: " & title & " " & body & " " & details
+    ShowStatus "Arco: " & title & " " & body & " " & details
     If showProgress Then
         ufProgressBar.LabelTitle.Caption = title
         ufProgressBar.LabelBody.Caption = body

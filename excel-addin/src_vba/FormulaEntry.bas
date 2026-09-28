@@ -50,7 +50,7 @@ Finish:
     disable_ufLoading = oldLoading
     Application.EnableCancelKey = oldCancel
     cancelUpdate = False
-    If Len(message) > 0 Then Application.StatusBar = "Arco [" & book.Name & "]: " & message
+    If Len(message) > 0 Then ShowStatus "Arco [" & book.Name & "]: " & message
     Exit Sub
 Failed:
     message = "Unable to load the entered formula; saved data is unchanged. " & Err.Description

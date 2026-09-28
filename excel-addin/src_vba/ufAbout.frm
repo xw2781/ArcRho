@@ -16,33 +16,19 @@ Attribute VB_Exposed = False
 
 Private Sub UserForm_Initialize()
     Label2.Caption = "Version: " & ARCRHO_VERSION
+    Label3.Caption = "Release notes"
     Label3.ForeColor = RGB(100, 100, 100)
 End Sub
 
+' The release puts "<add-in name> Release Notes.md" beside the add-in.
 Private Sub Label3_Click()
-    OpenWordReadOnly ProductPath("library\Version Track.docx")
-End Sub
-
-Sub OpenWordReadOnly(ByVal fullPath As String)
-    Dim wdApp As Object
-    Dim wdDoc As Object
-    
-    If Dir(fullPath) = "" Then
-        MsgBox "File not found:" & vbCrLf & fullPath, vbExclamation
+    Dim notesPath As String
+    notesPath = ThisWorkbook.Path & "\" & Left$(ThisWorkbook.Name, InStrRev(ThisWorkbook.Name, ".") - 1) & " Release Notes.md"
+    If Len(Dir(notesPath)) = 0 Then
+        MsgBox "Release notes not found:" & vbCrLf & notesPath, vbExclamation
         Exit Sub
     End If
-    
-    On Error Resume Next
-    Set wdApp = GetObject(, "Word.Application")  ' attach to existing Word instance
-    If wdApp Is Nothing Then Set wdApp = CreateObject("Word.Application")
-    On Error GoTo 0
-    
-    wdApp.Visible = True
-    Set wdDoc = wdApp.Documents.Open(fileName:=fullPath, ReadOnly:=True)
-   
-    wdApp.Activate
-    wdApp.WindowState = 0   'wdWindowStateNormal
-    
+    Shell "notepad.exe """ & notesPath & """", vbNormalFocus
 End Sub
 
 
