@@ -1,22 +1,16 @@
 ---
 name: excel-addin-build-needs-server-clone
-description: "the Excel add-in builds and releases from the Client PC by running the E:\\XWSpace\\Repos\\ArcRho scripts with -SourceDir pointed at the working clone; the beta workbook, signature files, and rollback archive live only in that server clone"
+description: "the Excel add-in builds and releases from the Client PC by running the working clone's scripts with path arguments into E:\\XWSpace\\Repos\\ArcRho; the beta workbook, signature files, and rollback archive live only in that server clone"
 metadata:
   node_type: memory
   type: project
   originSessionId: 77f89e08-e1c5-4e9e-93b2-da102d57416d
-  modified: 2026-09-21T20:20:38.590Z
+  modified: 2026-09-28T13:25:00.000Z
 ---
 
 `excel-addin/beta/` and `excel-addin/signature/` are gitignored and exist **only** in the server clone `E:\XWSpace\Repos\ArcRho`. A fresh clone (including the Client PC working clone `C:\Users\xwei\Repos\ArcRho`) has neither, so its own `tools/build_xlam.ps1` stops at "Target XLAM not found" and `tools/release_xlam.ps1` at "Signature folder not found".
 
-**Working recipe from the Client PC (used 2026-09-21 for 4.0.1, no commit or pull needed):** E: is the same share, so run the server clone's scripts but feed them the working clone's sources:
-
-```
-powershell -NoProfile -ExecutionPolicy Bypass -File "E:\XWSpace\Repos\ArcRho\excel-addin\tools\build_xlam.ps1" -SourceDir "C:\Users\xwei\Repos\ArcRho\excel-addin\src_vba" -CustomUIPath "C:\Users\xwei\Repos\ArcRho\excel-addin\tools\customUI.xml"
-py -3.10 excel-addin\tools\verify_built_addin.py "E:\XWSpace\Repos\ArcRho\excel-addin\beta\ARCRHO_BETA.xlam"
-powershell -NoProfile -ExecutionPolicy Bypass -File "E:\XWSpace\Repos\ArcRho\excel-addin\tools\release_xlam.ps1"
-```
+**Working recipe from the Client PC (since 2026-09-28, 4.2.1):** run the **working clone's** scripts and point their paths at the server clone. The server clone's scripts are stale (it is behind), and since 4.2.1 the build needs `excel-addin/RELEASE_NOTES.md` beside `src_vba` and the release checks the version. Exact commands are in `agent-instructions/excel-addin-build-and-release.md`. The older recipe (server clone's scripts with `-SourceDir`) skips the release-notes check and must not be used.
 
 - `git` refuses the E: clone ("dubious ownership") unless run with `-c safe.directory='*'`; it is usually behind and dirty with other work, which does not matter because only its gitignored `beta\` and `signature\` folders are used.
 - The build can fail once with "ARCRHO_BETA.xlam ... being used by another process" right after it rewrote the ribbon XML inside the zip. That is a share write race, not a user's Excel; rerun the same command. The user's own Excel windows never need closing.

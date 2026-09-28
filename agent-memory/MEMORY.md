@@ -83,7 +83,7 @@
 - [Release vs source comparison](release-vs-source-comparison.md) — diff the installed app's frozen UI/wheel and the deployed arcrho_canonical copies against
 - [Hide trailing tag whole when narrow](hide-trailing-tag-whole-when-narrow.md) — 2026-09-11 PI path tree: flex-wrap + fixed row height + abspos leading arrow drops the
 - [VBA declarations above the first procedure](vba-declarations-above-first-procedure.md) — 2026-09-21: a Const below a procedure compiled per-procedure probes but failed every formula
-- [Excel add-in build needs the server clone](excel-addin-build-needs-server-clone.md) — run E:\XWSpace\Repos\ArcRho's build/release scripts with -SourceDir at the working clone
+- [Excel add-in build needs the server clone](excel-addin-build-needs-server-clone.md) — run the working clone's build/release scripts with path arguments into the E: server clone; each release needs a version bump and RELEASE_NOTES.md entry
 - [Excel COM must suppress alerts](excel-com-must-suppress-alerts.md) — an agent-driven Excel instance is invisible but its modal alerts block the COM call; set
 - [Excel automation needs a GUI check](excel-automation-needs-gui-check.md) — 2026-09-23 user rule: screenshot while a script drives Excel; VBA compile/runtime boxes
 - [Excel rebuild of method results](excel-rebuild-of-method-results.md) — 2026-09-14: Calculate Workbook sent a Result Selection output to the Engine, which wrote
