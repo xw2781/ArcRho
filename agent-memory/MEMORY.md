@@ -107,5 +107,3 @@
 - [Scripts save through the Gateway client](scripts-save-through-gateway-client.md) — notebooks use arcrho_api.gateway, not the local app URL (another user's Arco can hold 28765); audit log must show the user
 - [Local test root](local-test-root.md) — since 2026-09-26 C:\Arco Server runs a private server via tools/local_server.py; deploy there first, launch-app for the test client
 - [Tests never reach a real Gateway](job-tests-read-live-gateway.md) — since 2026-09-27 arcrho_api.gateway_test_guard hides the credential and refuses Gateway URLs in any test run; loopback test Gateways opt in
-- [Credential helper deploy waits for release](credential-helper-deploy-waits-for-release.md) — 2026-09-27: held back from production; deploying it before the next app release breaks first-time Excel sign-up
-- [ArcBot server prompt swap at release](arcbot-server-prompt-swap-at-release.md) — replace config\arcbot\arcbot_prompt.md with the bundled prompt when the next app ships, not before (1.7.5 reads it)
