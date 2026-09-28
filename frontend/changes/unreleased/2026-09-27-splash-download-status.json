@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "app updates",
+  "audience": "user",
+  "summary": "Keep the splash screen download status on one centered line during app updates."
+}
