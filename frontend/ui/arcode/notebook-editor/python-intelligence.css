@@ -1,0 +1,12 @@
+/* Monaco's popups live outside cell and output clipping containers. */
+.sc-editor-widgets {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+.sc-editor-widgets .suggest-widget,
+.sc-editor-widgets .parameter-hints-widget,
+.sc-editor-widgets .monaco-hover {
+  pointer-events: auto;
+}

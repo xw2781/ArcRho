@@ -1,0 +1,7 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Notebook Python cells now show function documentation, argument hints, and runtime completions without clipping popups at cell boundaries.",
+  "details": ["Run ?function_name to display documentation for built-in, imported, or notebook-defined functions."]
+}

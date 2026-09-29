@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Find and replace searches the active cell while editing, or the whole notebook in command mode."
+}

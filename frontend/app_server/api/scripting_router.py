@@ -148,6 +148,11 @@ def scripting_inspect(req: ScriptInspectRequest, request: Request) -> Dict[str, 
     return scripting_service.inspect_object(req.code, req.cursor_pos, _session_id_from_request(request))
 
 
+@router.post("/scripting/complete")
+def scripting_complete(req: ScriptInspectRequest, request: Request) -> Dict[str, Any]:
+    return scripting_service.complete_code(req.code, req.cursor_pos, _session_id_from_request(request))
+
+
 @router.get("/scripting/preferences")
 def scripting_get_preferences() -> Dict[str, Any]:
     return scripting_preferences_service.get_preferences()

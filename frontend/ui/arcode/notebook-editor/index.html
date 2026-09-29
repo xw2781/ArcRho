@@ -7,17 +7,21 @@
   <title>Arcode Notebook Editor</title>
   <link rel="stylesheet" href="/ui/arcode/shared/chrome.css?v=20260816b"/>
   <link rel="stylesheet" href="/ui/arcode/shared/scrollbars.css?v=20260516a"/>
-  <link rel="stylesheet" href="/ui/arcode/notebook-editor/notebook-editor.css?v=20260816b"/>
+  <link rel="stylesheet" href="/ui/arcode/notebook-editor/notebook-editor.css?v=20260929b"/>
+  <link rel="stylesheet" href="/ui/arcode/notebook-editor/search.css?v=20260929a"/>
+  <link rel="stylesheet" href="/ui/arcode/notebook-editor/python-intelligence.css?v=20260929a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260923c"/>
-  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260923c"/>
+  <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260929b"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/revolutionary.css?v=20260923c"/>
 </head>
 <body>
+  <div id="notebookEditorWidgets" class="monaco-editor sc-editor-widgets"></div>
 
   <div class="sc-main">
     <div class="sc-workspace">
       <div class="sc-toolbar">
         <button class="sc-btn" id="addCellBtn" title="Add cell">+ Cell</button>
+        <button class="sc-btn" id="notebookFindBtn" type="button">Find / Replace</button>
         <div class="sc-type-select" id="newCellTypeWrap">
           <button class="sc-select sc-select-btn" id="newCellTypeBtn" title="New cell type" aria-haspopup="listbox" aria-expanded="false" type="button">
             <span class="sc-select-btn-label" id="newCellTypeLabel">Code</span>
@@ -66,6 +70,23 @@
       </div>
 
       <div class="sc-cells-area" id="cellsArea">
+        <div class="sc-search" id="notebookSearch" role="search" aria-label="Find in notebook" hidden>
+          <div class="sc-search-row">
+            <span>Whole notebook</span>
+            <input id="notebookSearchQuery" aria-label="Find text" placeholder="Find" autocomplete="off">
+            <label><input id="notebookSearchCase" type="checkbox">Match case</label>
+            <span id="notebookSearchCount" role="status" aria-live="polite"></span>
+            <button class="sc-btn" id="notebookSearchPrevious" type="button">Previous</button>
+            <button class="sc-btn" id="notebookSearchNext" type="button">Next</button>
+            <button class="sc-btn" id="notebookSearchClose" type="button">Close</button>
+          </div>
+          <div class="sc-search-row" id="notebookReplaceRow" hidden>
+            <input id="notebookReplaceText" aria-label="Replacement text" placeholder="Replace with" autocomplete="off">
+            <button class="sc-btn" id="notebookReplaceOne" type="button">Replace</button>
+            <button class="sc-btn" id="notebookReplaceAll" type="button">Replace All</button>
+          </div>
+          <button class="sc-btn" id="notebookSearchToggleReplace" type="button" aria-expanded="false">Show Replace</button>
+        </div>
         <!-- cells injected here -->
         <div class="sc-add-cell" id="addCellBottom">+ Add Cell</div>
       </div>
@@ -252,12 +273,15 @@
   <script src="/ui/libs/monaco-editor/min/vs/loader.js"></script>
   <script src="/ui/arcode/shared/zoom_bridge.js?v=20260614a"></script>
   <script src="/ui/arcode/shared/editor_shared.js?v=20260620a"></script>
-  <script src="/ui/arcode/notebook-editor/core.js?v=20260816b"></script>
+  <script src="/ui/arcode/notebook-editor/python-intelligence.js?v=20260929a"></script>
+  <script src="/ui/arcode/notebook-editor/core.js?v=20260929a"></script>
   <script src="/ui/arcode/notebook-editor/cells.js?v=20260726a"></script>
-  <script src="/ui/arcode/notebook-editor/execution.js?v=20260620a"></script>
+  <script src="/ui/arcode/notebook-editor/stream-text.js?v=20260929a"></script>
+  <script src="/ui/arcode/notebook-editor/execution.js?v=20260929a"></script>
   <script src="/ui/arcode/notebook-editor/shortcuts.js?v=20260620a"></script>
   <script src="/ui/arcode/notebook-editor/panels.js?v=20260620a"></script>
   <script src="/ui/arcode/notebook-editor/notebook-io.js?v=20260927a"></script>
-  <script src="/ui/arcode/notebook-editor/index.js?v=20260927a"></script>
+  <script src="/ui/arcode/notebook-editor/search.js?v=20260929a"></script>
+  <script src="/ui/arcode/notebook-editor/index.js?v=20260929a"></script>
 </body>
 </html>

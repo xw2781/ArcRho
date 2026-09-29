@@ -734,8 +734,8 @@
       cursor: nwse-resize;
       user-select: none;
     }
-    .sc-cell-output .out-stdout { color: #1f2937; }
-    .sc-cell-output .out-error  { color: #dc2626; }
+    .sc-cell-output .out-stdout,
+    .sc-cell-output .out-error { color: #1f2937; }
     .sc-cell-output .out-note   { color: #6b7280; font-style: italic; }
     .sc-cell-output .out-html {
       margin: 6px 0;

@@ -111,6 +111,8 @@ async function runCell(id, options = {}) {
   let stderrEl = null;
   let stdoutText = "";
   let stderrText = "";
+  const stdoutDisplay = createNotebookStreamText();
+  const stderrDisplay = createNotebookStreamText();
 
   const appendStreamOutput = (kind, text) => {
     const chunk = typeof text === "string" ? text : "";
@@ -123,7 +125,7 @@ async function runCell(id, options = {}) {
         cell.outputEl.appendChild(stdoutEl);
       }
       stdoutText += chunk;
-      stdoutEl.textContent = stdoutText;
+      stdoutEl.textContent = stdoutDisplay.append(chunk);
     } else {
       if (!stderrEl) {
         stderrEl = document.createElement("div");
@@ -131,7 +133,7 @@ async function runCell(id, options = {}) {
         cell.outputEl.appendChild(stderrEl);
       }
       stderrText += chunk;
-      stderrEl.textContent = stderrText;
+      stderrEl.textContent = stderrDisplay.append(chunk);
     }
 
     setCellOutputVisible(cell, true);
@@ -292,7 +294,7 @@ function appendImportedOutputLine(container, className, text) {
   if (!value) return false;
   const line = document.createElement("div");
   line.className = className;
-  line.textContent = value;
+  line.textContent = createNotebookStreamText().append(value);
   container.appendChild(line);
   return true;
 }

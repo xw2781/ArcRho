@@ -73,6 +73,11 @@ server access or credential enrollment. No sidecar or index schema changes.
 
 Client-side dataset grid reads never fall back to a CSV file read. An unknown process-local handle carries its workspace-relative CSV location to the Gateway, which confines it to the named project's data folder. Active DFM macro saves use the hosted DFM service; constructing the active draft does not read or stat a project file. This does not restrict files deliberately opened in general Arcode editing.
 
+Scripting inspection and completion resolve functions in the requesting
+notebook's session plus Python built-ins. Streamed and non-streamed execution
+share `?name` help and final-expression behavior; help never calls the target.
+See [scripting intelligence](../app_server/domains/scripting.md).
+
 ## Before Finishing
 
 1. State which business-logic area changed, or state "no business-logic impact."

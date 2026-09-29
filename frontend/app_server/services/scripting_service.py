@@ -6,17 +6,14 @@ structured results plus variable inspection.
 """
 from __future__ import annotations
 
-import ast
 import builtins
 import copy
 import importlib
-import inspect
 import io
 import json
 import math
 import os
 import queue
-import re
 import sys
 import tempfile
 import threading
@@ -31,6 +28,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import pandas as pd
 
 from app_server import config
+from app_server.services import scripting_intelligence
 
 
 def _ensure_arcrho_api_import_path() -> None:
@@ -588,25 +586,7 @@ def run_script(
                 with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
                     sys.settrace(trace_hook)
                     try:
-                        # Parse the code into an AST to check if the last statement
-                        # is an expression (like Jupyter: auto-display last expr value)
-                        tree = ast.parse(code, "<cell>", "exec")
-                        last_expr_value = None
-
-                        if tree.body and isinstance(tree.body[-1], ast.Expr):
-                            # Split: exec all statements except last, then eval the last
-                            last_node = tree.body.pop()
-                            if tree.body:
-                                exec(compile(tree, "<cell>", "exec"), session.namespace)
-                            # Eval the last expression
-                            expr_code = compile(
-                                ast.Expression(body=last_node.value), "<cell>", "eval"
-                            )
-                            last_expr_value = eval(expr_code, session.namespace)
-                            # Store as _ (like IPython)
-                            session.namespace["_"] = last_expr_value
-                        else:
-                            exec(compile(tree, "<cell>", "exec"), session.namespace)
+                        last_expr_value = scripting_intelligence.execute_cell(code, session.namespace)
                     finally:
                         sys.settrace(None)
 
@@ -742,20 +722,7 @@ def run_script_stream(
             with redirect_stdout(stdout_sink), redirect_stderr(stderr_sink):
                 sys.settrace(trace_hook)
                 try:
-                    tree = ast.parse(code, "<cell>", "exec")
-                    last_expr_value = None
-
-                    if tree.body and isinstance(tree.body[-1], ast.Expr):
-                        last_node = tree.body.pop()
-                        if tree.body:
-                            exec(compile(tree, "<cell>", "exec"), session.namespace)
-                        expr_code = compile(
-                            ast.Expression(body=last_node.value), "<cell>", "eval"
-                        )
-                        last_expr_value = eval(expr_code, session.namespace)
-                        session.namespace["_"] = last_expr_value
-                    else:
-                        exec(compile(tree, "<cell>", "exec"), session.namespace)
+                    last_expr_value = scripting_intelligence.execute_cell(code, session.namespace)
                 finally:
                     sys.settrace(None)
 
@@ -989,8 +956,7 @@ def get_api_help() -> List[Dict[str, str]]:
 # Object introspection (Shift+Tab tooltip)
 # ---------------------------------------------------------------------------
 
-_IDENT_RE = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*")
-_MAX_DOC_LEN = 2000
+_IDENT_RE = scripting_intelligence.IDENT_RE
 _MAX_DICT_KEYS = 20
 _MAX_DF_COLS = 30
 
@@ -1106,7 +1072,7 @@ def inspect_object(
     expr = ""
     for candidate in candidates:
         try:
-            obj = eval(candidate, {"__builtins__": builtins.__dict__}, ns)  # noqa: S307
+            obj = scripting_intelligence.resolve_object(candidate, ns)
             expr = candidate
             break
         except Exception:
@@ -1124,20 +1090,9 @@ def inspect_object(
         "detail": "",
     }
 
-    # Signature (for callables)
-    if callable(obj):
-        try:
-            sig = inspect.signature(obj)
-            result["signature"] = f"{expr}{sig}"
-        except (ValueError, TypeError):
-            result["signature"] = f"{expr}(...)"
-
-    # Docstring
-    doc = inspect.getdoc(obj)
-    if doc:
-        if len(doc) > _MAX_DOC_LEN:
-            doc = doc[:_MAX_DOC_LEN] + "\n..."
-        result["docstring"] = doc
+    result.update(scripting_intelligence.describe_object(expr, obj))
+    if len(result["docstring"]) > scripting_intelligence.MAX_DOC_LEN:
+        result["docstring"] = result["docstring"][:scripting_intelligence.MAX_DOC_LEN] + "\n..."
 
     # Extra detail for common types
     detail_parts: List[str] = []
@@ -1189,3 +1144,8 @@ def inspect_object(
         result["detail"] = "\n".join(detail_parts)
 
     return result
+
+
+def complete_code(code: str, cursor_pos: int, session_id: Optional[str] = None) -> Dict[str, Any]:
+    session = _get_or_create_session_state(session_id)
+    return scripting_intelligence.complete(code, cursor_pos, session.namespace)

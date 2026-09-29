@@ -282,7 +282,7 @@ document.addEventListener("mousedown", (event) => {
   if (editingCellId === null) return;
   const target = event.target;
   if (!(target instanceof Element)) return;
-  if (target.closest(".sc-cell-editor")) return;
+  if (target.closest(".sc-cell-editor, .sc-editor-widgets, #notebookFindBtn")) return;
   exitCellEditMode();
 }, true);
 
@@ -304,6 +304,8 @@ document.addEventListener("keydown", (event) => {
     }
     return;
   }
+
+  if (handleNotebookSearchKeydown(event)) return;
 
   const key = String(event.key || "").toLowerCase();
   const isSaveShortcut = (event.ctrlKey || event.metaKey) && !event.altKey && key === "s";

@@ -45,6 +45,12 @@ The last Status, Category, Method Type, and matched-only choices are local-user
 preferences restored on graph open, independent of PI table filters and project
 data. Already-open graphs retain their own state.
 
+Arcode notebook search uses the editing cell while in edit mode and all cell
+source in command mode. Whole-notebook replacements participate in notebook
+undo and normal dirty/save tracking. Python completion and signature help use
+the notebook's own session; overflow popups must remain accessible outside cell
+bounds. See [Arcode](../ui/arcode.md).
+
 ## Before Finishing
 1. State which behavior area changed, or state "no frontend behavior impact."
 2. Update relevant MANUAL sections in `docs/ui/*.md` when behavior changes.

@@ -3815,12 +3815,9 @@
   color: var(--ar-color-danger);
 }
 
-:root[data-arcrho-theme="dark"] .sc-cell-output .out-stdout {
-  color: var(--ar-color-text);
-}
-
+:root[data-arcrho-theme="dark"] .sc-cell-output .out-stdout,
 :root[data-arcrho-theme="dark"] .sc-cell-output .out-error {
-  color: var(--ar-color-danger);
+  color: var(--ar-color-text);
 }
 
 :root[data-arcrho-theme="dark"] :is(

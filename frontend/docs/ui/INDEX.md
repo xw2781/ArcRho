@@ -24,7 +24,7 @@ Frontend module map for page entrypoints, shell orchestration, and feature-speci
 | `ui/project_settings/project_settings.html` | 2 external scripts | - |
 | `ui/project_instance/project_instance.html` | 2 external scripts | - |
 | `ui/arcode/main.html` | 2 external scripts | - |
-| `ui/arcode/notebook-editor/index.html` | 11 external scripts | - |
+| `ui/arcode/notebook-editor/index.html` | 14 external scripts | - |
 | `ui/arcode/code-editor/index.html` | 5 external scripts | - |
 <!-- AUTO-GEN:END -->
 

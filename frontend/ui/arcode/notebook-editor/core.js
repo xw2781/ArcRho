@@ -176,12 +176,15 @@ const EDITOR_OPTIONS = {
   showFoldingControls: "mouseover",
   glyphMargin: false,
   contextmenu: true,
+  fixedOverflowWidgets: true,
+  overflowWidgetsDomNode: document.getElementById("notebookEditorWidgets"),
 };
 
 require.config({ paths: { vs: "/ui/libs/monaco-editor/min/vs" } });
 
 require(["vs/editor/editor.main"], function () {
   monacoReady = true;
+  registerNotebookPythonIntelligence();
   // Refresh startup state and register the shared Atom One Dark definition
   // only after Monaco is available to accept it.
   EDITOR_OPTIONS.theme = window.ArcRhoColorTheme?.getMonacoTheme?.() || "vs";
