@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "build",
+  "audience": "internal",
+  "summary": "Added a launcher that starts Arcode alone in dev mode."
+}
