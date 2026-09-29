@@ -9,6 +9,7 @@ from __future__ import annotations
 import ast
 import builtins
 import copy
+import importlib
 import inspect
 import io
 import json
@@ -50,8 +51,6 @@ _ensure_arcrho_api_import_path()
 # Execution lock & cancellation
 # ---------------------------------------------------------------------------
 
-_TIMEOUT_SEC = 60
-
 _DEFAULT_SESSION_ID = "default"
 _MAX_SESSION_ID_LEN = 128
 
@@ -69,6 +68,7 @@ class _SessionState:
     exec_lock: threading.Lock = field(default_factory=threading.Lock)
     cancel_event: threading.Event = field(default_factory=threading.Event)
     custom_working_dirs: List[str] = field(default_factory=list)
+    script_dir: str = ""
 
 
 _SESSION_STATES: Dict[str, _SessionState] = {}
@@ -102,12 +102,12 @@ class _ExecutionActivity:
 
 def _run_with_timeout(
     func,
-    timeout_sec: float,
+    timeout_sec: float | None,
     cancel_event: threading.Event,
     *,
     activity: _ExecutionActivity | None = None,
 ):
-    """Run *func* with a timeout.  Works on Windows (no SIGALRM)."""
+    """Run *func* with a timeout, or with none when *timeout_sec* is None.  Works on Windows (no SIGALRM)."""
     result: Dict[str, Any] = {}
     exc_info: list = [None]
 
@@ -473,6 +473,28 @@ def _build_default_namespace(session: _SessionState) -> Dict[str, Any]:
     return ns
 
 
+def _apply_session_script_dir(session: _SessionState, script_dir: Optional[str]) -> None:
+    """Make the notebook's folder importable for this session, like a Jupyter kernel.
+
+    sys.path is process-wide, so a folder leaves it only when no other session
+    still runs a notebook from there.
+    """
+    text = str(script_dir or "").strip()
+    new_dir = os.path.abspath(text) if text and os.path.isdir(text) else ""
+    old_dir = session.script_dir
+    if new_dir == old_dir:
+        return
+    session.script_dir = new_dir
+    if old_dir:
+        with _SESSION_STATES_LOCK:
+            in_use = any(s.script_dir == old_dir for s in _SESSION_STATES.values())
+        if not in_use and old_dir in sys.path:
+            sys.path.remove(old_dir)
+    if new_dir and new_dir not in sys.path:
+        sys.path.insert(0, new_dir)
+    importlib.invalidate_caches()
+
+
 def _reset_session_state(session: _SessionState) -> None:
     """Initialize or reset one session namespace."""
     session.custom_working_dirs.clear()
@@ -507,7 +529,11 @@ _get_or_create_session_state(_DEFAULT_SESSION_ID)
 # ---------------------------------------------------------------------------
 
 
-def run_script(code: str, session_id: Optional[str] = None) -> Dict[str, Any]:
+def run_script(
+    code: str,
+    session_id: Optional[str] = None,
+    script_dir: Optional[str] = None,
+) -> Dict[str, Any]:
     """Execute user Python code in the persistent session namespace."""
     session = _get_or_create_session_state(session_id)
 
@@ -521,6 +547,7 @@ def run_script(code: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         }
 
     try:
+        _apply_session_script_dir(session, script_dir)
         session.execution_count += 1
         session.cancel_event.clear()
 
@@ -605,15 +632,9 @@ def run_script(code: str, session_id: Optional[str] = None) -> Dict[str, Any]:
             }
 
         try:
-            result = _run_with_timeout(_exec, _TIMEOUT_SEC, session.cancel_event)
+            # A cell runs until it finishes or the user interrupts it.
+            result = _run_with_timeout(_exec, None, session.cancel_event)
             return result
-        except _ScriptTimeout as e:
-            return {
-                "success": False,
-                "output": stdout_buf.getvalue(),
-                "error": str(e),
-                "execution_count": session.execution_count,
-            }
         except KeyboardInterrupt:
             return {
                 "success": False,
@@ -641,7 +662,11 @@ def run_script(code: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         session.exec_lock.release()
 
 
-def run_script_stream(code: str, session_id: Optional[str] = None):
+def run_script_stream(
+    code: str,
+    session_id: Optional[str] = None,
+    script_dir: Optional[str] = None,
+):
     """Execute user code and stream stdout/stderr events as NDJSON lines."""
     session = _get_or_create_session_state(session_id)
 
@@ -655,14 +680,13 @@ def run_script_stream(code: str, session_id: Optional[str] = None):
         })
         return
 
+    _apply_session_script_dir(session, script_dir)
     session.execution_count += 1
     session.cancel_event.clear()
 
     event_queue: "queue.Queue[Dict[str, Any]]" = queue.Queue()
     finished = threading.Event()
-    timeout_triggered = threading.Event()
     lock_released = threading.Event()
-    started_at = py_time.monotonic()
 
     stdout_sink = _StreamTextSink(event_queue, "stdout")
     stderr_sink = _StreamTextSink(event_queue, "stderr")
@@ -750,15 +774,10 @@ def run_script_stream(code: str, session_id: Optional[str] = None):
                 "execution_count": session.execution_count,
             }
         except KeyboardInterrupt:
-            message = (
-                f"Script exceeded {_TIMEOUT_SEC}s timeout"
-                if timeout_triggered.is_set()
-                else "Execution cancelled by user."
-            )
             result_holder = {
                 "success": False,
                 "output": stdout_sink.getvalue(),
-                "error": message,
+                "error": "Execution cancelled by user.",
                 "execution_count": session.execution_count,
             }
         except SyntaxError as e:
@@ -794,14 +813,6 @@ def run_script_stream(code: str, session_id: Optional[str] = None):
 
     try:
         while True:
-            if (
-                not finished.is_set()
-                and not timeout_triggered.is_set()
-                and (py_time.monotonic() - started_at) > _TIMEOUT_SEC
-            ):
-                timeout_triggered.set()
-                session.cancel_event.set()
-
             try:
                 event = event_queue.get(timeout=0.05)
                 yield _serialize_stream_event(event)

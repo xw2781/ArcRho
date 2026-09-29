@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 
 class ScriptRunRequest(BaseModel):
     code: str
+    # Folder of the notebook the cell belongs to, so its sibling modules import.
+    script_dir: str = ""
 
 
 class ScriptDeleteVarRequest(BaseModel):

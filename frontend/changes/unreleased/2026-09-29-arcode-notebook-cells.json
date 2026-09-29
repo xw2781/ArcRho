@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Notebook cells can import Python files saved beside the notebook, and no longer stop after 60 seconds.",
+  "details": [
+    "Each cell run sends its notebook's folder, so a module next to the notebook imports the way it does in Jupyter.",
+    "A cell runs until it finishes or Stop is pressed."
+  ]
+}

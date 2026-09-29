@@ -35,12 +35,14 @@ def _session_id_from_request(request: Request) -> str | None:
 
 @router.post("/scripting/run")
 def scripting_run(req: ScriptRunRequest, request: Request) -> Dict[str, Any]:
-    return scripting_service.run_script(req.code, _session_id_from_request(request))
+    return scripting_service.run_script(req.code, _session_id_from_request(request), req.script_dir)
 
 
 @router.post("/scripting/run-stream")
 def scripting_run_stream(req: ScriptRunRequest, request: Request) -> StreamingResponse:
-    stream = scripting_service.run_script_stream(req.code, _session_id_from_request(request))
+    stream = scripting_service.run_script_stream(
+        req.code, _session_id_from_request(request), req.script_dir
+    )
     return StreamingResponse(stream, media_type="application/x-ndjson")
 
 

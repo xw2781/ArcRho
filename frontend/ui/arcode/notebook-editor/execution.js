@@ -138,10 +138,12 @@ async function runCell(id, options = {}) {
     cell.outputEl.scrollTop = cell.outputEl.scrollHeight;
   };
 
+  // The notebook's own folder, so a cell can import modules saved beside it.
+  const scriptDir = String(currentNotebookPath || "").replace(/[\\/][^\\/]*$/, "");
   const makeRunRequestOptions = () => ({
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, script_dir: scriptDir }),
   });
 
   try {
