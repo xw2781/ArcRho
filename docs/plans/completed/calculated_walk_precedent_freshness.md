@@ -1,7 +1,7 @@
 # Calculated datasets read a current copy of every input
 
-Status: Diagnosed 2026-09-21 from logs, sidecars and cache-provenance records in `NJ_Annual_Prod_2026 Q3-Aug`; four session-sized steps, none started. The user decided on 2026-09-21 that a failed dependent walk must show its reason in the window that saved (reversing the 2026-08-07 "no message" rule).
-Last updated: 2026-09-21
+Status: Steps 1-3 done and the Engine, Gateway and Bridge deployed to production on 2026-09-29; the check ran in the Fake project instead of the live class, by the user's decision that day (see step 4). A formula dataset now reads a current copy of each input, a source refresh rebuilds a vector at the period it is shown at, and the message box reaches users with the next app release. The user decided on 2026-09-21 that a failed dependent walk must show its reason in the window that saved (reversing the 2026-08-07 "no message" rule).
+Last updated: 2026-09-29
 
 Ship impact: steps 1 and 2 change what the Engine and the Gateway calculate and need both deployed; users on the released app see no difference until then, and nothing in these steps can break a client that has not updated. Step 3 is a client change that ships with the next app release.
 
@@ -9,20 +9,20 @@ Ship impact: steps 1 and 2 change what the Engine and the Gateway calculate and 
 
 Plain-language tracking. The agent that finishes a step ticks its box, fills in the date, and leaves one short line on what a user would notice. Nothing technical goes here.
 
-| # | Step | Done | Date | What changed for the user |
-| :--- | :--- | :--- | :--- | :--- |
-| 1 | A formula dataset always reads a current copy of each input | [ ] | | |
-| 2 | A source-table refresh rebuilds a vector at the period it is shown at | [ ] | | |
-| 3 | A save tells the user when a dependent could not be refreshed, and why | [ ] | | |
-| 4 | Released to the server and checked on the live class | [ ] | | |
+| # | Step | Done | Date | Time | What changed for the user |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | A formula dataset always reads a current copy of each input | [x] | 2026-09-29 | ~12 min | Saving P 06 refreshes F 63 from current premium figures, even when an out-of-date quarterly copy of Earned Premium sits beside the annual one. |
+| 2 | A source-table refresh rebuilds a vector at the period it is shown at | [x] | 2026-09-29 | ~4 min | An import no longer resets a quarterly-shown vector to 12 months; an annual one such as Earned Premium stays annual. |
+| 3 | A save tells the user when a dependent could not be refreshed, and why | [x] | 2026-09-29 | ~2 min | A save whose dependents could not all refresh shows a "Dependent updates" box with the reason. Reaches users with the next app release. |
+| 4 | Released to the server and checked in the Fake project | [x] | 2026-09-29 | ~16 min | Engine, Gateway and Bridge redeployed; saving P 06 in the Fake project's MA BI Total gave the correct F 63 while Earned Premium stayed annual. |
 
-Overall: 0 of 4 steps done.
+Overall: 4 of 4 steps done. Time is wall-clock agent time; step 4 is 9.5 min of builds and 6.5 min of GUI testing, and a further ~4 min went to docs and the full test suites.
 
 ## How agents work this plan
 
 - Take the first unticked step in the Progress table. One step is one context (a session or one workflow subagent), one commit.
 - Read the sections between here and the Plan before starting, then only the files the step names. Do not read ahead into later steps.
-- A step is done when its "Done when" list holds, its tests pass, and the commit is in. In that same commit: tick the Progress row, write the date and the one-line user note, update the "Overall" count, and update the `Status:` line at the top and this plan's row in [README.md](README.md).
+- A step is done when its "Done when" list holds, its tests pass, and the commit is in. In that same commit: tick the Progress row, write the date and the one-line user note, update the "Overall" count, and update the `Status:` line at the top and this plan's row in [README.md](../README.md).
 - If a step turns out to need a decision that is not in "Open decisions", stop, record the question there, commit that note alone, and report it rather than guessing.
 - Do not start a step while the previous one is uncommitted.
 - Project data: the live class is `PRNJ - PA\PA\NY\Direct Group\BI Total` in `NJ_Annual_Prod_2026 Q3-Aug`, which an agent may open only with the user's permission in that session. `NJ_Annual_Prod_202605_Fake` carries the same dataset types and is the default place to read sidecars.
@@ -91,6 +91,16 @@ Done when: saving P 06 in a class whose Earned Premium cannot be produced at F 6
 - With the user's permission for `NJ_Annual_Prod_2026 Q3-Aug`, and reading metadata only: save P 06 in NY BI Total and confirm the new F 63 provenance record lists the sidecar-named or freshly rebuilt input files; run a scoped source refresh and confirm `Earned Premium@3.csv` is rewritten and F 63's walk that follows it reads the rewritten file.
 
 Done when: both checks hold and the Status line says so.
+
+**What was done instead (2026-09-29).** The user ruled out reading or changing `NJ_Annual_Prod_2026 Q3-Aug` and asked for a GUI test in the Fake project: saving P 06 must refresh F 63 while Earned Premium stays annual. `NJ_Annual_Prod_202605_Fake` NY BI Total does not reproduce the live case (its P 06 is annual only and F 63 has no file), so the test ran in MA BI Total, whose P 06 is quarterly and whose premiums are annual Engine vectors. The Build Listener was not running, so the three components were built on the Server PC with their own `build_exe.py`.
+
+1. On the unfixed server, a P 06 save wrote fresh `@3` copies of both premiums and a correct F 63.
+2. `Earned Premium@3.csv` was halved by hand to stand in for a copy a source import left stale; the next save on the unfixed server wrote F 63 from it (2026 Q1 218 instead of 436).
+3. After the deploy the same save rebuilt `Earned Premium@3.csv` (byte-identical to the fresh copy) and wrote the correct F 63 (8, 436, 1,556 for 2025 Q4 to 2026 Q2); Earned Premium's sidecar still names `@12` at period 12 and the window shows it annual.
+
+Step 2 was checked by its unit test only: a source refresh of the Fake project was not run. Step 3's box appeared on every save, naming three Fake-project method failures unrelated to F 63 (G 41, G 91, G 92).
+
+Found along the way, not fixed here: the walk rewrites a calculated vector's sidecar (F 63) with `origin_length`/`development_length` and no `period_length`, although the sidecar contract gives a vector `period_length`.
 
 ## Open decisions
 
