@@ -14,6 +14,7 @@ ArcRho embeds the Arcode launch path, and the same source can be packaged as the
 
 Detected `fetch(...)` targets in key JS files:
 - `${window.location.origin}${path}`
+- `/app/restart_electron`
 <!-- AUTO-GEN:END -->
 
 ## Key Files
