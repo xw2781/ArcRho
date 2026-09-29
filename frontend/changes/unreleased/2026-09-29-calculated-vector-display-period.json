@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "A formula vector such as Expected Net Loss % * Earned Premium reopens at the period you last saved it at, and keeps that period when another dataset it depends on is saved.",
+  "details": [
+    "Saving a dataset that a formula vector depends on no longer resets the period the vector is shown at.",
+    "Opening a formula vector shows the period you last saved, for example 12 months over quarterly data, when that period has been calculated."
+  ]
+}

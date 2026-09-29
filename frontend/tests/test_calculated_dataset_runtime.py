@@ -197,7 +197,7 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
             {"dataset_name": "Selection"},
         ])
 
-    def test_vector_recalculation_refreshes_each_existing_cache_period(self) -> None:
+    def _recalculate_vector_over_periods_3_and_12(self, seed_lengths: dict) -> tuple[dict, dict]:
         row = {
             "name": "Calculated Output",
             "data_format": "Vector",
@@ -221,8 +221,7 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
             "project_name": "Example Project",
             "reserving_class": "Example RC",
             "data_format": "Vector",
-            "origin_length": 12,
-            "development_length": 12,
+            **seed_lengths,
             "stored_period_length": 12,
             "csv_file": "Calculated Output@12.csv",
             "dependents": [],
@@ -255,14 +254,31 @@ class CalculatedDatasetRuntimeTests(unittest.TestCase):
             )
 
         self.assertTrue(result["ok"], result)
+        return result, json.loads(sidecar_path.read_text(encoding="utf-8"))
+
+    def test_vector_recalculation_refreshes_each_existing_cache_period(self) -> None:
+        result, saved = self._recalculate_vector_over_periods_3_and_12({"period_length": 12})
+
         self.assertEqual(
             [Path(path).name for path in result["cache_paths"]],
             ["Calculated Output@3.csv", "Calculated Output@12.csv"],
         )
         self.assertEqual((self.cache_dir / "Calculated Output@3.csv").read_text(encoding="utf-8").strip(), "1.0\n2.0\n3.0\n4.0")
         self.assertEqual((self.cache_dir / "Calculated Output@12.csv").read_text(encoding="utf-8").strip(), "10.0")
-        saved = json.loads(sidecar_path.read_text(encoding="utf-8"))
         self.assertEqual(saved["csv_file"], "Calculated Output@3.csv")
+        self.assertEqual(saved["stored_period_length"], 3)
+
+    def test_vector_recalculation_keeps_the_period_it_is_shown_at(self) -> None:
+        _result, saved = self._recalculate_vector_over_periods_3_and_12({"period_length": 12})
+
+        self.assertEqual(saved["period_length"], 12)
+        for triangle_field in ("origin_length", "development_length", "cumulative", "calendar", "stored_origin_length", "stored_development_length"):
+            self.assertNotIn(triangle_field, saved)
+
+    def test_vector_recalculation_shows_a_period_the_store_no_longer_divides_at_the_stored_one(self) -> None:
+        _result, saved = self._recalculate_vector_over_periods_3_and_12({"period_length": 2})
+
+        self.assertEqual(saved["period_length"], 3)
         self.assertEqual(saved["stored_period_length"], 3)
 
     def test_refresh_output_recalculates_one_dataset_and_reports_a_failure(self) -> None:

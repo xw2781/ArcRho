@@ -25,6 +25,7 @@ from arcrho_api.field_mapping_contract import (
     DATE_ROLE_ORIGIN,
 )
 from arcrho_api.sidecar_core_contract import (
+    apply_display_length_fields,
     is_vector_format,
     stored_length_fields,
     stored_lengths,
@@ -1303,27 +1304,16 @@ def _apply_dataset_sidecar_shape_fields(
     origin = _pair_int_value(pairs, "OriginLength", 12)
     development = _pair_int_value(pairs, "DevelopmentLength", 12)
     stored_origin, stored_development = stored
-    if is_vector:
-        payload["period_length"] = origin
-        for obsolete_key in (
-            "origin_length",
-            "development_length",
-            "development_count",
-            "cumulative",
-            "calendar",
-            "stored_origin_length",
-            "stored_development_length",
-        ):
-            payload.pop(obsolete_key, None)
-        payload.update(stored_length_fields("Vector", stored_origin))
-        return
-    payload["origin_length"] = origin
-    payload["development_length"] = development
-    payload["cumulative"] = _pair_bool_value(pairs, "Cumulative", True)
-    payload["calendar"] = _pair_bool_value(pairs, "Calendar", False)
-    payload.pop("period_length", None)
-    payload.pop("stored_period_length", None)
-    payload.update(stored_length_fields("Triangle", stored_origin, stored_development))
+    data_format = "Vector" if is_vector else "Triangle"
+    apply_display_length_fields(
+        payload,
+        data_format,
+        origin,
+        development,
+        cumulative=_pair_bool_value(pairs, "Cumulative", True),
+        calendar=_pair_bool_value(pairs, "Calendar", False),
+    )
+    payload.update(stored_length_fields(data_format, stored_origin, stored_development))
 
 
 def _set_processing_provenance(

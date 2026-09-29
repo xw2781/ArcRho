@@ -48,7 +48,7 @@ stored shape, and only that file is ever the dataset's data.
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, MutableMapping
 
 from .dataset_link_contract import compact_sidecar_links
 from .sidecar_audit_contract import normalize_audit_log
@@ -128,6 +128,17 @@ _TRIANGLE_PERIOD_FIELDS = (
     (SIDECAR_STORED_ORIGIN_FIELD, SIDECAR_DISPLAY_ORIGIN_FIELD),
     (SIDECAR_STORED_DEVELOPMENT_FIELD, SIDECAR_DISPLAY_DEVELOPMENT_FIELD),
 )
+# What a vector never carries: the triangle layout's display and stored shape.
+_TRIANGLE_ONLY_FIELDS = (
+    SIDECAR_DISPLAY_ORIGIN_FIELD,
+    SIDECAR_DISPLAY_DEVELOPMENT_FIELD,
+    "development_count",
+    "cumulative",
+    "calendar",
+    SIDECAR_STORED_ORIGIN_FIELD,
+    SIDECAR_STORED_DEVELOPMENT_FIELD,
+    SIDECAR_LINKED_DEVELOPMENT_FIELD,
+)
 
 # Fields v4 removed because they restated another field, nothing read them,
 # or they bound a shared file to one machine. A writer may not bring them back.
@@ -186,6 +197,39 @@ def stored_length_fields(
         SIDECAR_STORED_ORIGIN_FIELD: int(origin_length),
         SIDECAR_STORED_DEVELOPMENT_FIELD: int(development_length),
     }
+
+
+def apply_display_length_fields(
+    payload: MutableMapping[str, Any],
+    data_format: Any,
+    origin_length: Any,
+    development_length: Any = None,
+    *,
+    cumulative: bool = True,
+    calendar: bool = False,
+) -> None:
+    """Set the display-shape fields a sidecar of *data_format* carries, in place.
+
+    The display-side twin of :func:`stored_length_fields`. A vector carries
+    ``period_length`` and none of the triangle fields; a triangle carries
+    ``origin_length``, ``development_length``, ``cumulative`` and ``calendar``
+    and no ``period_length``. The fields of the layout the format does not
+    use are removed, so a payload that changes format, or was written in the
+    wrong layout, comes out in the right one. Every producer applies its
+    display shape here.
+    """
+
+    if is_vector_format(data_format):
+        payload[SIDECAR_DISPLAY_PERIOD_FIELD] = int(origin_length)
+        for key in _TRIANGLE_ONLY_FIELDS:
+            payload.pop(key, None)
+        return
+    payload[SIDECAR_DISPLAY_ORIGIN_FIELD] = int(origin_length)
+    payload[SIDECAR_DISPLAY_DEVELOPMENT_FIELD] = int(development_length)
+    payload["cumulative"] = bool(cumulative)
+    payload["calendar"] = bool(calendar)
+    payload.pop(SIDECAR_DISPLAY_PERIOD_FIELD, None)
+    payload.pop(SIDECAR_STORED_PERIOD_FIELD, None)
 
 
 def stored_length_fields_from_display(payload: Mapping[str, Any]) -> dict[str, int]:
@@ -513,6 +557,7 @@ __all__ = [
     "SIDECAR_STORED_ORIGIN_FIELD",
     "SIDECAR_STORED_PERIOD_FIELD",
     "SidecarContractError",
+    "apply_display_length_fields",
     "dependency_entries",
     "dependency_names",
     "finalize_sidecar",

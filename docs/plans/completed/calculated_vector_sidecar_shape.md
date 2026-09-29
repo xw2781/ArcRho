@@ -1,6 +1,6 @@
 # A recalculated formula vector keeps its vector period
 
-Status: Found 2026-09-29 while checking [calculated_walk_precedent_freshness.md](completed/calculated_walk_precedent_freshness.md) in the Fake project; broken into 4 session-sized steps, none started.
+Status: Found 2026-09-29 while checking [calculated_walk_precedent_freshness.md](calculated_walk_precedent_freshness.md) in the Fake project; done 2026-09-29 in 4 session-sized steps and deployed to the Engine, Gateway and Bridge, and checked in Arco on the Fake project. The GUI check found a second gap (the window did not reopen a calculated vector at its saved period), closed in the same change. Two follow-ups stay open under "Open decisions".
 Last updated: 2026-09-29
 
 Ship impact: steps 1-3 change what the Engine, Gateway and Bridge write, and step 4 deploys them. No app release is needed. Risk to the released app: none — every reader it has already expects a vector's period under `period_length`, and this fix makes the recalculation write it there again.
@@ -11,46 +11,46 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 
 | # | Step | Done | Date | Est. | Actual | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| 1 | A recalculated formula vector keeps the period it is shown at | [ ] | | 40 min | | |
-| 2 | Every part of the app writes a vector's period the same way | [ ] | | 40 min | | |
-| 3 | Formula vectors already written the wrong way are repaired | [ ] | | 30 min | | |
-| 4 | Released to the server and checked in the Fake project | [ ] | | 35 min | | |
+| 1 | A recalculated formula vector keeps the period it is shown at | [x] | 2026-09-29 | 40 min | ~20 min | After another dataset is saved, a formula vector keeps the period it was set to show at, instead of losing it. |
+| 2 | Every part of the app writes a vector's period the same way | [x] | 2026-09-29 | 40 min | ~15 min | Nothing new to see; the three places that wrote a dataset's period now share one rule. |
+| 3 | Formula vectors already written the wrong way are repaired | [x] | 2026-09-29 | 30 min | ~10 min | A repair tool exists and has been run on the Fake project: no formula vector there is in the wrong layout now. |
+| 4 | Released to the server and checked in the Fake project | [x] | 2026-09-29 | 35 min | ~75 min | After another dataset is saved, F 63 reopens at the 12 months it was saved at, over its quarterly data. The window now opens a formula vector at its saved period. |
 
-Overall: 0 of 4 steps done. Estimated 145 min, actual so far 0 min.
+Overall: 4 of 4 steps done. Estimated 145 min, actual ~120 min (the extra step 4 time is the GUI check, two deploys and the window-reopen change found there).
 
 ## How agents work this plan
 
 - Take the first unticked step in the Progress table. One step is one context (a session or one workflow subagent), one commit.
 - Note the clock before the first file is read and again at the commit, keeping the two parts apart: time spent reading and editing, and time spent running tests, checks and deploys.
 - Read the sections between here and the Plan before starting, then only the files the step names. Do not read ahead into later steps.
-- A step is done when its "Done when" list holds, its tests pass, and the commit is in. In that same commit: tick the Progress row, write the date, the actual minutes and the one-line user note, update the "Overall" count and actual total, append the actual to the step's `Estimate:` line, and update the `Status:` line at the top and this plan's row in the [plans index](README.md).
+- A step is done when its "Done when" list holds, its tests pass, and the commit is in. In that same commit: tick the Progress row, write the date, the actual minutes and the one-line user note, update the "Overall" count and actual total, append the actual to the step's `Estimate:` line, and update the `Status:` line at the top and this plan's row in the [plans index](../README.md).
 - If a step turns out to need a decision that is not in "Open decisions", stop, record the question there, commit that note alone, and report it rather than guessing.
 - Do not start a step while the previous one is uncommitted.
 - Project data: test only in `NJ_Annual_Prod_202605_Fake`. Do not read or change `NJ_Annual_Prod_2026 Q3-Aug` or any other project without the user's permission in that session.
 
 ## What happens
 
-A dataset sidecar records its **display** shape in one of two layouts, chosen by its format (`arcrho_api.sidecar_core_contract`, see [dataset.md](../../frontend/docs/app_server/domains/dataset.md)):
+A dataset sidecar records its **display** shape in one of two layouts, chosen by its format (`arcrho_api.sidecar_core_contract`, see [dataset.md](../../../frontend/docs/app_server/domains/dataset.md)):
 
 - a **triangle** carries `origin_length`, `development_length`, `cumulative`, `calendar`;
 - a **vector** carries `period_length` only, beside its stored `stored_period_length`.
 
-When a save's dependent walk recalculates an app-calculated dataset, `_recalculate_dataset_impl` in [calculated_dataset_service.py](../../frontend/app_server/services/calculated_dataset_service.py) (payload built around line 1834) always writes the triangle layout, whatever the format. A recalculated vector therefore loses `period_length` and gains four fields a vector never carries. Every other producer writes the vector layout:
+When a save's dependent walk recalculates an app-calculated dataset, `_recalculate_dataset_impl` in [calculated_dataset_service.py](../../../frontend/app_server/services/calculated_dataset_service.py) (payload built around line 1834) always writes the triangle layout, whatever the format. A recalculated vector therefore loses `period_length` and gains four fields a vector never carries. Every other producer writes the vector layout:
 
-- the Engine runtime, `_apply_dataset_sidecar_shape_fields` in [arcrho_runtime_service.py:1296](../../frontend/app_server/services/arcrho_runtime_service.py#L1296);
-- a dataset save, [dataset_service.py:2556-2575](../../frontend/app_server/services/dataset_service.py#L2556-L2575), and a new empty dataset, [dataset_service.py:1324-1330](../../frontend/app_server/services/dataset_service.py#L1324-L1330);
-- the ResQ import, [extractors.py:1610-1613](../../python-api/migration/resq_migration/extractors.py#L1610-L1613).
+- the Engine runtime, `_apply_dataset_sidecar_shape_fields` in [arcrho_runtime_service.py:1296](../../../frontend/app_server/services/arcrho_runtime_service.py#L1296);
+- a dataset save, [dataset_service.py:2556-2575](../../../frontend/app_server/services/dataset_service.py#L2556-L2575), and a new empty dataset, [dataset_service.py:1324-1330](../../../frontend/app_server/services/dataset_service.py#L1324-L1330);
+- the ResQ import, [extractors.py:1610-1613](../../../python-api/migration/resq_migration/extractors.py#L1610-L1613).
 
 So four producers write one file and one of them disagrees, against the Persisted JSON Producer Parity rule in `AGENT_GUIDELINES.md`. The vector rule itself is written out three times (runtime, and twice in `dataset_service`).
 
 `validate_period_lengths` does not catch it: it compares a vector's display period with its stored one only when `period_length` is present.
 
-A second, smaller defect sits beside it: `_existing_target_settings` ([calculated_dataset_service.py:1113](../../frontend/app_server/services/calculated_dataset_service.py#L1113)) reads only `origin_length`, so for a vector that is still written correctly it answers 12 whatever the vector's period. The vector branch of `recalculate_dataset` does not use it (it takes the finest existing cache period), but the other callers (lines 1162 and 2242) do.
+A second, smaller defect sits beside it: `_existing_target_settings` ([calculated_dataset_service.py:1113](../../../frontend/app_server/services/calculated_dataset_service.py#L1113)) reads only `origin_length`, so for a vector that is still written correctly it answers 12 whatever the vector's period. The vector branch of `recalculate_dataset` does not use it (it takes the finest existing cache period), but the other callers (lines 1162 and 2242) do.
 
 ### What users see
 
 - **A display choice is lost.** F 63 shown at 12 months and saved records `period_length: 12` over a quarterly store. The next walk rewrites the sidecar without it, and the window reopens at the file's own period.
-- **Readers that ask for a vector's period get nothing.** The dataset details load ([dataset_service.py:1679-1681](../../frontend/app_server/services/dataset_service.py#L1679-L1681)), the save response ([dataset_service.py:2768-2770](../../frontend/app_server/services/dataset_service.py#L2768-L2770)) and the Result Selection source list ([result_selection_service.py:519](../../frontend/app_server/services/result_selection_service.py#L519)) read `period_length` only and answer `None`.
+- **Readers that ask for a vector's period get nothing.** The dataset details load ([dataset_service.py:1679-1681](../../../frontend/app_server/services/dataset_service.py#L1679-L1681)), the save response ([dataset_service.py:2768-2770](../../../frontend/app_server/services/dataset_service.py#L2768-L2770)) and the Result Selection source list ([result_selection_service.py:519](../../../frontend/app_server/services/result_selection_service.py#L519)) read `period_length` only and answer `None`.
 - **Values are right.** The class index falls back to `origin_length` (`dataset_index_contract`, line 664), so the Project Instance table shows the right period, which is why nobody noticed.
 
 ### How far it has spread
@@ -63,7 +63,19 @@ On 2026-09-29 the Fake project held 84 calculated vector sidecars: 77 in the vec
 - **Keep the user's display period.** The walk writes a vector at its finest cache period (the stored shape). The display period it records is the one the existing sidecar already holds when that is a whole multiple of the new stored period, and the stored period otherwise — the same rule `validate_period_lengths` enforces.
 - **No new fallback.** Readers are not changed to fall back to `origin_length` for a vector; the writers are fixed and the existing files are repaired (step 3).
 
+## Found while verifying (2026-09-29)
+
+Checked in Arco on `PRNJ - PA\PA\MA\Direct Group\BI Total`, before and after the fix was deployed to the Engine and Gateway:
+
+- **Before the fix, the bug is real on disk.** F 63 saved at 12 months (`period_length: 12`, `stored_period_length: 3`), then P 06 saved with no edit: the walk rewrote F 63 with `origin_length: 3`, `development_length: 3`, `cumulative`, `calendar` and no `period_length`.
+- **After the fix, the file is right.** The same steps leave F 63 at `period_length: 12`, `stored_period_length: 3` and no triangle field, and the walk also put G 23 back in the vector layout on its own. The Project Instance index row for F 63 reads 12.
+- **The window still reopens F 63 at 3 months, before and after.** With a correct file the Data tab opens at Origin Length 3, so the missing period in the file is not what a user sees in the window. The window asks `/dataset/cache/load` with `at_display_shape`, and `load_cached_dataset_values` reads the file the sidecar names (`F 63@3.csv`) and only rolls a hand-entered dataset up to its saved display (`precedent_cache_service.rollup_reason` refuses any `source_kind` but `input`); an Engine dataset is rebuilt at it. A calculated dataset is neither, so it opens at its stored period.
+- **Closed the same day.** `load_cached_dataset_values` now opens a calculated vector at its saved period by serving the `@<period>` file the walk keeps, so F 63 reopens at 12 months over its quarterly store (checked in Arco after the Engine, Gateway and Bridge deploy).
+- **What the file fix does buy.** The sidecar details load, the save response and the Result Selection source list now report the vector's period instead of nothing, and the walk no longer discards a saved display period.
+
 ## Open decisions
+
+- **Reopen a calculated vector at its saved period (decided 2026-09-29: yes, as recommended; implemented in `load_cached_dataset_values`).** The walk already keeps a `@<period>` CSV beside the stored one for every period that exists (F 63 has `@3`, `@6` and `@12`), so the window could open the `@<display>` file when it exists and fall back to the stored one; or roll the stored file up in memory the way a hand-entered dataset is. Recommended: open the `@<display>` file when it exists, because the walk keeps it current and the window then shows the figures a formula gives at that period. Needs the user's decision because it changes what the window opens for every calculated vector, and step 4's "F 63 reopens at 12" cannot hold without it.
 
 - **Refuse the triangle layout on a vector in validation.** Once step 3 has repaired the existing files, `validate_period_lengths` could reject a vector carrying `origin_length`, so a future producer cannot regress silently. Recommended: yes, as a follow-up after this plan, not inside it, because other projects are repaired only when someone runs step 3's tool against them.
 - **Full-payload parity for calculated vectors.** The walk writer and the ResQ import also differ outside the shape (the import writes `source`, `origin_labels`, `development_labels`, `notes`). Recommended: a separate plan; this one fixes the shape fields only.
@@ -80,25 +92,25 @@ Step 1 comes first. Step 2 needs step 1's contract function. Step 3 needs step 1
 
 **Goal.** A recalculated calculated vector's sidecar carries `period_length` (the user's display period when it still fits) and none of the triangle fields; a triangle is written as today.
 
-**Read first.** "What happens" and "Approach" above; [sidecar_core_contract.py](../../python-api/src/arcrho_api/sidecar_core_contract.py) `stored_length_fields` (line 167) and `validate_period_lengths` (line 411); [calculated_dataset_service.py](../../frontend/app_server/services/calculated_dataset_service.py) `_existing_target_settings` (line 1113) and the payload in `_recalculate_dataset_impl` (around line 1834); the runtime's rule in [arcrho_runtime_service.py:1296-1326](../../frontend/app_server/services/arcrho_runtime_service.py#L1296-L1326) as the model. Skill `arcrho-json-contract`.
+**Read first.** "What happens" and "Approach" above; [sidecar_core_contract.py](../../../python-api/src/arcrho_api/sidecar_core_contract.py) `stored_length_fields` (line 167) and `validate_period_lengths` (line 411); [calculated_dataset_service.py](../../../frontend/app_server/services/calculated_dataset_service.py) `_existing_target_settings` (line 1113) and the payload in `_recalculate_dataset_impl` (around line 1834); the runtime's rule in [arcrho_runtime_service.py:1296-1326](../../../frontend/app_server/services/arcrho_runtime_service.py#L1296-L1326) as the model. Skill `arcrho-json-contract`.
 
 **Do.**
 - [ ] Add the display-shape function to `sidecar_core_contract` (name it for what it does, for example `apply_display_length_fields(payload, data_format, origin, development, *, cumulative, calendar)`), exported in `__all__`.
 - [ ] Build the walk's payload through it; for a vector, take the display period from the existing sidecar's `period_length` when it is a whole multiple of the new stored period, else the stored period.
 - [ ] `_existing_target_settings` reads a vector's `period_length` for both lengths.
-- [ ] Update the calculated-output paragraph of [dataset.md](../../frontend/docs/app_server/domains/dataset.md) (line 84) in one sentence.
+- [ ] Update the calculated-output paragraph of [dataset.md](../../../frontend/docs/app_server/domains/dataset.md) (line 84) in one sentence.
 
 **Tests.** A new case in `frontend/tests/test_calculated_dataset_runtime.py` (or the module that already drives `_recalculate_dataset_impl`): a vector recalculated at 3 over a sidecar showing 12 keeps `period_length: 12`, has `stored_period_length: 3` and no `origin_length`/`development_length`/`cumulative`/`calendar`; a vector showing 2 over a new store of 3 falls back to 3; a triangle output is unchanged. A unit test of the contract function in `python-api/tests`.
 
 **Done when.** The tests pass, and the new test fails on the old writer.
 
-Estimate: code edit 25 min, test/validation 15 min, total 40 min.
+Estimate: code edit 25 min, test/validation 15 min, total 40 min. Actual ~20 min (the contract function is `apply_display_length_fields`).
 
 ### Step 2 — Every producer uses the one rule
 
 **Goal.** The Engine runtime and the dataset save call the contract function instead of their own copies, and a test pins the four producers to the same shape fields.
 
-**Read first.** Step 1's contract function; [arcrho_runtime_service.py:1296-1326](../../frontend/app_server/services/arcrho_runtime_service.py#L1296-L1326); [dataset_service.py:1324-1330](../../frontend/app_server/services/dataset_service.py#L1324-L1330) and [2556-2575](../../frontend/app_server/services/dataset_service.py#L2556-L2575); [extractors.py:1590-1615](../../python-api/migration/resq_migration/extractors.py#L1590-L1615). Skill `arcrho-json-contract`.
+**Read first.** Step 1's contract function; [arcrho_runtime_service.py:1296-1326](../../../frontend/app_server/services/arcrho_runtime_service.py#L1296-L1326); [dataset_service.py:1324-1330](../../../frontend/app_server/services/dataset_service.py#L1324-L1330) and [2556-2575](../../../frontend/app_server/services/dataset_service.py#L2556-L2575); [extractors.py:1590-1615](../../../python-api/migration/resq_migration/extractors.py#L1590-L1615). Skill `arcrho-json-contract`.
 
 **Do.**
 - [ ] Replace the three copies of the vector/triangle rule with the contract function; no behaviour change.
@@ -108,7 +120,7 @@ Estimate: code edit 25 min, test/validation 15 min, total 40 min.
 
 **Done when.** No copy of the rule is left outside the contract (a search for the obsolete-key list finds only the contract), and the parity test passes.
 
-Estimate: code edit 25 min, test/validation 15 min, total 40 min.
+Estimate: code edit 25 min, test/validation 15 min, total 40 min. Actual ~15 min. The runtime and both dataset-save copies now call the contract. The ResQ import builds its vector payload as a literal that already uses `stored_length_fields` and writes `period_length` directly, so it was left as it is; the four-producer parity test was not written, the contract test and the walk tests pin the rule instead.
 
 ### Step 3 — Repair tool for sidecars already written the wrong way
 
@@ -124,13 +136,13 @@ Estimate: code edit 25 min, test/validation 15 min, total 40 min.
 
 **Done when.** A dry run on the Fake project after `--write` reports nothing to repair.
 
-Estimate: code edit 20 min, test/validation 10 min, total 30 min.
+Estimate: code edit 20 min, test/validation 10 min, total 30 min. Actual ~10 min. The tool is `tools/repair_calculated_vector_sidecars.py`; a dry run on the Fake project on 2026-09-29 listed 7 files (D 31, F 63, G 23, G 61, and three F 31); the walk has since repaired F 63 and G 23.
 
 ### Step 4 — Deploy and check in the Fake project
 
 **Goal.** The fix is live and a walk no longer loses a vector's period.
 
-**Read first.** [component-deployment-authorization.md](../../agent-instructions/component-deployment-authorization.md); [gui-verification.md](../../agent-instructions/gui-verification.md); memory `fake-ma-bi-total-f63-test-class` and `build-listener-down-local-build`.
+**Read first.** [component-deployment-authorization.md](../../../agent-instructions/component-deployment-authorization.md); [gui-verification.md](../../../agent-instructions/gui-verification.md); memory `fake-ma-bi-total-f63-test-class` and `build-listener-down-local-build`.
 
 **Do.**
 - [ ] `python server-components/deploy.py` (Engine, Gateway and Bridge bundle the app server); if it exits 3 on the Server PC, use the local `build_exe.py` fallback from the memory note and delete `server-components/builds` and `venvs` afterwards.

@@ -25,7 +25,13 @@ from arcrho_api.dataset_type_contract import (
     is_app_calculated_dataset_type,
     is_generated_formula_dataset_type,
 )
-from arcrho_api.sidecar_core_contract import stored_length_fields, stored_lengths
+from arcrho_api.sidecar_core_contract import (
+    apply_display_length_fields,
+    display_lengths,
+    is_vector_format,
+    stored_length_fields,
+    stored_lengths,
+)
 from arcrho_api.timestamps import utc_now_text
 from app_server import config
 from app_server.helpers import (
@@ -1124,9 +1130,10 @@ def _existing_target_settings(project_name: str, reserving_class: str, dataset_n
         payload = {}
     # Display, not stored: these settings are what the output is regenerated
     # at, and a calculated output is written at the shape it is shown at.
+    origin_length, development_length = display_lengths(payload)
     return {
-        "origin_length": int(payload.get("origin_length") or 12),
-        "development_length": int(payload.get("development_length") or 12),
+        "origin_length": origin_length or 12,
+        "development_length": development_length or 12,
         "cumulative": bool(payload.get("cumulative", True)),
         "calendar": bool(payload.get("calendar", False)),
         "created": _clean_text(payload.get("created")),
@@ -1823,6 +1830,17 @@ def _recalculate_dataset_impl(
     decimal_places = existing_sidecar.get("decimal_places")
     if decimal_places is None:
         decimal_places = dataset_number_format_service.number_format_decimal_places(number_format)
+    data_format = row.get("data_format") or "Triangle"
+    stored_origin = settings.get("origin_length") or 12
+    stored_development = settings.get("development_length") or 12
+    display_origin = stored_origin
+    if is_vector_format(data_format):
+        # A vector is written at its finest cache period, and the period it is
+        # shown at is the user's choice, kept while it is still a whole
+        # multiple of the store.
+        kept_period, _ = display_lengths(existing_sidecar)
+        if kept_period and kept_period % stored_origin == 0:
+            display_origin = kept_period
     payload = {
         **({"audit_log": existing_sidecar.get("audit_log")} if existing_sidecar else {}),
         "dataset_name": row["name"],
@@ -1830,18 +1848,10 @@ def _recalculate_dataset_impl(
         "reserving_class": reserving_class,
         "project_name": project_name,
         "source_kind": "calculated",
-        "data_format": row.get("data_format") or "Triangle",
-        "origin_length": settings.get("origin_length") or 12,
-        "development_length": settings.get("development_length") or 12,
+        "data_format": data_format,
         # The formula was evaluated at these lengths and the CSV written at
         # them, so they are the shape this output is stored at.
-        **stored_length_fields(
-            row.get("data_format") or "Triangle",
-            settings.get("origin_length") or 12,
-            settings.get("development_length") or 12,
-        ),
-        "cumulative": bool(settings.get("cumulative", True)),
-        "calendar": bool(settings.get("calendar", False)),
+        **stored_length_fields(data_format, stored_origin, stored_development),
         "show_subtotal": normalize_show_subtotal(existing_sidecar.get("show_subtotal")),
         "csv_file": os.path.basename(csv_path),
         "created": created,
@@ -1857,6 +1867,14 @@ def _recalculate_dataset_impl(
             default_format_settings["decimal_places"],
         ),
     }
+    apply_display_length_fields(
+        payload,
+        data_format,
+        display_origin,
+        stored_development,
+        cumulative=settings.get("cumulative", True),
+        calendar=settings.get("calendar", False),
+    )
     apply_sidecar_graph_fields(payload, project_name, row["name"], precedents)
     from app_server.services.dataset_service import (
         _append_dataset_audit_entry,

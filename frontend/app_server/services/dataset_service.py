@@ -36,6 +36,7 @@ from arcrho_api.dataset_link_contract import (
 )
 from arcrho_api.sidecar_core_contract import (
     SIDECAR_LINKED_DEVELOPMENT_FIELD,
+    apply_display_length_fields,
     display_lengths,
     finalize_sidecar,
     is_vector_format,
@@ -1321,13 +1322,14 @@ def _create_empty_cached_dataset_impl(
         "method_type": dataset_sidecar_status_service.METHOD_TYPE_NONE,
         "status": dataset_sidecar_status_service.STATUS_CURRENT,
     }
-    if fmt.strip().lower() == "vector":
-        payload["period_length"] = origin_period_len
-    else:
-        payload["origin_length"] = origin_period_len
-        payload["development_length"] = dev_period_len
-        payload["cumulative"] = bool(cumulative)
-        payload["calendar"] = bool(calendar)
+    apply_display_length_fields(
+        payload,
+        fmt,
+        origin_period_len,
+        dev_period_len,
+        cumulative=cumulative,
+        calendar=calendar,
+    )
     # The empty CSV is written at the requested shape, so that is the shape
     # this dataset's values are stored at.
     payload.update(stored_length_fields(fmt, origin_period_len, dev_period_len))
@@ -1951,6 +1953,24 @@ def load_cached_dataset_values(
                 f"'{ds}' could not be generated at "
                 f"{_period_shape_text(is_vector_format(sidecar.get('data_format')), view_lengths)}: {err}",
             )
+    if (
+        not csv_file
+        and at_display_shape
+        and view_lengths is None
+        and source_kind == "calculated"
+        and is_vector_format(sidecar.get("data_format"))
+    ):
+        # A calculated vector is never rolled up in memory: the dependent walk
+        # keeps a file beside the stored one for every period it has been
+        # shown at, so the window opens the file of the display period its
+        # sidecar saved, and the stored one when there is none.
+        display_period = display_lengths(sidecar)[0]
+        if display_period and display_period != stored_lengths(sidecar)[0]:
+            display_file = build_dataset_cache_file_name(
+                ds, "Vector", display_period, display_period, True, False
+            ) + ".csv"
+            if os.path.isfile(os.path.join(data_dir, display_file)):
+                csv_file = display_file
     exact_candidates: List[str] = []
     exact_requested = bool(csv_file or (origin_length and development_length))
     if csv_file:
@@ -2553,26 +2573,14 @@ def _save_dataset_sidecar_impl(
         "notes": notes_value,
         "created": created,
     }
-    if is_vector:
-        payload["period_length"] = display_origin_months
-        for obsolete_key in (
-            "origin_length",
-            "development_length",
-            "development_count",
-            "cumulative",
-            "calendar",
-            "stored_origin_length",
-            "stored_development_length",
-            SIDECAR_LINKED_DEVELOPMENT_FIELD,
-        ):
-            payload.pop(obsolete_key, None)
-    else:
-        payload["origin_length"] = display_origin_months
-        payload["development_length"] = display_development_months
-        payload["cumulative"] = bool(cumulative)
-        payload["calendar"] = bool(calendar)
-        payload.pop("period_length", None)
-        payload.pop("stored_period_length", None)
+    apply_display_length_fields(
+        payload,
+        data_format_value,
+        display_origin_months,
+        display_development_months,
+        cumulative=cumulative,
+        calendar=calendar,
+    )
     if values is not None or csv_file or relabel_empty_input:
         # This save names the CSV -- it writes one from ``values``, relabels an
         # empty one, or the caller published one and passed its name -- so the

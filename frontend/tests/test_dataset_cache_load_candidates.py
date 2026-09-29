@@ -78,6 +78,45 @@ class DatasetCacheLoadCandidateTests(unittest.TestCase):
             2,
         )
 
+    def _load_calculated_vector(self, **sidecar_fields: object) -> dict:
+        (self.cache_dir / "Paid@3.csv").write_text("1\n2\n3\n4\n", encoding="utf-8")
+        sidecar = {
+            **self.sidecar,
+            "source_kind": "calculated",
+            "csv_file": "Paid@3.csv",
+            "stored_period_length": 3,
+            **sidecar_fields,
+        }
+        with (
+            patch.object(config, "get_project_dataset_cache_dir", return_value=str(self.cache_dir)),
+            patch.object(dataset_service, "_get_dataset_sidecar_path", return_value="sidecar.json"),
+            patch.object(dataset_service, "_read_dataset_sidecar", return_value=sidecar),
+            patch.object(dataset_service, "_resolve_origin_labels", return_value=["2020", "2021"]),
+        ):
+            return dataset_service.load_cached_dataset_values(
+                "Example Project",
+                "Example RC",
+                "Paid",
+                origin_length=12,
+                development_length=12,
+                at_display_shape=True,
+            )
+
+    def test_a_calculated_vector_opens_at_the_display_period_its_sidecar_saved(self) -> None:
+        # Paid@12.csv is the one setUp wrote; the store is quarterly.
+        result = self._load_calculated_vector(period_length=12)
+
+        self.assertEqual(result["csv_file"], "Paid@12.csv")
+        self.assertEqual(result["values"], [[1], [2]])
+        self.assertEqual((result["origin_length"], result["development_length"]), (12, 12))
+        self.assertEqual(result["stored_period_length"], 3)
+
+    def test_a_calculated_vector_without_a_file_at_its_display_opens_at_the_stored_period(self) -> None:
+        result = self._load_calculated_vector(period_length=6)
+
+        self.assertEqual(result["csv_file"], "Paid@3.csv")
+        self.assertEqual((result["origin_length"], result["development_length"]), (3, 3))
+
     def test_valid_sidecar_origin_labels_keep_the_two_file_fast_path(self) -> None:
         sidecar = {**self.sidecar, "origin_labels": ["2020", "2021"]}
         with (

@@ -20,6 +20,7 @@ from arcrho_api.sidecar_core_contract import (  # noqa: E402
     SIDECAR_STORED_ORIGIN_FIELD,
     SIDECAR_STORED_PERIOD_FIELD,
     SidecarContractError,
+    apply_display_length_fields,
     display_lengths,
     linked_length_fields,
     linked_lengths,
@@ -265,6 +266,27 @@ class ValidatorTests(unittest.TestCase):
         self.assertEqual(
             stored_length_fields("Triangle", 1, 3),
             {SIDECAR_STORED_ORIGIN_FIELD: 1, SIDECAR_STORED_DEVELOPMENT_FIELD: 3},
+        )
+
+    def test_the_display_fields_a_format_takes_are_written_once(self) -> None:
+        triangle_layout = {
+            "origin_length": 3,
+            "development_length": 3,
+            "cumulative": True,
+            "calendar": False,
+            "stored_origin_length": 3,
+            "stored_development_length": 3,
+            "linked_development_length": 3,
+        }
+        vector = dict(triangle_layout)
+        apply_display_length_fields(vector, "Vector", 12)
+        self.assertEqual(vector, {"period_length": 12})
+
+        triangle = {"period_length": 12, "stored_period_length": 3}
+        apply_display_length_fields(triangle, "Triangle", 12, 3, cumulative=False, calendar=True)
+        self.assertEqual(
+            triangle,
+            {"origin_length": 12, "development_length": 3, "cumulative": False, "calendar": True},
         )
 
     def test_a_reader_is_told_the_stored_shape_whatever_the_format(self) -> None:
