@@ -26,7 +26,7 @@ Premium windows at 14:44 UTC.
 - Same class of problem for inputs: a target period of 6 picks `P 06 ...@6.csv` from
   the 2026-09-10 import over the sidecar-named `@3` copy.
 
-**Fixed 2026-09-29** (docs/plans/calculated_walk_precedent_freshness.md, Engine/Gateway/Bridge deployed): `_candidate_csvs(current_copies_only=True)` drops `@n` siblings of engine/input sidecars in `_load_components`, and the source refresh regenerates a vector at its `period_length`. Verified in the GUI on [[fake-ma-bi-total-f63-test-class]].
+**Fixed 2026-09-29** (docs/plans/completed/calculated_walk_precedent_freshness.md, Engine/Gateway/Bridge deployed): `_candidate_csvs(current_copies_only=True)` drops `@n` siblings of engine/input sidecars in `_load_components`, and the source refresh regenerates a vector at its `period_length`. Verified in the GUI on [[fake-ma-bi-total-f63-test-class]].
 
 **How to apply:** for an `engine` or `input` precedent the walk must take the
 sidecar-named copy (`_is_stale_input_variant` is the runtime rule) and then
