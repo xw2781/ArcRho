@@ -928,6 +928,7 @@ def _candidate_csvs(
     target_settings: Dict[str, Any],
     expected_data_format: str = "",
     scan: _DatasetCacheScan | None = None,
+    current_copies_only: bool = False,
 ) -> List[Dict[str, Any]]:
     dep_key = _canon_dataset_name(dataset_type_name)
     out: List[Dict[str, Any]] = []
@@ -946,6 +947,17 @@ def _candidate_csvs(
         dataset_name = _clean_text(sidecar.get("dataset_name") or _csv_base_name(path))
         type_name = _clean_text(sidecar.get("dataset_type") or _csv_base_name(path))
         if dep_key not in {_canon_dataset_name(dataset_name), _canon_dataset_name(type_name), _canon_dataset_name(_csv_base_name(path))}:
+            continue
+        if (
+            current_copies_only
+            and _clean_text(sidecar.get("source_kind")).lower() in {"engine", "input"}
+            and _clean_text(sidecar.get("csv_file"))
+            and not _is_sidecar_named_csv({"path": path, "sidecar": sidecar})
+        ):
+            # Only the file an Engine or hand-entered sidecar names is kept
+            # current; an ``@n`` sibling beside it is a view an older release
+            # wrote down, and a source refresh or a save leaves it stale. The
+            # caller brings the named copy to the formula's shape instead.
             continue
         score = 0
         if _canon_dataset_name(type_name) == dep_key:
@@ -1328,6 +1340,7 @@ def _load_components(
                     target_settings,
                     expected_data_format=expected_format,
                     scan=cached_dataset_scan(),
+                    current_copies_only=True,
                 )
         elif exact_path:
             # An exact path needs one sidecar, so reuse a folder observation only
@@ -1365,6 +1378,7 @@ def _load_components(
                 target_settings,
                 expected_data_format=expected_format,
                 scan=cached_dataset_scan(),
+                current_copies_only=True,
             )
         if not candidates:
             if method_candidates is None:
@@ -1425,18 +1439,21 @@ def _load_components(
             # An Engine-generated precedent cannot be rolled up in memory: its
             # stored pair is the source table's granularity, not its file's
             # shape, so ``_component_at_target_shape`` leaves it alone. Rebuild
-            # it at the formula's own lengths, as the method services do.
+            # it at the formula's own lengths, as the method services do. The
+            # runtime reuses a copy already at those lengths only while its
+            # provenance still matches the source table.
+            target_origin = int(target_settings.get("origin_length") or 12)
             try:
                 path = precedent_cache_service.materialize_engine_source(
                     project_name,
                     reserving_class,
                     _clean_text(sidecar.get("dataset_name")) or component,
                     sidecar,
-                    int(target_settings.get("origin_length") or 12),
+                    target_origin,
                     development_length=int(target_settings.get("development_length") or 12),
                 )
             except RuntimeError as exc:
-                errors.append(f"Failed to read dependency {component}: {exc}")
+                errors.append(f"{component} could not be generated at {target_origin} months: {exc}")
                 continue
         try:
             arr, fingerprint = class_folder_scan_cache.read_matrix_cached(

@@ -1,0 +1,10 @@
+{
+  "type": "fix",
+  "scope": "dataset",
+  "audience": "user",
+  "summary": "A formula dataset such as Expected Net Loss % * Earned Premium now always recalculates from current copies of its inputs, and a save tells you when a dependent could not be refreshed and why.",
+  "details": [
+    "After a source table import, a quarterly formula no longer reads an out-of-date quarterly copy of an annual Engine dataset.",
+    "A source table import rebuilds a vector at the period it is shown at instead of resetting it to 12 months."
+  ]
+}

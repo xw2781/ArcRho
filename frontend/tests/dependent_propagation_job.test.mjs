@@ -230,23 +230,33 @@ test("trackSavePropagation frames per-dataset ticks and passes stage banners thr
 
 test("trackSavePropagation resolves an Engine-hosted completed save without polling", async () => {
   let completedWith = "unset";
+  const shown = [];
   const result = await trackSavePropagation(
     { ok: true, status: "completed", refreshed_datasets: ["C 61", "C 91"] },
     {
       fetchImpl: async () => { throw new Error("a completed save must not poll"); },
       onComplete: (payload) => { completedWith = payload; },
+      showFailure: (message) => shown.push(message),
     },
   );
   assert.deepEqual(result?.refreshed_datasets, ["C 61", "C 91"]);
   assert.deepEqual(completedWith?.refreshed_datasets, ["C 61", "C 91"]);
+  assert.deepEqual(shown, []);
 
   // A completed payload whose walk reported failures resolves null so the
-  // window stays open and review-needed flags stay the failure surface.
+  // window stays open, and shows the server's reason (user decision,
+  // 2026-09-21).
+  const reason = "Dependent update(s) did not refresh: F 63: Earned Premium could not be generated at 3 months: no quarterly dates.";
   const failed = await trackSavePropagation(
-    { ok: false, status: "completed", refreshed_datasets: [] },
-    { fetchImpl: async () => { throw new Error("no polling"); }, onComplete: () => {} },
+    { ok: false, status: "completed", refreshed_datasets: [], message: reason },
+    {
+      fetchImpl: async () => { throw new Error("no polling"); },
+      onComplete: () => {},
+      showFailure: (message) => shown.push(message),
+    },
   );
   assert.equal(failed, null);
+  assert.deepEqual(shown, [reason]);
 });
 
 test("trackSavePropagation ignores a no-op save", async () => {
@@ -293,12 +303,12 @@ test("trackSavePropagation completes a queued job and fires onComplete", async (
   assert.ok(seen.every(([, tone]) => tone !== "warn"));
 });
 
-test("trackSavePropagation finishes a failed job quietly and still fires onComplete", async () => {
-  // Owner decision (2026-08-07): a failed walk must not raise a warning status
-  // line — the dataset table's review-needed flags are the failure surface —
-  // but onComplete still fires so the table refresh happens after the walk
-  // finalized downstream statuses.
+test("trackSavePropagation shows a failed job's reason and still fires onComplete", async () => {
+  // A failed walk shows the server's reason in a message box (user decision,
+  // 2026-09-21) rather than a warning status line, and onComplete still fires
+  // so the table refresh happens after the walk finalized downstream statuses.
   const seen = [];
+  const shown = [];
   let completed = "unset";
   const result = await trackSavePropagation(
     { ok: true, job_id: "job-1", status: "queued" },
@@ -306,12 +316,25 @@ test("trackSavePropagation finishes a failed job quietly and still fires onCompl
       fetchImpl: async () => response(statusPayload("error", { message: "walk failed" })),
       onStatus: (text, options) => seen.push([text, options?.tone]),
       onComplete: (payload) => { completed = payload; },
+      showFailure: (message) => shown.push(message),
       waitForPoll: immediatePoll,
     },
   );
   assert.equal(result, null);
   assert.equal(completed, null);
+  assert.deepEqual(shown, ["walk failed"]);
   assert.ok(seen.every(([, tone]) => tone !== "warn"));
-  assert.ok(seen.every(([text]) => !/did not complete/u.test(text)));
   assert.match(seen.at(-1)[0], /Dependent updates finished/u);
+
+  // A status that could not be read is not a walk failure and stays quiet.
+  const quiet = [];
+  await trackSavePropagation(
+    { ok: true, job_id: "job-1", status: "queued" },
+    {
+      fetchImpl: async () => response({ detail: "gone" }, 404),
+      showFailure: (message) => quiet.push(message),
+      waitForPoll: immediatePoll,
+    },
+  );
+  assert.deepEqual(quiet, []);
 });

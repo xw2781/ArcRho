@@ -177,20 +177,33 @@ export async function waitForDependentPropagationOutcome(jobId, {
   }
 }
 
+// Loaded on first use so this module stays importable on its own.
+async function showWalkFailure(message) {
+  const { showPageMessageBox } = await import("/ui/shared/components/message_box/message_box.js");
+  showPageMessageBox({ title: "Dependent updates", message, tone: "warn" });
+}
+
+async function reportWalkFailure(showFailure, message) {
+  const text = String(message || "").trim();
+  if (!text) return;
+  try { await showFailure(text); } catch { /* the report must not break the save */ }
+}
+
 /**
  * Track a save response's `propagation` payload and report each live step.
  * Never throws. `onComplete(result)` fires at any terminal outcome (`result`
  * is null when the job failed) so callers refresh the dataset table either
- * way — a failed walk still finalized downstream objects at Review Needed,
- * and the table's review-needed flags are the failure surface; no warning
- * status line is emitted (owner decision, 2026-08-07). A caller holding the
- * save popup open awaits the returned promise and treats a null resolution
- * as "not clean" — the failure detail stays on the dataset table.
+ * way — a failed walk still finalized downstream objects at Review Needed.
+ * A failed walk also shows the server's reason in a message box in the
+ * window that saved (user decision, 2026-09-21, replacing the 2026-08-07
+ * "no message" rule). A caller holding the save popup open awaits the
+ * returned promise and treats a null resolution as "not clean".
  */
 export async function trackSavePropagation(propagation, {
   fetchImpl = (...args) => fetch(...args),
   onStatus = () => {},
   onComplete = () => {},
+  showFailure = showWalkFailure,
   ...pollOptions
 } = {}) {
   if (!propagation || typeof propagation !== "object") return null;
@@ -200,10 +213,11 @@ export async function trackSavePropagation(propagation, {
     // Engine-hosted saves run the dependent walk inline and the response
     // carries the finished outcome (with `refreshed_datasets`) — nothing to
     // poll. A walk that reported failures resolves null so the window stays
-    // open and the dataset table's review-needed flags stay the surface.
+    // open.
     const clean = propagation.ok !== false;
     const payload = clean ? { ...propagation } : null;
     try { onComplete(payload); } catch { /* completion hooks must not break callers */ }
+    if (!clean) await reportWalkFailure(showFailure, propagation.message);
     return payload;
   }
   const jobId = String(propagation.job_id || "").trim();
@@ -232,9 +246,12 @@ export async function trackSavePropagation(propagation, {
     onStatus(`Dependent updates complete at ${new Date().toLocaleTimeString()}.`, { tone: "info" });
     try { onComplete(result); } catch { /* completion hooks must not break polling callers */ }
     return result;
-  } catch {
+  } catch (error) {
     onStatus(`Dependent updates finished at ${new Date().toLocaleTimeString()}.`, { tone: "info" });
     try { onComplete(null); } catch { /* completion hooks must not break polling callers */ }
+    // Only a walk that ran and failed has a reason worth showing; a lost
+    // status stays quiet.
+    if (error?.code === "PROPAGATION_JOB_ERROR") await reportWalkFailure(showFailure, error.message);
     return null;
   }
 }

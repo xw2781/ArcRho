@@ -239,6 +239,30 @@ class RegenerationRequestTests(unittest.TestCase):
         self.assertEqual(values["OriginLength"], "12")
         self.assertEqual(values["DevelopmentLength"], "12")
 
+    def test_a_quarterly_vector_is_rebuilt_at_the_period_it_is_shown_at(self) -> None:
+        # A vector sidecar states its period only under ``period_length``;
+        # rebuilding it at 12 would refresh an annual copy nobody reads and
+        # leave the quarterly one stale.
+        with self._with_helpers():
+            sys.modules["app_server.helpers"].set_data_path_like_vba = (
+                lambda pairs: f"E:\\Earned Premium@{dict(pairs)['OriginLength']}.csv"
+            )
+            pairs, data_path = source_table_refresh._regeneration_request(
+                {
+                    "reserving_class": "HPPREF\\NJ",
+                    "dataset_name": "Earned Premium",
+                    "dataset_type": "Earned Premium",
+                    "data_format": "Vector",
+                    "period_length": 3,
+                    "stored_period_length": 1,
+                },
+                "Demo Project",
+            )
+        values = dict(pairs)
+        self.assertEqual(values["OriginLength"], "3")
+        self.assertEqual(values["DevelopmentLength"], "3")
+        self.assertEqual(data_path, "E:\\Earned Premium@3.csv")
+
     def test_the_project_refreshed_wins_over_the_name_in_the_sidecar(self) -> None:
         # A duplicated project's sidecars still name the project they were
         # copied from. Following that name would rebuild every dataset into the

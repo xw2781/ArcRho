@@ -297,6 +297,98 @@ class CalculatedComponentStoredShapeTests(unittest.TestCase):
         self.assertEqual(errors, [])
         rebuilt.assert_not_called()
 
+    def write_vector(self, name: str, source_kind: str, period: int, stored: int, files: dict) -> None:
+        for file_period, rows in files.items():
+            (self.datasets / f"{name}@{file_period}.csv").write_text(_csv(rows, 1), encoding="utf-8")
+        (self.sidecars / f"{name}.json").write_text(
+            json.dumps(
+                {
+                    "dataset_name": name,
+                    "dataset_type": name,
+                    "source_kind": source_kind,
+                    "data_format": "Vector",
+                    "csv_file": f"{name}@{period}.csv",
+                    "period_length": period,
+                    "stored_period_length": stored,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def test_a_stale_view_beside_a_generated_precedent_is_not_read(self) -> None:
+        # A source refresh rebuilds only the annual file an Engine sidecar
+        # names, so an ``@3`` view beside it keeps the figures from before.
+        # A quarterly formula must ask the Engine for the quarterly copy,
+        # which the runtime rebuilds whenever it is out of date, rather than
+        # read that view as it stands.
+        premium = "Earned Premium"
+        self.write_vector(
+            premium, "engine", 12, 1, {12: [[1200.0]] * 3, 3: [[1.0]] * 12}
+        )
+
+        def materialize(project, reserving_class, dataset_name, sidecar, origin_length, development_length=None):
+            path = self.datasets / f"{dataset_name}@{origin_length}.csv"
+            path.write_text(_csv([[300.0]] * 12, 1), encoding="utf-8")
+            return str(path)
+
+        with mock.patch.object(
+            calculated_dataset_service.precedent_cache_service,
+            "materialize_engine_source",
+            side_effect=materialize,
+        ) as rebuilt:
+            values, _precedents, errors = calculated_dataset_service._load_components(
+                "Project",
+                "Class",
+                [premium],
+                {"origin_length": 3, "development_length": 3, "cumulative": True, "calendar": False},
+            )
+
+        self.assertEqual(errors, [])
+        rebuilt.assert_called_once()
+        self.assertEqual(values["_d0"].tolist(), [[300.0]] * 12)
+
+    def test_a_stale_view_beside_a_hand_entered_precedent_is_not_read(self) -> None:
+        # A half-yearly formula over a quarterly hand-entered vector rolls the
+        # quarterly copy up; the ``@6`` view an older import left is ignored.
+        expected = "Expected Net Loss % of Earned Premium"
+        self.write_vector(
+            expected, "input", 3, 3, {3: [[1.0]] * 12, 6: [[99.0]] * 6}
+        )
+
+        with mock.patch.object(dataset_service, "valuation_months", return_value=VALUATION_MONTHS):
+            values, _precedents, errors = calculated_dataset_service._load_components(
+                "Project",
+                "Class",
+                [expected],
+                {"origin_length": 6, "development_length": 6, "cumulative": True, "calendar": False},
+            )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(values["_d0"].shape, (6, 1))
+        self.assertNotIn(99.0, values["_d0"].ravel().tolist())
+
+    def test_a_generated_precedent_the_engine_cannot_build_names_the_period(self) -> None:
+        premium = "Earned Premium"
+        self.write_vector(premium, "engine", 12, 1, {12: [[1200.0]] * 3})
+
+        with mock.patch.object(
+            calculated_dataset_service.precedent_cache_service,
+            "materialize_engine_source",
+            side_effect=RuntimeError("the source table has no quarterly dates."),
+        ):
+            _values, _precedents, errors = calculated_dataset_service._load_components(
+                "Project",
+                "Class",
+                [premium],
+                {"origin_length": 3, "development_length": 3, "cumulative": True, "calendar": False},
+            )
+
+        self.assertEqual(
+            errors,
+            [f"{premium} could not be generated at 3 months: the source table has no quarterly dates."],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
