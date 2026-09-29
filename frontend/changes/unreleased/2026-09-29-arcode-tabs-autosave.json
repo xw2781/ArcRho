@@ -1,0 +1,13 @@
+{
+  "type": "feature",
+  "scope": "arcode",
+  "audience": "user",
+  "summary": "Arcode reopens your file tabs on start, and gains a Restart item, an AutoSave switch, and code folding in notebook cells.",
+  "details": [
+    "Open files and the active tab are saved and restored; New Arcode Window still starts empty.",
+    "File > Restart relaunches Arcode.",
+    "AutoSave, off by default, saves a notebook 1 minute after an edit or output change.",
+    "Notebook cells fold long dicts, lists and functions.",
+    "Keyboard Shortcuts moved from the notebook toolbar to the Settings menu."
+  ]
+}

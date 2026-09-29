@@ -28,7 +28,7 @@ const runAllBtn = document.getElementById("runAllBtn");
 const stopBtn = document.getElementById("stopBtn");
 const restartBtn = document.getElementById("restartBtn");
 const clearOutputBtn = document.getElementById("clearOutputBtn");
-const shortcutsBtn = document.getElementById("shortcutsBtn");
+const autoSaveBtn = document.getElementById("autoSaveBtn");
 const notebookFileBanner = document.getElementById("notebookFileBanner");
 const notebookFileBannerMessage = document.getElementById("notebookFileBannerMessage");
 const reloadDiskNotebookBtn = document.getElementById("reloadDiskNotebookBtn");
@@ -170,7 +170,10 @@ const EDITOR_OPTIONS = {
   scrollbar: { vertical: "hidden", horizontal: "hidden", alwaysConsumeMouseWheel: false },
   lineDecorationsWidth: 8,
   lineNumbersMinChars: 3,
-  folding: false,
+  // Fold long dicts, lists and functions inside a cell; the arrows show on hover.
+  folding: true,
+  foldingStrategy: "indentation",
+  showFoldingControls: "mouseover",
   glyphMargin: false,
   contextmenu: true,
 };

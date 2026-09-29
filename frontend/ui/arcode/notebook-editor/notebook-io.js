@@ -125,7 +125,59 @@ function setNotebookDirty(nextDirty) {
 
 function updateNotebookDirtyState() {
   if (suppressNotebookDirtyTracking) return;
-  setNotebookDirty(getNotebookStateText() !== savedNotebookText);
+  const stateText = getNotebookStateText();
+  setNotebookDirty(stateText !== savedNotebookText);
+  scheduleNotebookAutoSave(stateText);
+}
+
+// Auto save: off until the toolbar toggle is switched on. The dirty check above compares
+// the cells' sources and outputs with the last save, so only a real change starts the timer.
+const NOTEBOOK_AUTO_SAVE_DELAY_MS = 60000;
+const NOTEBOOK_AUTO_SAVE_BUSY_RETRY_MS = 10000;
+let notebookAutoSaveEnabled = false;
+let notebookAutoSaveTimer = 0;
+let notebookAutoSaveSeenText = "";
+
+function setNotebookAutoSave(enabled) {
+  notebookAutoSaveEnabled = !!enabled;
+  window.clearTimeout(notebookAutoSaveTimer);
+  notebookAutoSaveTimer = 0;
+  notebookAutoSaveSeenText = "";
+  autoSaveBtn.setAttribute("aria-checked", notebookAutoSaveEnabled ? "true" : "false");
+  document.getElementById("autoSaveText").textContent = notebookAutoSaveEnabled ? "On" : "Off";
+  autoSaveBtn.title = notebookAutoSaveEnabled
+    ? "Auto save is on: saves 1 minute after an edit or output change. Click to turn off."
+    : "Auto save is off. Turn on to save the notebook 1 minute after an edit or output change.";
+  const msg = notebookAutoSaveEnabled ? "Auto save on" : "Auto save off";
+  setStatus(msg);
+  postShellStatus(msg);
+  if (notebookAutoSaveEnabled) scheduleNotebookAutoSave(getNotebookStateText());
+}
+
+function scheduleNotebookAutoSave(stateText, { force = false } = {}) {
+  if (!notebookAutoSaveEnabled) return;
+  if (stateText === savedNotebookText) {
+    window.clearTimeout(notebookAutoSaveTimer);
+    notebookAutoSaveTimer = 0;
+    notebookAutoSaveSeenText = stateText;
+    return;
+  }
+  if (!force && stateText === notebookAutoSaveSeenText && notebookAutoSaveTimer) return;
+  notebookAutoSaveSeenText = stateText;
+  window.clearTimeout(notebookAutoSaveTimer);
+  notebookAutoSaveTimer = window.setTimeout(runNotebookAutoSave, force ? NOTEBOOK_AUTO_SAVE_BUSY_RETRY_MS : NOTEBOOK_AUTO_SAVE_DELAY_MS);
+}
+
+async function runNotebookAutoSave() {
+  notebookAutoSaveTimer = 0;
+  // Only a notebook that already has a file is saved; an untitled one needs the Save dialog.
+  if (!notebookAutoSaveEnabled || !notebookDirty || !currentNotebookPath || notebookDiskConflict) return;
+  // A running cell is still changing the outputs, so wait until it finishes.
+  if (isRunning) {
+    scheduleNotebookAutoSave(getNotebookStateText(), { force: true });
+    return;
+  }
+  await saveCurrentNotebookFile({ closeDialog: false });
 }
 
 function markNotebookSavedBaseline(pathLike = currentNotebookPath, revision = lastNotebookDiskRevision) {

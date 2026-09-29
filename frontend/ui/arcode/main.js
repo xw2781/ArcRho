@@ -10,6 +10,10 @@ import { createDatabaseConnectionsDialog } from "/ui/arcode/database-connections
 
 const UI_VERSION_PARAM = new URLSearchParams(window.location.search).get("v") || String(Date.now());
 const initialOpenPath = new URLSearchParams(window.location.search).get("path") || "";
+// A window opened with "New Arcode Window" starts empty and leaves the saved tab list alone.
+const initialFreshWindow = new URLSearchParams(window.location.search).get("fresh") === "1";
+const MAX_SAVED_TABS = 30;
+const OPEN_TABS_SAVE_DELAY_MS = 400;
 // A DFM's "Open DFM JSON" names its method: the tab loads it through the
 // hosted DFM load and is read only (see code-editor/index.js).
 const initialDfmMethodParam = new URLSearchParams(window.location.search).get("dfm") || "";
@@ -80,7 +84,14 @@ const state = {
   expandedExplorerPaths: readExpandedExplorerPaths(),
   folderListings: {},
   explorerWidth: readExplorerWidth(),
+  savedOpenTabs: [],
+  savedActiveTabPath: "",
+  // Open tabs are written only once the saved ones are back, so start-up cannot overwrite them.
+  openTabsPersistReady: false,
 };
+
+let openTabsSaveTimer = 0;
+let lastSavedOpenTabsKey = "";
 
 const explorerFolderWatchers = new Map();
 let explorerRefreshTimer = 0;
@@ -184,10 +195,19 @@ function readRecentFiles() {
   return normalizeRecentFiles(state.recentFiles);
 }
 
+function currentOpenTabsSetting() {
+  const tabs = state.tabs
+    .filter((tab) => String(tab.path || "").trim() && !tab.dfmMethod)
+    .slice(0, MAX_SAVED_TABS)
+    .map((tab) => ({ path: String(tab.path).trim() }));
+  const active = state.tabs.find((tab) => tab.id === state.activeId);
+  return { openTabs: tabs, activeTabPath: String(active?.path || "").trim() };
+}
+
 function currentUserSettingsPayload() {
   const workspaceFolders = normalizeWorkspaceFolders(state.workspaceFolders);
   const activeWorkspaceFolder = String(state.activeWorkspaceFolder || workspaceFolders[0] || "").trim();
-  return {
+  const payload = {
     recentFiles: readRecentFiles(),
     workspaceFolders,
     activeWorkspaceFolder,
@@ -195,6 +215,32 @@ function currentUserSettingsPayload() {
     windowScalePercent: normalizeZoomPercent(state.zoomPercent),
     explorerSidebarWidth: normalizeExplorerWidth(state.explorerWidth),
   };
+  if (state.openTabsPersistReady) {
+    const openTabsSetting = currentOpenTabsSetting();
+    Object.assign(payload, openTabsSetting);
+    lastSavedOpenTabsKey = JSON.stringify(openTabsSetting);
+  }
+  return payload;
+}
+
+// Saves the tab list a moment after it changes, so opening or dragging tabs writes once.
+function scheduleOpenTabsSave() {
+  if (!state.openTabsPersistReady) return;
+  window.clearTimeout(openTabsSaveTimer);
+  openTabsSaveTimer = window.setTimeout(() => {
+    if (JSON.stringify(currentOpenTabsSetting()) === lastSavedOpenTabsKey) return;
+    void saveArcodeUserSettings();
+  }, OPEN_TABS_SAVE_DELAY_MS);
+}
+
+function restoreSavedOpenTabs() {
+  const entries = state.savedOpenTabs.slice(0, MAX_SAVED_TABS);
+  const opened = entries.map((entry) => openCodeTab({ path: entry.path, restoring: true }));
+  const activePath = state.savedActiveTabPath.toLowerCase();
+  const active = activePath ? opened.find((tab) => String(tab.path || "").toLowerCase() === activePath) : null;
+  setActiveTab(active ? active.id : "home");
+  if (opened.length) updateStatus(`Restored ${opened.length === 1 ? "1 tab" : `${opened.length} tabs`}.`);
+  return opened.length > 0;
 }
 
 function buildClearCacheReloadRestorePayload() {
@@ -317,6 +363,10 @@ async function loadArcodeUserSettings() {
         state.workspaceFolders = [activeWorkspaceFolder, ...state.workspaceFolders].slice(0, 20);
       }
       state.zoomPercent = normalizeZoomPercent(settings.windowScalePercent, DEFAULT_ZOOM_PERCENT);
+      state.savedOpenTabs = (Array.isArray(settings.openTabs) ? settings.openTabs : [])
+        .map((entry) => ({ path: String(entry?.path || "").trim() }))
+        .filter((entry) => entry.path);
+      state.savedActiveTabPath = String(settings.activeTabPath || "").trim();
       state.explorerWidth = normalizeExplorerWidth(settings.explorerSidebarWidth, readExplorerWidth());
       persistExplorerWidth(state.explorerWidth);
       saveWorkspaceFolders({ persistSettings: false });
@@ -1536,6 +1586,7 @@ function render() {
   renderTabs();
   renderFrames();
   updateMenuState();
+  scheduleOpenTabsSave();
 }
 
 function setActiveTab(id) {
@@ -1645,7 +1696,7 @@ function openCodeTab(options = {}) {
   };
   state.tabs.push(tab);
   createFrameForTab(tab);
-  if (filePath) saveRecentFile(filePath);
+  if (filePath && !options.restoring) saveRecentFile(filePath);
   setActiveTab(tab.id);
   updateStatus(dfmMethod ? `Opening ${tab.title} read only...` : (filePath ? `Opening ${filePath}...` : "New notebook opened."));
   return tab;
@@ -1911,6 +1962,8 @@ function updateMenuState() {
   ["save", "save-as", "close-tab", "close-others", "close-all", "render-markdown", "toggle-line-numbers", "toggle-exec-time", "refresh-tab", "hard-refresh", "rename"].forEach((action) => {
     setMenuItemDisabled(action, !hasTab || (readOnly && (action === "save" || action === "save-as")));
   });
+  // The shortcut editor belongs to notebook tabs.
+  setMenuItemDisabled("keyboard-shortcuts", activeTab()?.type !== "notebook");
   setMenuItemDisabled("open-file-location", !hasPath);
   setMenuItemDisabled("copy-file-path", !hasPath);
   renderRecentFilesMenu();
@@ -2033,6 +2086,21 @@ function toggleCreateMenu(forceOpen) {
   dropdown.classList.toggle("open", shouldOpen);
   if (shouldOpen) positionMenu(button, dropdown);
 }
+// The open tabs are saved with the settings, so the restarted app opens them again.
+async function restartArcode() {
+  if (!confirmWindowClose()) {
+    updateStatus("Restart canceled.");
+    return;
+  }
+  const saved = await saveArcodeUserSettings({ reportFailure: true });
+  if (saved?.ok === false) {
+    updateStatus(`Restart canceled: ${saved.error || "Unable to save Arcode settings."}`);
+    return;
+  }
+  updateStatus("Restarting Arcode...");
+  try { await fetch("/app/restart_electron", { method: "POST" }); } catch {}
+}
+
 async function runShellAction(action, detail = {}) {
   if (!action) return;
   if (action === "create-notebook") return openCodeTab({ forceFresh: true });
@@ -2055,6 +2123,7 @@ async function runShellAction(action, detail = {}) {
     if (confirmWindowClose()) window.ADAHost?.closeWindow?.();
     return;
   }
+  if (action === "restart-app") return restartArcode();
   if (action === "render-markdown") return sendScriptingCommand("arcode:scripting-render-all-markdown");
   if (action === "toggle-ai-bot-icon") {
     const visible = toggleAiAssistantLauncherVisible();
@@ -2077,6 +2146,7 @@ async function runShellAction(action, detail = {}) {
     return;
   }
   if (action === "database-connections") return databaseConnectionsDialog.open();
+  if (action === "keyboard-shortcuts") return sendScriptingCommand("arcode:scripting-open-shortcuts");
   if (action === "clear-cache-reload") {
     if (typeof window.ADAHost?.clearCacheAndReload !== "function") {
       updateStatus("Clear Cache & Reload requires the desktop app host.");
@@ -2097,7 +2167,7 @@ async function runShellAction(action, detail = {}) {
       colorTheme: window.ArcRhoColorTheme?.getTheme?.() || "light",
     });
   }
-  if (action === "new-window") return window.ADAHost?.openArcodeWindow?.({});
+  if (action === "new-window") return window.ADAHost?.openArcodeWindow?.({ fresh: true });
   if (action === "close-others") return activeTab() ? closeTabsExcept(state.activeId) : undefined;
   if (action === "close-all") return closeAllTabs();
   if (action === "minimize-window") return window.ADAHost?.minimizeWindow?.();
@@ -2408,8 +2478,12 @@ async function boot() {
   render();
   initAiAssistant();
   const restored = await restoreTabsAfterClearCacheReload();
+  const restoredSaved = !restored && !initialFreshWindow && restoreSavedOpenTabs();
   if (!restored && initialDfmMethodParam) openCodeTab({ dfmMethod: JSON.parse(initialDfmMethodParam) });
   else if (!restored && initialOpenPath) openCodeTab({ path: initialOpenPath });
+  else if (!restored && !restoredSaved) setActiveTab("home");
+  state.openTabsPersistReady = !initialFreshWindow;
+  scheduleOpenTabsSave();
 }
 
 void boot();

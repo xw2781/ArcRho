@@ -59,6 +59,52 @@
       font-weight: 700;
     }
     .sc-btn.primary:disabled { opacity: 0.55; cursor: not-allowed; }
+    /* AutoSave switch, pinned to the right end of the toolbar. */
+    .sc-autosave {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 4px;
+      font-size: 11.5px;
+      color: var(--ark-text);
+    }
+    .sc-switch {
+      position: relative;
+      width: 44px;
+      height: 18px;
+      padding: 0;
+      border: 1px solid var(--ark-border-strong);
+      border-radius: 9px;
+      background: transparent;
+      color: var(--ark-text);
+      font-size: 10.5px;
+      cursor: pointer;
+    }
+    .sc-switch:hover { background: var(--ark-surface-hover); }
+    .sc-switch-text {
+      position: absolute;
+      top: 0;
+      right: 7px;
+      line-height: 16px;
+    }
+    .sc-switch-knob {
+      position: absolute;
+      top: 2px;
+      left: 3px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: currentColor;
+      transition: left 0.12s ease;
+    }
+    .sc-switch[aria-checked="true"] {
+      border-color: var(--ark-accent-border);
+      background: var(--ark-accent-soft);
+      color: var(--ark-accent-text);
+    }
+    .sc-switch[aria-checked="true"] .sc-switch-text { right: auto; left: 7px; }
+    .sc-switch[aria-checked="true"] .sc-switch-knob { left: 29px; }
     .sc-btn.danger { color: var(--ark-danger); }
     .sc-btn.danger:hover { background: var(--ark-danger-soft); border-color: var(--ark-danger-border); }
     /* Dialog footers commit or cancel work, so those buttons stay framed. */

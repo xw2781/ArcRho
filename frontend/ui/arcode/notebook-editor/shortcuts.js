@@ -306,8 +306,6 @@ function closeShortcutsDialog(restoreFocus = true) {
   if (restoreFocus) {
     if (shortcutFocusRestoreEl && typeof shortcutFocusRestoreEl.focus === "function") {
       shortcutFocusRestoreEl.focus();
-    } else if (shortcutsBtn) {
-      shortcutsBtn.focus();
     }
   }
 }

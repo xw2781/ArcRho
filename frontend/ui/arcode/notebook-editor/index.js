@@ -267,7 +267,7 @@ runAllBtn.addEventListener("click", () => runAllCells());
 stopBtn.addEventListener("click", () => interruptExecution());
 restartBtn.addEventListener("click", () => restartSession());
 clearOutputBtn.addEventListener("click", () => clearAllOutputs());
-shortcutsBtn.addEventListener("click", () => openShortcutsDialog());
+autoSaveBtn.addEventListener("click", () => setNotebookAutoSave(!notebookAutoSaveEnabled));
 
 shortcutsCloseBtn.addEventListener("click", () => closeShortcutsDialog());
 shortcutsCancelBtn.addEventListener("click", () => closeShortcutsDialog());
@@ -368,6 +368,10 @@ window.addEventListener("message", (event) => {
   }
   if (type === "arcode:scripting-toggle-exec-time") {
     toggleExecTimeVisible();
+    return;
+  }
+  if (type === "arcode:scripting-open-shortcuts") {
+    openShortcutsDialog();
     return;
   }
   if (type === "arcode:scripting-render-all-markdown") {

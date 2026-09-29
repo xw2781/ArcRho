@@ -48,8 +48,13 @@
         <button class="sc-btn" id="restartBtn" title="Reset session (clear all variables)">Restart</button>
         <div class="sc-sep"></div>
         <button class="sc-btn" id="clearOutputBtn" title="Clear all outputs">Clear Output</button>
-        <button class="sc-btn" id="shortcutsBtn" title="View and customize keyboard shortcuts">Keyboard Shortcuts</button>
-      </div>
+        <div class="sc-autosave">
+          <span class="sc-autosave-label">AutoSave</span>
+          <button class="sc-switch" id="autoSaveBtn" type="button" role="switch" aria-checked="false" title="Auto save is off. Turn on to save the notebook 1 minute after an edit or output change.">
+            <span class="sc-switch-text" id="autoSaveText">Off</span>
+            <span class="sc-switch-knob"></span>
+          </button>
+        </div>      </div>
 
       <div class="sc-file-banner" id="notebookFileBanner" role="status" aria-live="polite">
         <span class="sc-file-banner-message" id="notebookFileBannerMessage"></span>
