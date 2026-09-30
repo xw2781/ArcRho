@@ -834,10 +834,25 @@ async function openReviewTableCommand(command) {
   return { ok: true, result: openAutomationReviewTable(args) };
 }
 
+// A command naming a review table or progress window this window does not hold
+// is handed back so another app sharing the server can answer it. The server
+// says when no other window is left (`may_decline` false), and a command
+// addressed to this very window is never handed back; either way this window
+// answers as it always has, so nothing bounces forever.
+function declineOrAnswer(command, answer) {
+  const handBack = !!command?.may_decline && toText(command?.owner) !== AUTOMATION_CLIENT_ID;
+  return handBack ? { ...answer, declined: true } : answer;
+}
+
 async function routeReviewTableFollowUp(command, isClose) {
   const args = command.args || {};
   const dialogId = reviewTableIdFromArgs(args);
   const hostTab = dialogId ? reviewTableHostTabs.get(dialogId) : null;
+  if (!hostTab && dialogId && !reviewTableDialogs.has(dialogId)) {
+    return declineOrAnswer(command, isClose
+      ? { ok: true, result: { dialogId, closed: false, cancelled: false } }
+      : { ok: false, error: `Review table is not available: ${dialogId}` });
+  }
   if (!hostTab) {
     return {
       ok: true,
@@ -1242,11 +1257,15 @@ async function executeAutomationCommand(command) {
   if (name === "ui.progressOpen") {
     return { ok: true, result: openAutomationProgress(command.args || {}) };
   }
-  if (name === "ui.progressUpdate") {
-    return { ok: true, result: updateAutomationProgress(command.args || {}) };
-  }
-  if (name === "ui.progressClose") {
-    return { ok: true, result: closeAutomationProgress(command.args || {}) };
+  if (name === "ui.progressUpdate" || name === "ui.progressClose") {
+    const args = command.args || {};
+    const progressId = progressIdFromArgs(args);
+    if (!progressWindows.has(progressId) && !dismissedProgressWindows.has(progressId)) {
+      const handedBack = declineOrAnswer(command, { ok: true, result: { progressId } });
+      if (handedBack.declined) return handedBack;
+    }
+    const isClose = name === "ui.progressClose";
+    return { ok: true, result: isClose ? closeAutomationProgress(args) : updateAutomationProgress(args) };
   }
   if (name === "macro.captureActiveDfmContext") {
     const result = await captureActiveDfmContextForMacro();
@@ -1281,14 +1300,18 @@ async function executeAutomationCommand(command) {
 }
 
 async function completeCommand(commandId, payload) {
+  // A handed-back command carries this window's answer, which settles it only
+  // when no other window is left to try.
+  const action = payload?.declined ? "decline" : "complete";
   try {
-    await fetch(`${API_BASE}/ui_automation/commands/${encodeURIComponent(commandId)}/complete`, {
+    await fetch(`${API_BASE}/ui_automation/commands/${encodeURIComponent(commandId)}/${action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ok: !!payload?.ok,
         result: payload?.result || {},
         error: toText(payload?.error),
+        ...(payload?.declined ? { client_id: AUTOMATION_CLIENT_ID } : {}),
       }),
     });
   } catch (err) {

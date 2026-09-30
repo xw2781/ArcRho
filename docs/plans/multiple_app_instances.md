@@ -1,6 +1,6 @@
 # More than one ArcRho app on one PC
 
-Status: Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time, no decisions open; 2 of 7 done (steps 1 and 2 committed 2026-09-30).
+Status: Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time, no decisions open; 3 of 7 done (steps 1 to 3 committed 2026-09-30).
 Last updated: 2026-09-30
 
 ## Progress
@@ -11,13 +11,13 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | Opening a second app no longer disturbs the first | [x] | 2026-09-30 | 40 min | 4 min | A second app that cannot share the running app's server starts its own instead of shutting the first one down. |
 | 2 | A macro's windows stay in the app it was started from | [x] | 2026-09-30 | 55 min | 8 min | A macro's progress window, messages and review table now open in the app it was started from, even when another app shares the same server. |
-| 3 | A stray question about a review table no longer kills a macro | [ ] | | 35 min | | |
+| 3 | A stray question about a review table no longer kills a macro | [x] | 2026-09-30 | 35 min | 4 min | A window asked about a review table or progress window it does not hold passes the question to the other app instead of failing the macro. |
 | 4 | Closing the last window really shuts the app down | [ ] | | 60 min | | |
 | 5 | Scripts and screenshots can pick which app they mean | [ ] | | 60 min | | |
 | 6 | What a second window can and cannot remember is known | [ ] | | 30 min | | |
 | 7 | Checked with two apps open, written down, and released | [ ] | | 45 min | | |
 
-Overall: 2 of 7 steps done. Estimated 325 min, actual so far 12 min.
+Overall: 3 of 7 steps done. Estimated 325 min, actual so far 16 min.
 
 ## How agents work this plan
 
@@ -174,11 +174,11 @@ Estimate: code edit 40 min, test/validation 15 min, total 55 min. Actual: code e
 
 **Do.**
 
-- [ ] Add a way for a window to decline a command, beside the existing cancel and complete paths, naming itself as it does so.
-- [ ] Put a declined command back at the front of the queue and never offer it to the same window twice. When every window that could answer has declined, settle it with the error the caller sees today, so nothing bounces forever.
-- [ ] Decline, rather than raise, when a review table status or close names a dialog this window does not hold.
-- [ ] Decline, rather than open a second window, when a progress update names a progress window this window does not hold.
-- [ ] Leave the existing behaviour for a dialog whose hosting page has genuinely closed: that still answers a cancelled completion, so a macro ends cleanly.
+- [x] Add a way for a window to decline a command, beside the existing cancel and complete paths, naming itself as it does so.
+- [x] Put a declined command back at the front of the queue and never offer it to the same window twice. When every window that could answer has declined, settle it with the error the caller sees today, so nothing bounces forever.
+- [x] Decline, rather than raise, when a review table status or close names a dialog this window does not hold.
+- [x] Decline, rather than open a second window, when a progress update names a progress window this window does not hold.
+- [x] Leave the existing behaviour for a dialog whose hosting page has genuinely closed: that still answers a cancelled completion, so a macro ends cleanly.
 
 **Tests.**
 
@@ -187,7 +187,7 @@ Estimate: code edit 40 min, test/validation 15 min, total 55 min. Actual: code e
 
 **Done when.** With an identity deliberately stale, a review table poll answered by the wrong window is retried and answered correctly by the right one, and the macro finishes.
 
-Estimate: code edit 25 min, test/validation 10 min, total 35 min.
+Estimate: code edit 25 min, test/validation 10 min, total 35 min. Actual: code edit 3 min, test/validation 1 min, total 4 min; far under because the queue and shell already had one place each to hook into. The server tells each window whether another live window is left to try, so the last one answers as it always has (single-app behaviour is unchanged) and a window never hands back work addressed to itself; progress close is handed back too, so the right app's window still closes. The two-app check is left to step 7.
 
 ### Step 4 — Closing the last window really shuts the app down
 

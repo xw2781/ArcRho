@@ -84,6 +84,81 @@ class UiAutomationCommandOwnerTests(unittest.TestCase):
         self.assertEqual(ui_automation_service.OWNER_GRACE_SEC, 3.0)
 
 
+class UiAutomationCommandDeclineTests(unittest.TestCase):
+    """A window that does not hold what a command names hands it back."""
+
+    def setUp(self) -> None:
+        ui_automation_service.drain_pending()
+        ui_automation_service._CLIENT_SEEN.clear()
+        self.addCleanup(ui_automation_service._CLIENT_SEEN.clear)
+        self.results: list[dict] = []
+        self._worker: threading.Thread | None = None
+
+    def tearDown(self) -> None:
+        ui_automation_service.drain_pending()
+        if self._worker is not None:
+            self._worker.join(timeout=5.0)
+
+    def _seen(self, *clients: str) -> None:
+        for client in clients:
+            ui_automation_service.poll_command(timeout_sec=0.1, client_id=client)
+
+    def _submit(self) -> None:
+        def submit() -> None:
+            self.results.append(
+                ui_automation_service.submit_command("ui.reviewTableStatus", {}, {"dialogId": "d1"}, 30.0)
+            )
+
+        self._worker = threading.Thread(target=submit, daemon=True)
+        self._worker.start()
+        deadline = time.monotonic() + 5.0
+        while ui_automation_service.queue_status()["queued"] < 1 and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+    def _decline(self, command_id: str, client: str) -> dict:
+        return ui_automation_service.decline_command(
+            command_id, client, False, {}, "Review table is not available: d1"
+        )
+
+    def test_a_declined_command_goes_to_another_window_and_never_back_to_the_decliner(self) -> None:
+        self._seen("shell_a", "shell_b")
+        self._submit()
+
+        first = ui_automation_service.poll_command(timeout_sec=1.0, client_id="shell_a")["command"]
+        self.assertTrue(first["may_decline"])
+        self.assertEqual(self._decline(first["id"], "shell_a")["settled"], False)
+
+        self.assertIsNone(ui_automation_service.poll_command(timeout_sec=0.2, client_id="shell_a")["command"])
+        second = ui_automation_service.poll_command(timeout_sec=1.0, client_id="shell_b")["command"]
+        self.assertEqual(second["id"], first["id"])
+        # The last window left must answer rather than hand it back again.
+        self.assertFalse(second["may_decline"])
+
+        ui_automation_service.complete_command(second["id"], True, {"status": "pending"}, "")
+        self._worker.join(timeout=5.0)
+        self.assertEqual(self.results[0]["result"], {"status": "pending"})
+
+    def test_a_command_every_window_declined_settles_with_the_error(self) -> None:
+        self._seen("shell_a", "shell_b")
+        self._submit()
+
+        first = ui_automation_service.poll_command(timeout_sec=1.0, client_id="shell_a")["command"]
+        self._decline(first["id"], "shell_a")
+        second = ui_automation_service.poll_command(timeout_sec=1.0, client_id="shell_b")["command"]
+        self.assertEqual(self._decline(second["id"], "shell_b")["settled"], True)
+
+        self._worker.join(timeout=5.0)
+        self.assertFalse(self.results[0]["ok"])
+        self.assertEqual(self.results[0]["error"], "Review table is not available: d1")
+        self.assertEqual(ui_automation_service.queue_status()["pending"], 0)
+
+    def test_a_lone_window_may_not_decline(self) -> None:
+        self._submit()
+
+        polled = ui_automation_service.poll_command(timeout_sec=1.0, client_id="shell_a")["command"]
+        self.assertFalse(polled["may_decline"])
+
+
 class PublicApiCommandOwnerTests(unittest.TestCase):
     def setUp(self) -> None:
         previous = arcrho_ui.set_command_owner("")

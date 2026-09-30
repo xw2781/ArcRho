@@ -23,3 +23,9 @@ class UiAutomationCommandResult(BaseModel):
     ok: bool = True
     result: Dict[str, Any] = Field(default_factory=dict)
     error: str = ""
+
+
+class UiAutomationCommandDecline(UiAutomationCommandResult):
+    """A window handing a command back; the answer settles it if no other window is left."""
+
+    client_id: str = ""

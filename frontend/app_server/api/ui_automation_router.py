@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 
 from app_server.api.local_client import require_local_client
 from app_server.schemas.ui_automation import (
+    UiAutomationCommandDecline,
     UiAutomationCommandRequest,
     UiAutomationCommandResult,
     UiAutomationPollRequest,
@@ -37,6 +38,16 @@ def complete_ui_automation_command(
 ) -> Dict[str, Any]:
     require_local_client(request, "UI automation")
     return ui_automation_service.complete_command(command_id, req.ok, req.result, req.error)
+
+
+@router.post("/ui_automation/commands/{command_id}/decline")
+def decline_ui_automation_command(
+    command_id: str,
+    req: UiAutomationCommandDecline,
+    request: Request,
+) -> Dict[str, Any]:
+    require_local_client(request, "UI automation")
+    return ui_automation_service.decline_command(command_id, req.client_id, req.ok, req.result, req.error)
 
 
 @router.post("/ui_automation/commands/{command_id}/cancel")

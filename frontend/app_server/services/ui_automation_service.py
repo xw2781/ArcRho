@@ -4,7 +4,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from threading import Condition
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from fastapi import HTTPException
 
@@ -23,16 +23,23 @@ class _PendingCommand:
     created_at: float = field(default_factory=time.time)
     created_monotonic: float = field(default_factory=time.monotonic)
     result: Optional[Dict[str, Any]] = None
+    # Windows that handed the command back because they do not hold what it names.
+    declined_by: Set[str] = field(default_factory=set)
 
 
 _LOCK = Condition()
 _QUEUE: List[str] = []
 _PENDING: Dict[str, _PendingCommand] = {}
+# Window id -> when it last began or ended a poll, to know who else could answer.
+_CLIENT_SEEN: Dict[str, float] = {}
 _MAX_TIMEOUT_SEC = 120.0
 # How long a command addressed to one window waits for that window before any
 # window may take it. A window that has gone (its app closed mid-macro) must not
 # stall the macro until the caller's own deadline.
 OWNER_GRACE_SEC = 3.0
+# A window counts as live this long after its last poll began or ended; the
+# shell's own poll waits 20 seconds.
+CLIENT_LIVE_SEC = 25.0
 
 
 def _clean_dict(value: Any) -> Dict[str, Any]:
@@ -47,7 +54,7 @@ def _normalize_timeout(value: Any, *, default: float) -> float:
     return max(0.1, min(_MAX_TIMEOUT_SEC, number))
 
 
-def _command_payload(item: _PendingCommand) -> Dict[str, Any]:
+def _command_payload(item: _PendingCommand, *, may_decline: bool) -> Dict[str, Any]:
     return {
         "id": item.id,
         "command": item.command,
@@ -56,14 +63,26 @@ def _command_payload(item: _PendingCommand) -> Dict[str, Any]:
         "timeout_sec": item.timeout_sec,
         "owner": item.owner,
         "created_at": item.created_at,
+        # False when no other live window is left to try, so this one answers as it can.
+        "may_decline": may_decline,
     }
 
 
 def _owner_wait_remaining(item: _PendingCommand, client_id: str, now: float) -> float:
     """Seconds before `client_id` may take `item`; zero when it may take it now."""
-    if not item.owner or item.owner == client_id:
+    if not item.owner or item.owner == client_id or item.owner in item.declined_by:
         return 0.0
     return max(0.0, item.created_monotonic + OWNER_GRACE_SEC - now)
+
+
+def _has_other_candidate(item: _PendingCommand, client_id: str, now: float) -> bool:
+    """Whether a live window other than `client_id` has not yet declined `item`."""
+    for other, seen in list(_CLIENT_SEEN.items()):
+        if now - seen > CLIENT_LIVE_SEC:
+            _CLIENT_SEEN.pop(other, None)
+        elif other != client_id and other not in item.declined_by:
+            return True
+    return False
 
 
 def submit_command(
@@ -111,12 +130,16 @@ def poll_command(timeout_sec: float = 20.0, *, client_id: Optional[str] = None) 
     """Hand the oldest command this window may run to it.
 
     A command addressed to another window is left queued for its owner until the
-    grace period passes; after that any window may take it.
+    grace period passes; after that any window may take it. A command this window
+    has already declined is never offered to it again.
     """
     timeout = _normalize_timeout(timeout_sec, default=20.0)
     client = str(client_id or "").strip()
     deadline = time.monotonic() + timeout
     with _LOCK:
+        if client:
+            # Seen at the start of a poll that lasts `timeout`, so it stays live until then.
+            _CLIENT_SEEN[client] = time.monotonic() + timeout
         while True:
             now = time.monotonic()
             next_claimable: Optional[float] = None
@@ -125,14 +148,21 @@ def poll_command(timeout_sec: float = 20.0, *, client_id: Optional[str] = None) 
                 if item is None or item.result is not None:
                     _QUEUE.remove(command_id)
                     continue
+                if client and client in item.declined_by:
+                    continue
                 wait = _owner_wait_remaining(item, client, now)
                 if wait <= 0:
                     _QUEUE.remove(command_id)
-                    return {"ok": True, "command": _command_payload(item)}
+                    may_decline = bool(client) and _has_other_candidate(item, client, now)
+                    if client:
+                        _CLIENT_SEEN[client] = now
+                    return {"ok": True, "command": _command_payload(item, may_decline=may_decline)}
                 next_claimable = wait if next_claimable is None else min(next_claimable, wait)
 
             remaining = deadline - time.monotonic()
             if remaining <= 0:
+                if client:
+                    _CLIENT_SEEN[client] = time.monotonic()
                 return {"ok": True, "command": None}
             # Wake when an addressed command this window is waiting on becomes free.
             _LOCK.wait(timeout=remaining if next_claimable is None else min(remaining, next_claimable))
@@ -167,6 +197,42 @@ def cancel_command(command_id: str) -> Dict[str, Any]:
         }
         _LOCK.notify_all()
     return {"ok": True, "cancelled": True, "command_id": normalized_id}
+
+
+def decline_command(
+    command_id: str, client_id: str, ok: bool, result: Dict[str, Any], error: str
+) -> Dict[str, Any]:
+    """Hand a command back from a window that does not hold what it names.
+
+    It goes back to the front of the queue for another window, never this one. When
+    no other live window is left to try, the decliner's own answer settles it, so a
+    command cannot bounce forever.
+    """
+    normalized_id = str(command_id or "").strip()
+    client = str(client_id or "").strip()
+    if not normalized_id or not client:
+        raise HTTPException(400, "Command id and client id are required.")
+
+    with _LOCK:
+        item = _PENDING.get(normalized_id)
+        if item is None or item.result is not None:
+            return {"ok": False, "error": "Command is no longer pending."}
+        item.declined_by.add(client)
+        now = time.monotonic()
+        _CLIENT_SEEN[client] = now
+        if _has_other_candidate(item, client, now):
+            _QUEUE.insert(0, normalized_id)
+            _LOCK.notify_all()
+            return {"ok": True, "declined": True, "settled": False}
+        _PENDING.pop(normalized_id, None)
+        item.result = {
+            "ok": bool(ok),
+            "result": _clean_dict(result),
+            "error": str(error or ""),
+            "command_id": normalized_id,
+        }
+        _LOCK.notify_all()
+    return {"ok": True, "declined": True, "settled": True}
 
 
 def drain_pending() -> Dict[str, Any]:
