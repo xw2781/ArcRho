@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("ADAHost", {
   pickSaveWorkflowFile: (suggestedName, startDir) =>
     invoke("pick-save-workflow", { suggestedName, startDir }),
   shutdownApp: () => invoke("app-shutdown"),
+  getSharedWindowCount: () => invoke("app-shared-window-count"),
   getAppInfo: () => invoke("app-info"),
   checkForUpdates: () => invoke("app-check-for-update"),
   getReleaseHistory: () => invoke("app-release-history"),

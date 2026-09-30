@@ -23,6 +23,7 @@ const {
   getBackendPort,
   startBackendWithRetry,
   requestBackendShutdown,
+  getSharedBackendClientCount,
   stopBackendForUpdate,
   registerBackendClient,
   unregisterBackendClient,
@@ -1862,6 +1863,8 @@ ipcMain.handle("app-shutdown", async () => {
   app.quit();
   return true;
 });
+
+ipcMain.handle("app-shared-window-count", () => getSharedBackendClientCount());
 
 ipcMain.handle("app-check-for-update", async () => checkForUpdate({ showNoUpdate: true }));
 

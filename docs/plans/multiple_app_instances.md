@@ -1,6 +1,6 @@
 # More than one ArcRho app on one PC
 
-Status: Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time, no decisions open; 3 of 7 done (steps 1 to 3 committed 2026-09-30).
+Status: Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time, no decisions open; 4 of 7 done (steps 1 to 4 committed 2026-09-30).
 Last updated: 2026-09-30
 
 ## Progress
@@ -12,12 +12,12 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 1 | Opening a second app no longer disturbs the first | [x] | 2026-09-30 | 40 min | 4 min | A second app that cannot share the running app's server starts its own instead of shutting the first one down. |
 | 2 | A macro's windows stay in the app it was started from | [x] | 2026-09-30 | 55 min | 8 min | A macro's progress window, messages and review table now open in the app it was started from, even when another app shares the same server. |
 | 3 | A stray question about a review table no longer kills a macro | [x] | 2026-09-30 | 35 min | 4 min | A window asked about a review table or progress window it does not hold passes the question to the other app instead of failing the macro. |
-| 4 | Closing the last window really shuts the app down | [ ] | | 60 min | | |
+| 4 | Closing the last window really shuts the app down | [x] | 2026-09-30 | 60 min | 4 min | Closing the last app window now stops its server even when another app started it, a server left behind by a crashed window is cleared at the next start, and restarting asks first when another window shares the server. |
 | 5 | Scripts and screenshots can pick which app they mean | [ ] | | 60 min | | |
 | 6 | What a second window can and cannot remember is known | [ ] | | 30 min | | |
 | 7 | Checked with two apps open, written down, and released | [ ] | | 45 min | | |
 
-Overall: 3 of 7 steps done. Estimated 325 min, actual so far 16 min.
+Overall: 4 of 7 steps done. Estimated 325 min, actual so far 20 min.
 
 ## How agents work this plan
 
@@ -202,10 +202,10 @@ Estimate: code edit 25 min, test/validation 10 min, total 35 min. Actual: code e
 
 **Do.**
 
-- [ ] Make the departing window count the live windows rather than its own ownership: the last one asks the server to stop, whether it started that server or inherited it.
-- [ ] Keep the existing guard that a window never stops a server another live window is still using.
-- [ ] Tell the person, when an in-app restart is asked for and other windows share that server, that those windows restart too, and let them go ahead or stop.
-- [ ] Clear a server left behind by an earlier session at startup, which step 1's decision already identifies, so today's two abandoned servers cannot accumulate.
+- [x] Make the departing window count the live windows rather than its own ownership: the last one asks the server to stop, whether it started that server or inherited it.
+- [x] Keep the existing guard that a window never stops a server another live window is still using.
+- [x] Tell the person, when an in-app restart is asked for and other windows share that server, that those windows restart too, and let them go ahead or stop.
+- [x] Clear a server left behind by an earlier session at startup, which step 1's decision already identifies, so today's two abandoned servers cannot accumulate.
 
 **Tests.**
 
@@ -213,7 +213,7 @@ Estimate: code edit 25 min, test/validation 10 min, total 35 min. Actual: code e
 
 **Done when.** Closing both windows leaves no app server process behind, and an in-app restart with two windows open warns before it restarts both.
 
-Estimate: code edit 40 min, test/validation 20 min, total 60 min.
+Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code edit 3 min, test/validation 1 min, total 4 min; far under because the live-window markers already existed and only the count needed scoping to the window's own port (the old count held a server open for a sibling on a different port), and the two-app check is left to step 7.
 
 ### Step 5 — Scripts and screenshots can pick which app they mean
 

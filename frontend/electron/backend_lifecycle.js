@@ -15,6 +15,7 @@ const {
   resolvePreferredBackendPort,
   findAvailableBackendPort,
   decidePreferredPortListener,
+  decideBackendShutdownOnExit,
   writeAppEndpointFile,
   removeAppEndpointFile,
 } = require("./backend_port");
@@ -51,6 +52,10 @@ let serverProc = null;
 let serverLogStream = null;
 let lastServerLogPath = "";
 let backendOwned = false;
+// True once this window started or reused a server; only then may its exit stop one.
+let backendAttached = false;
+// Ports named by the markers of windows that died, whose servers may have been left behind.
+const abandonedBackendPorts = new Set();
 let serverSpawnError = null;
 let backendShutdownPromise = null;
 let backendClientMarkerPath = "";
@@ -235,6 +240,8 @@ function readAliveBackendClientMarkers() {
       }
       if (!isProcessAlive(pid)) {
         try { fs.unlinkSync(filePath); } catch {}
+        const deadPort = Number(payload?.port || 0);
+        if ((!payload?.mode || payload.mode === APP_MODE) && deadPort > 0) abandonedBackendPorts.add(deadPort);
         continue;
       }
       markers.push({ pid, mode: String(payload?.mode || ""), port: Number(payload?.port || 0) });
@@ -245,8 +252,15 @@ function readAliveBackendClientMarkers() {
   return markers;
 }
 
-function getOtherBackendClientCount() {
-  return readAliveBackendClientMarkers().filter((marker) => marker.pid !== process.pid).length;
+// How many other live windows use this window's server; the host asks it before a restart.
+function getSharedBackendClientCount() {
+  if (!backendAttached) return 0;
+  return decideBackendShutdownOnExit({
+    pid: process.pid,
+    port: PORT,
+    mode: APP_MODE,
+    markers: readAliveBackendClientMarkers(),
+  }).others;
 }
 
 async function waitForProcExit(proc, timeoutMs) {
@@ -365,6 +379,11 @@ async function stopMismatchedBackendListener(port = PORT) {
     appendElectronLog(`Leaving backend listener on ${HOST}:${port} untouched because ${reason}.`);
     return reason;
   }
+  await killBackendListenerPids(pids);
+  return "";
+}
+
+async function killBackendListenerPids(pids) {
   for (const pid of pids) {
     if (serverProc && pid === serverProc.pid) continue;
     try {
@@ -372,7 +391,30 @@ async function stopMismatchedBackendListener(port = PORT) {
     } catch {}
   }
   if (pids.length) await sleep(700);
-  return "";
+}
+
+// Stops a server of this profile that a window which has since died left running, on whatever
+// port that window used. The same decision as the preferred port applies, and only a healthy Arco
+// server of this profile is ever touched, so an unrelated listener on a reused port is left alone.
+async function clearAbandonedBackendListeners() {
+  const livePorts = getKnownBackendClientPorts();
+  const ports = Array.from(abandonedBackendPorts);
+  abandonedBackendPorts.clear();
+  for (const port of ports) {
+    let health = null;
+    try {
+      health = await requestBackendHealth(700, port);
+    } catch {
+      continue;
+    }
+    const sameProfile = isBackendHealthFromSameProfile(health, { appMode: APP_MODE, backendToken: BACKEND_TOKEN });
+    if (health?.ok !== true || !sameProfile) continue;
+    const pids = await getBackendPortListenerPids(port);
+    const { action } = decidePreferredPortListener({ port, health, sameProfile, livePorts, listenerPids: pids });
+    if (action !== "clear") continue;
+    appendElectronLog(`Stopping the app server on ${HOST}:${port}; the Arco window that used it has closed.`);
+    await killBackendListenerPids(pids);
+  }
 }
 
 function getKnownBackendClientPorts() {
@@ -492,6 +534,7 @@ async function waitForServer(timeoutMs = BACKEND_STARTUP_TIMEOUT_MS) {
 
 async function startBackendWithRetry() {
   await ensureBackendArtifactId();
+  await clearAbandonedBackendListeners();
   let lastErr = null;
   for (let attempt = 1; attempt <= BACKEND_STARTUP_ATTEMPTS; attempt++) {
     clearBackendControlFlags();
@@ -499,6 +542,7 @@ async function startBackendWithRetry() {
     if (reusablePort != null) {
       PORT = reusablePort;
       backendOwned = false;
+      backendAttached = true;
       serverProc = null;
       appendElectronLog(`Reusing existing Arco backend on ${HOST}:${PORT}.`);
       publishBackendEndpoint();
@@ -516,6 +560,7 @@ async function startBackendWithRetry() {
     startBackend();
     try {
       await waitForServer(BACKEND_STARTUP_TIMEOUT_MS);
+      backendAttached = true;
       publishBackendEndpoint();
       return;
     } catch (err) {
@@ -554,11 +599,12 @@ async function terminateBackend(options = {}) {
   closeBackendLogStream();
 }
 
+// The last live window on a server stops it, whether it started that server or reused it.
 async function requestBackendShutdown() {
-  if (!backendOwned || !serverProc) {
+  if (!backendAttached) {
     return;
   }
-  const otherClients = getOtherBackendClientCount();
+  const otherClients = getSharedBackendClientCount();
   if (otherClients > 0) {
     appendElectronLog(`Leaving shared backend running for ${otherClients} other frontend client(s).`);
     return;
@@ -570,6 +616,7 @@ async function requestBackendShutdown() {
   backendShutdownPromise = (async () => {
     await httpPost("/app/shutdown");
     await terminateBackend();
+    backendAttached = false;
   })();
   try {
     await backendShutdownPromise;
@@ -600,6 +647,7 @@ async function stopBackendForUpdate() {
     pids = await getBackendPortListenerPids(PORT);
   }
   backendOwned = false;
+  backendAttached = false;
   return pids.length === 0;
 }
 
@@ -608,6 +656,7 @@ module.exports = {
   getBackendPort,
   startBackendWithRetry,
   requestBackendShutdown,
+  getSharedBackendClientCount,
   stopBackendForUpdate,
   registerBackendClient,
   unregisterBackendClient,

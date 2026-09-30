@@ -14,6 +14,7 @@ Local UI automation command bridge for Python macros and scripts that need to as
 | `POST` | `/ui_automation/commands/poll` | `poll_ui_automation_command` | `UiAutomationPollRequest` | [`app_server/schemas/ui_automation.py`](../../../app_server/schemas/ui_automation.py) | `ui_automation_service.poll_command` |
 | `POST` | `/ui_automation/commands/{command_id}/cancel` | `cancel_ui_automation_command` | `Request` | - | `ui_automation_service.cancel_command` |
 | `POST` | `/ui_automation/commands/{command_id}/complete` | `complete_ui_automation_command` | `UiAutomationCommandResult` | [`app_server/schemas/ui_automation.py`](../../../app_server/schemas/ui_automation.py) | `ui_automation_service.complete_command` |
+| `POST` | `/ui_automation/commands/{command_id}/decline` | `decline_ui_automation_command` | `UiAutomationCommandDecline` | [`app_server/schemas/ui_automation.py`](../../../app_server/schemas/ui_automation.py) | `ui_automation_service.decline_command` |
 | `GET` | `/ui_automation/queue` | `get_ui_automation_queue` | `Request` | - | `ui_automation_service.queue_status` |
 <!-- AUTO-GEN:END -->
 

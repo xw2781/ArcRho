@@ -157,7 +157,24 @@ function waitForServerThenReload(timeoutMs = 15000) {
   setTimeout(attempt, 800);
 }
 
+// Other windows reusing this window's app server lose it during a restart, so ask first.
+async function confirmSharedServerRestart() {
+  let others = 0;
+  try { others = Number(await shell.getHostApi?.()?.getSharedWindowCount?.()) || 0; } catch {}
+  if (others <= 0) return true;
+  const windows = others === 1 ? "1 other Arco window uses" : `${others} other Arco windows use`;
+  return showAppConfirm({
+    title: "Restart",
+    message: `${windows} this app server and will be interrupted by the restart.`,
+    okText: "Restart",
+  });
+}
+
 export async function restartApplication() {
+  if (!(await confirmSharedServerRestart())) {
+    shell.updateStatusBar?.("Restart canceled.");
+    return;
+  }
   window.__appRestarting = true;
   shell.updateStatusBar?.("Preparing restart...");
   let restore = null;

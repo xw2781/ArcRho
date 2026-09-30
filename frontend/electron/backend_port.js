@@ -51,6 +51,17 @@ function decidePreferredPortListener({ port, health, sameProfile, livePorts = []
   return { action: "clear", reason: "no live Arco window is using it" };
 }
 
+// Decides whether a departing window stops the app server it uses. Only the other live windows of
+// the same app on the same port count; which window started the server does not matter.
+function decideBackendShutdownOnExit({ pid, port, mode, markers = [] }) {
+  const others = markers.filter((marker) => (
+    Number(marker.pid) !== Number(pid)
+    && Number(marker.port) === Number(port)
+    && (!marker.mode || marker.mode === mode)
+  )).length;
+  return { stop: others === 0, others };
+}
+
 function getAppEndpointPath({ appMode, env = process.env } = {}) {
   const appdata = String(env.APPDATA || "").trim()
     || path.join(os.homedir(), "AppData", "Roaming");
@@ -92,6 +103,7 @@ module.exports = {
   resolvePreferredBackendPort,
   findAvailableBackendPort,
   decidePreferredPortListener,
+  decideBackendShutdownOnExit,
   getAppEndpointPath,
   writeAppEndpointFile,
   removeAppEndpointFile,
