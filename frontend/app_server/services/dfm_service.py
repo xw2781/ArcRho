@@ -390,6 +390,13 @@ def _load_source_snapshot(
     else:
         column_count = max((len(row) for row in raw_values), default=0)
         method_development_labels = _axis_labels(canonical_development_labels)
+        if method_development_labels and len(method_development_labels) < column_count:
+            # A triangle is as wide as it has origins, so the columns past the
+            # valuation date are blank; only those may be dropped.
+            keep = len(method_development_labels)
+            if all(value is None for row in raw_values for value in row[keep:]):
+                raw_values = [row[:keep] for row in raw_values]
+                column_count = keep
         if method_development_labels:
             if len(method_development_labels) != column_count:
                 raise HTTPException(

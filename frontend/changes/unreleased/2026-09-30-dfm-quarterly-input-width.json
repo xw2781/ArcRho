@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "A quarterly or monthly DFM now refreshes when its Engine-generated input has blank columns past the valuation date, instead of being refused for incompatible development geometry.",
+  "details": [
+    "The blank padding the Engine adds to a triangle is ignored; a file with values past the method's development labels is still refused."
+  ]
+}

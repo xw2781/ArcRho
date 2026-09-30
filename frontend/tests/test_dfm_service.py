@@ -798,6 +798,35 @@ class DfmServiceTests(unittest.TestCase):
         self.assertEqual(second["origin_labels"], ["2022", "2023"])
         self.assertEqual(len(snapshot_cache), 2)
 
+    def test_blank_columns_past_the_valuation_date_do_not_break_the_input_width(self) -> None:
+        """A triangle is as wide as it has origins; the method's labels stop at the valuation."""
+
+        method = self.write_method_pair()
+        self.write_source(
+            "Paid",
+            "100,175,,\n200,,,\n",
+            data_format="Triangle",
+            dependents=["Development Output"],
+        )
+
+        result = dfm_service.refresh_dependents("Project", "Class", ["Paid"])
+
+        self.assertTrue(result["ok"], result)
+        saved = json.loads((self.methods / "DFM@Development.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved["data_tab"]["development_labels"], method["data_tab"]["development_labels"])
+
+        self.write_source(
+            "Paid",
+            "100,175,300\n200,,\n",
+            data_format="Triangle",
+            dependents=["Development Output"],
+        )
+
+        wider = dfm_service.refresh_dependents("Project", "Class", ["Paid"])
+
+        self.assertFalse(wider["ok"])
+        self.assertIn("incompatible development geometry", wider["errors"][0]["reason"])
+
     def test_missing_sidecar_labels_do_not_hide_row_or_period_mismatches(self) -> None:
         self.write_method_pair()
         method_path = self.methods / "DFM@Development.json"
