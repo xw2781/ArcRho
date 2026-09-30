@@ -12,7 +12,7 @@ index is a summary of those lines, not a second source of truth.
 
 | Plan | Status |
 | :--- | :--- |
-| [Client SMB retirement](client_smb_retirement.md) | Reopened 2026-09-29: six missed client paths fixed and tested; Bridge/Engine/Gateway/Credential deployed and verified. Desktop release and compatible macro publication remain pending. General Arcode editing retained by user decision. |
+| [Client SMB retirement](client_smb_retirement.md) | Desktop release, compatible macro publication, fresh-profile validation, installer address and config permissions remain. Completed implementation and server deployment are archived below. |
 | [fake_project_refresh.md](fake_project_refresh.md) | Investigated 2026-09-26: the Fake project's source table is a column-by-column perturbed extract (totals that do not add up, negative pending counts, prior-quarter inputs 100-900 times the results), and 61 BF and Cape Cod methods plus 119 sidecars fail the current contracts. Decided: fix on the local test root first, generate one new synthetic source that ResQ and Arco both import, repair formats in place. 11 steps estimated at 595 minutes; none started. |
 | [local_server_root_and_server_switcher.md](local_server_root_and_server_switcher.md) | Steps 1-5, 7 and 8 of 8 done 2026-09-26: a private test server runs on the developer PC at `C:\Arco Server` beside production, built from the working tree by `tools/local_server.py`, the app keeps a list of servers, each with its own sign-in, it refuses a Gateway that serves a different server from its folder, and a Server tab opened from Home lists the servers, switches between them, shows which of the server's components are running, and starts and stops a server whose folder is on this PC, and the title bar names the server whenever it is not production. The deploy is planned (8 steps, 470 minutes estimated); offline use for every user is a recorded direction with open decisions. |
 | [build_new_methods.md](build_new_methods.md) | All five ResQ methods built; the Bootstrap and Stochastic Consolidation pages reach users with the next app release. Also holds the ResQ API and sample-project reference notes agents rely on. |
@@ -27,6 +27,7 @@ index is a summary of those lines, not a second source of truth.
 
 | Plan | Landed |
 | :--- | :--- |
+| [Client SMB retirement implementation](completed/client_smb_retirement_implementation.md) | 2026-09-29 ? original implementation and six audit fixes tested; Bridge, Engine, Gateway and Credential deployed and verified. Remaining rollout and operational work stays in the active plan. |
 | [completed/custom_data_processing.md](completed/custom_data_processing.md) | 2026-07-16 — custom data processing rules and their Project Settings editor. |
 | [completed/engine_dependent_propagation_plan.md](completed/engine_dependent_propagation_plan.md) | 2026-08-06 — both phases of the Engine-hosted dependent propagation job. |
 | [completed/excel_addin_gateway_transport.md](completed/excel_addin_gateway_transport.md) | 2026-09-13 — the Excel add-in reaches project data only through the ArcRho Gateway: one signed HTTP call per formula in place of the shared drive, a per-recalculation cache, no coarser-view files left on the server, and a PC that installs its own server access the first time Excel opens. Released 2026-09-13 and checked against a real workbook. |
