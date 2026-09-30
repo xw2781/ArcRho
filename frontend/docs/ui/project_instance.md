@@ -2,13 +2,14 @@
 
 ## Purpose
 <!-- MANUAL:BEGIN -->
+- Help ? Open Dataset JSON File and Open Dataset Sidecar open a read-only Arcode preview loaded through the Gateway by project/class/file identity. These menu actions do not open or save a share path. General Arcode file editing remains available when a user explicitly opens a file.
 Project instance workspace for browsing one project's reserving-class paths and dataset types.
 Only manual/input datasets have editable values in the Dataset Viewer. Calculated, engine-generated, and method-output datasets allow display settings and notes to be saved while their grid and links remain read-only; formulas belong in Project Settings and derived values refresh through their inputs or methods. Normal table opens leave source-based editing eligibility to the shared Data tab. Temporary views alone set the window-wide read-only launch flag.
 <!-- MANUAL:END -->
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.project_instance.entry_points -->
-- `ui/project_instance/project_instance.html`: external scripts `/ui/project_instance/project_instance.js?v=20260927c`, `/ui/shared/services/color_theme.js?v=20260923c`; inline imports _none_.
+- `ui/project_instance/project_instance.html`: external scripts `/ui/project_instance/project_instance.js?v=20260929smb`, `/ui/shared/services/color_theme.js?v=20260923c`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `${GRAPH_ENDPOINT}?${query.toString()}`

@@ -71,6 +71,8 @@ An explicit ArcRho refresh fetches current results for its scope, including
 requests already saved. Formula entry that can use saved results needs no
 server access or credential enrollment. No sidecar or index schema changes.
 
+Client-side dataset grid reads never fall back to a CSV file read. An unknown process-local handle carries its workspace-relative CSV location to the Gateway, which confines it to the named project's data folder. Active DFM macro saves use the hosted DFM service; constructing the active draft does not read or stat a project file. This does not restrict files deliberately opened in general Arcode editing.
+
 ## Before Finishing
 
 1. State which business-logic area changed, or state "no business-logic impact."

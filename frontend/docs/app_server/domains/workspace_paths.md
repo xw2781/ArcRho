@@ -2,6 +2,7 @@
 
 ## Purpose
 <!-- MANUAL:BEGIN -->
+- Server profile creation and folder inspection treat the supplied folder as an alias, without requiring it or its projects directory to be mounted. Gateway health and Windows enrollment validate the connection; an empty folder is still refused. Startup does not resolve the project folder through the filesystem.
 Runtime workspace path read/update domain, and the server profiles: the servers this PC knows, which one is active, and each one's Gateway sign-in.
 <!-- MANUAL:END -->
 

@@ -2,15 +2,16 @@
 
 ## Purpose
 <!-- MANUAL:BEGIN -->
+- General file and notebook editing, including explicitly opened server paths, remains enabled by the user's September 29 decision. Project Instance Help previews are separate read-only sources loaded through HTTP. Active DFM macros are constructed from the page's draft without a share read; their explicit save() uses the hosted DFM save, and their notes and project settings reads use the Gateway.
 Canonical Arcode workspace for opening notebooks and code files in a dedicated tabbed coding app.
 ArcRho embeds the Arcode launch path, and the same source can be packaged as the standalone Arcode product.
 <!-- MANUAL:END -->
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.arcode.entry_points -->
-- `ui/arcode/main.html`: external scripts `/ui/arcode/main.js?v=20260927smb24`, `/ui/shared/services/color_theme.js?v=20260923c`; inline imports _none_.
+- `ui/arcode/main.html`: external scripts `/ui/arcode/main.js?v=20260929smb`, `/ui/shared/services/color_theme.js?v=20260923c`; inline imports _none_.
 - `ui/arcode/notebook-editor/index.html`: external scripts `/ui/arcode/notebook-editor/cells.js?v=20260726a`, `/ui/arcode/notebook-editor/core.js?v=20260816b`, `/ui/arcode/notebook-editor/execution.js?v=20260620a`, `/ui/arcode/notebook-editor/index.js?v=20260927a`, `/ui/arcode/notebook-editor/notebook-io.js?v=20260927a`, `/ui/arcode/notebook-editor/panels.js?v=20260620a`, `/ui/arcode/notebook-editor/shortcuts.js?v=20260620a`, `/ui/arcode/shared/editor_shared.js?v=20260620a`, `/ui/arcode/shared/zoom_bridge.js?v=20260614a`, `/ui/libs/monaco-editor/min/vs/loader.js`, `/ui/shared/services/color_theme.js?v=20260923c`; inline imports _none_.
-- `ui/arcode/code-editor/index.html`: external scripts `/ui/arcode/code-editor/index.js?v=20260927b`, `/ui/arcode/shared/editor_shared.js?v=20260620a`, `/ui/arcode/shared/zoom_bridge.js?v=20260614a`, `/ui/libs/monaco-editor/min/vs/loader.js`, `/ui/shared/services/color_theme.js?v=20260923c`; inline imports _none_.
+- `ui/arcode/code-editor/index.html`: external scripts `/ui/arcode/code-editor/index.js?v=20260929smb`, `/ui/arcode/shared/editor_shared.js?v=20260620a`, `/ui/arcode/shared/zoom_bridge.js?v=20260614a`, `/ui/libs/monaco-editor/min/vs/loader.js`, `/ui/shared/services/color_theme.js?v=20260923c`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `${window.location.origin}${path}`

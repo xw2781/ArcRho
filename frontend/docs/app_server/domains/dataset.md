@@ -23,7 +23,7 @@ See [`server-components/docs/dataset-scenarios.md`](../../../../server-component
 | `POST` | `/dataset/sidecar/load` | `load_dataset_sidecar` | `DatasetSidecarLoadRequest` | [`app_server/schemas/dataset.py`](../../../app_server/schemas/dataset.py) | `dataset_service.load_dataset_sidecar`, `workspace_read_client.run_workspace_read` |
 | `POST` | `/dataset/sidecar/save` | `save_dataset_sidecar` | `DatasetSidecarSaveRequest` | [`app_server/schemas/dataset.py`](../../../app_server/schemas/dataset.py) | `engine_hosted_save_service.run_hosted_save` |
 | `POST` | `/dataset/sidecar/save/plan` | `plan_dataset_sidecar_save` | `DatasetSidecarSaveRequest` | [`app_server/schemas/dataset.py`](../../../app_server/schemas/dataset.py) | `engine_hosted_save_service.run_hosted_save_plan` |
-| `GET` | `/dataset/{ds_id}` | `get_dataset` | `str` | - | `dataset_service.get_dataset`, `workspace_read_client.run_workspace_read` |
+| `GET` | `/dataset/{ds_id}` | `get_dataset` | `str` | - | `dataset_service.dataset_grid_read_arguments`, `dataset_service.get_dataset`, `workspace_read_client.run_workspace_read` |
 | `GET` | `/datasets/cached` | `list_cached_dataset_names` | `str` | - | `dataset_service.list_cached_dataset_names`, `workspace_read_client.run_workspace_read` |
 | `POST` | `/datasets/cached/delete` | `delete_cached_datasets` | `CachedDatasetDeleteRequest` | [`app_server/schemas/dataset.py`](../../../app_server/schemas/dataset.py) | `dataset_service.delete_cached_datasets`, `workspace_mutation_client.run_workspace_mutation` |
 | `POST` | `/datasets/cached/empty` | `create_empty_cached_dataset` | `EmptyDatasetCacheCreateRequest` | [`app_server/schemas/dataset.py`](../../../app_server/schemas/dataset.py) | `engine_hosted_save_service.run_hosted_save` |
@@ -31,6 +31,7 @@ See [`server-components/docs/dataset-scenarios.md`](../../../../server-component
 | `GET` | `/datasets/dependency-graph` | `get_dataset_dependency_graph` | `str` | - | `dataset_dependency_graph_service.build_reserving_class_dependency_graph`, `workspace_read_client.run_workspace_read` |
 | `POST` | `/datasets/review-status` | `set_dataset_review_status` | `DatasetReviewStatusRequest` | [`app_server/schemas/dataset.py`](../../../app_server/schemas/dataset.py) | `dataset_service.set_dataset_review_status`, `workspace_mutation_client.run_workspace_mutation` |
 | `GET` | `/datasets/triangle-shape` | `get_triangle_grid_shape` | `str` | - | `dataset_service.triangle_grid_shape`, `workspace_read_client.run_workspace_read` |
+| `GET` | `/project-instance/json` | `get_project_json` | `str` | - | `workspace_read_client.run_workspace_read` |
 <!-- AUTO-GEN:END -->
 
 ## Key Files
