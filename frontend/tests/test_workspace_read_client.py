@@ -175,7 +175,7 @@ class RouteWiringTests(unittest.TestCase):
         self.assertEqual(capture.calls[0][1]["dataset_name"], "Paid")
         self._assert_registered(capture)
 
-    def test_dataset_grid_load_is_hosted_and_unknown_handle_resolves_locally(self) -> None:
+    def test_dataset_grid_load_is_hosted_and_unknown_handle_never_reads_locally(self) -> None:
         capture = _CaptureRead({"ok": True, "id": "arcrhotri_x", "values": [[1.0]]}, remote=True)
         with (
             patch.object(dataset_router.workspace_read_client, "run_workspace_read", capture),
@@ -187,15 +187,16 @@ class RouteWiringTests(unittest.TestCase):
         self.assertEqual(capture.calls[0][1], {"ds_id": "arcrhotri_x", "project_name": "Demo", "origin_length": 6})
         self._assert_registered(capture)
 
-        # The gateway did not know the handle: an answer without a dataset id
-        # means "resolve here", not 404.
+        # An unknown remote handle never causes a client-side file read.
         unknown = _CaptureRead({"ok": True, "response": None}, remote=True)
         with (
             patch.object(dataset_router.workspace_read_client, "run_workspace_read", unknown),
             patch.object(dataset_router.dataset_service, "get_dataset", return_value={"id": "arcrhotri_x", "via": "local"}) as service,
         ):
-            self.assertEqual(dataset_router.get_dataset("arcrhotri_x", "Demo", 6)["via"], "local")
-        service.assert_called_once_with("arcrhotri_x", project_name="Demo", origin_length=6)
+            with self.assertRaises(HTTPException) as caught:
+                dataset_router.get_dataset("arcrhotri_x", "Demo", 6)
+            self.assertEqual(caught.exception.status_code, 404)
+        service.assert_not_called()
         with (
             patch.object(dataset_router.workspace_read_client, "run_workspace_read", _CaptureRead()),
             patch.object(dataset_router.dataset_service, "get_dataset", return_value=None),

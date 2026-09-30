@@ -41,6 +41,21 @@ function dfmMethodSource(param) {
   };
 }
 
+function projectJsonSource(param) {
+  if (!param) return null;
+  const identity = JSON.parse(param);
+  return {
+    name: identity.filename,
+    note: "Loaded from the server. Make changes in the dataset or method page.",
+    load: async () => {
+      const response = await shared.scriptingFetch(`/project-instance/json?${new URLSearchParams(identity)}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "Could not load project JSON.");
+      return shared.getHostApi().formatPersistedJsonText({ data: payload.data });
+    },
+  };
+}
+
 const TEXT_FILE_FILTERS = [
   { name: "Code and Text Files", extensions: ["py", "r", "sql", "js", "ts", "json", "md", "txt", "css", "html"] },
   { name: "All Files", extensions: ["*"] },
@@ -196,7 +211,8 @@ page = createEditorPage({
   panelTitle: "Output",
   suggestedFileName: "script.py",
   fileFilters: TEXT_FILE_FILTERS,
-  readOnlySource: dfmMethodSource(new URLSearchParams(window.location.search).get("dfm")),
+  readOnlySource: dfmMethodSource(new URLSearchParams(window.location.search).get("dfm"))
+    || projectJsonSource(new URLSearchParams(window.location.search).get("projectJson")),
   restart: {
     label: "Restart",
     title: "Restart the Python session",

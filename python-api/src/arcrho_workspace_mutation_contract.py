@@ -249,6 +249,10 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
     # request names this project, class and id, stamps the signed user, and
     # writes it into the import queue. Idempotent by request id, like the sync
     # publish.
+    "resq_review_request_publish": WorkspaceMutationKind(
+        "resq_import_queue_service", "publish_resq_review_request",
+        ("project_name", "reserving_class", "request_id", "request"),
+    ),
     "resq_import_request_publish": WorkspaceMutationKind(
         "resq_import_queue_service",
         "publish_resq_import_request",

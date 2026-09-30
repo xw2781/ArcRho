@@ -16,7 +16,6 @@ import json
 import os
 import re
 import sys
-import tempfile
 import threading
 import time as py_time
 import traceback
@@ -450,13 +449,6 @@ def save_task_wrapper_macro(
     }
 
 
-def _runtime_active_dfm_path() -> str:
-    runtime_dir = os.path.join(tempfile.gettempdir(), "ArcRho", "macro_runtime")
-    os.makedirs(runtime_dir, exist_ok=True)
-    name = f"active-dfm-{os.getpid()}-{threading.get_ident()}-{py_time.time_ns()}.json"
-    return os.path.join(runtime_dir, name)
-
-
 def _decode_filename_segment(value: str) -> str:
     def repl(match: re.Match[str]) -> str:
         try:
@@ -517,7 +509,7 @@ def _restamp_active_dfm_revisions(active_json: Dict[str, Any]) -> Dict[str, Any]
 
 def _build_active_dfm(active_context: Dict[str, Any]):
     _ensure_arcrho_api_import_path()
-    from arcrho_api import ArcRhoClient, DfmMethod
+    from app_server.services.macro_dfm_service import build_macro_dfm
 
     active_json = active_context.get("activeJson")
     if not isinstance(active_json, dict):
@@ -548,31 +540,9 @@ def _build_active_dfm(active_context: Dict[str, Any]):
     reserving_class = reserving_class or inferred.get("reserving_class", "")
     method_name = method_name or inferred.get("method_name", "")
 
-    dfm = None
-    if project_name and reserving_class and method_name:
-        try:
-            dfm = ArcRhoClient(config.get_root_path()).project(project_name).reserving_class(reserving_class).dfm(method_name)
-        except Exception:
-            dfm = None
-    if dfm is not None:
-        dfm.payload = active_json
-        dfm._ensure_grouped_payload()
-        if method_path:
-            dfm.file_path = Path(method_path)
-        return _seed_active_dfm_notes(dfm, ui_method_notes)
-
-    temp_path = _runtime_active_dfm_path()
-    with open(temp_path, "w", encoding="utf-8") as f:
-        json.dump(active_json, f, indent=2, ensure_ascii=False)
-    dfm = DfmMethod.load_file(temp_path)
-    if project_name:
-        dfm.project_name = project_name
-    if reserving_class:
-        dfm.reserving_class = reserving_class
-    if method_name:
-        dfm.name = method_name
-    if method_path:
-        dfm.file_path = Path(method_path)
+    dfm = build_macro_dfm(
+        active_json, project_name, reserving_class, method_name, method_path,
+    )
     return _seed_active_dfm_notes(dfm, ui_method_notes)
 
 

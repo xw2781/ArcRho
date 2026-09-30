@@ -45,22 +45,31 @@ def publish_resq_import_request(
     request_id: str,
     request: Mapping[str, Any],
 ) -> Dict[str, Any]:
+    return _publish_request("import", project_name, reserving_class, request_id, request)
+
+
+def publish_resq_review_request(project_name: str, reserving_class: str, request_id: str, request: Mapping[str, Any]) -> Dict[str, Any]:
+    return _publish_request("sync", project_name, reserving_class, request_id, request)
+
+
+def _publish_request(queue: str, project_name: str, reserving_class: str, request_id: str, request: Mapping[str, Any]) -> Dict[str, Any]:
     try:
         identifier = validate_request_id(request_id)
     except ProjectDuplicationContractError as error:
         raise HTTPException(400, str(error)) from error
     if not isinstance(request, Mapping):
-        raise HTTPException(400, "The import request must be a JSON object.")
+        raise HTTPException(400, "The Bridge request must be a JSON object.")
     expected = {"RequestId": identifier, "ProjectName": project_name, "Path": reserving_class}
     mismatched = [name for name, value in expected.items() if str(request.get(name) or "") != value]
     if mismatched:
-        raise HTTPException(400, f"The import request does not match its {', '.join(mismatched)}.")
+        raise HTTPException(400, f"The Bridge request does not match its {', '.join(mismatched)}.")
     # The request names the person who asked, not the Gateway's profile.
     payload = {**dict(request), "UserName": user_identity_service.get_windows_login_name()}
 
     root = Path(config.get_root_path())
-    request_path = root / REQUEST_RELATIVE_DIR / f"{identifier}.json"
-    status_path = root / STATUS_RELATIVE_DIR / f"{identifier}.json"
+    status_dir = QUEUE_STATUS_DIRS[queue]
+    request_path = root / status_dir.with_name("requests") / f"{identifier}.json"
+    status_path = root / status_dir / f"{identifier}.json"
     if request_path.exists() or status_path.exists():
         return {"ok": True, "request_id": identifier, "resumed": True}
     temp_path = request_path.with_name(f".{identifier}.tmp")

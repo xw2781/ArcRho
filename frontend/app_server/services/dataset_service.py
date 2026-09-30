@@ -1435,8 +1435,48 @@ def _rolled_up_dataset(ds_id: str) -> Tuple[pd.DataFrame, float] | None:
     return pd.DataFrame(values, dtype="float64"), os.stat(source_path).st_mtime
 
 
-def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, Any] | None:
+def dataset_grid_read_arguments(ds_id: str, project_name: str, origin_length: int) -> Dict[str, Any]:
+    """Describe a handle without opening its client-side path."""
+    arguments = {"ds_id": ds_id, "project_name": project_name, "origin_length": origin_length}
     path = config.DATASETS.get(ds_id)
+    if path:
+        arguments["dataset_path"] = os.path.relpath(path, config.get_root_path())
+    return arguments
+
+
+def get_dataset(
+    ds_id: str, project_name: str, origin_length: int, dataset_path: str = "",
+) -> Dict[str, Any] | None:
+    path = config.DATASETS.get(ds_id)
+    if dataset_path:
+        # Resolve and check on the server, including symlinks. The wire path
+        # may name only a CSV inside this project's data folder.
+        from pathlib import Path
+
+        if Path(dataset_path).is_absolute():
+            raise HTTPException(400, "Dataset location must be relative to the workspace.")
+        data_root = Path(config.get_project_data_dir(project_name)).resolve()
+        candidate = (Path(config.get_root_path()) / dataset_path).resolve()
+        if candidate.suffix.lower() != ".csv" or not candidate.is_relative_to(data_root):
+            raise HTTPException(400, "Dataset must be a CSV inside the project's data folder.")
+        path = str(candidate)
+        lengths = _parse_length_scoped_cache_name(candidate.name)
+        if lengths and candidate.parent.name == config.DATASET_CACHE_DIR and candidate.parent.parent.parent == data_root:
+            # A coarser manual view has a handle but no CSV of its own. Resolve
+            # its logical identity through the cached loader, which rebuilds
+            # the view from the current publication even after a restart.
+            from arcrho_api.paths import decode_file_name_part
+
+            suffix_count = 4 if "cumulative" in lengths else 1
+            dataset_name = decode_file_name_part(candidate.stem.rsplit("@", suffix_count)[0])
+            reserving_class = config.decode_filename_segment(candidate.parent.parent.name)
+            result = load_cached_dataset_values(
+                project_name, reserving_class, dataset_name,
+                csv_file=candidate.name if candidate.is_file() else "",
+                at_lengths=(lengths["origin_length"], lengths["development_length"]),
+                cumulative=lengths.get("cumulative", True), calendar=lengths.get("calendar", False),
+            )
+            return {**{key: result.get(key) for key in ("origin_labels", "dev_labels", "values", "mask", "mtime")}, "id": ds_id}
     if not path:
         return None
     rolled_up = _rolled_up_dataset(ds_id)

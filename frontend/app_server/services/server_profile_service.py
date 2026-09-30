@@ -124,10 +124,11 @@ def inspect_server_folder(root: str) -> Dict[str, Any]:
     Gateway registry is server-only and never read here.
     """
 
-    try:
-        folder = api_config.validate_server_root(root.strip())
-    except InvalidArcRhoServerError as exc:
-        raise HTTPException(400, str(exc)) from exc
+    if not root.strip():
+        raise HTTPException(400, "A server folder is required.")
+    # Inspect the supplied alias lexically. Enrollment validates the Gateway,
+    # and a client need not have this folder mounted.
+    folder = Path(root.strip())
     return {
         "ok": True,
         "root": str(folder),

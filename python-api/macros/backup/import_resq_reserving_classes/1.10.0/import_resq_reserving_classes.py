@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Import ResQ Reserving Classes
-# Version: 1.10.1
-# Release Note: Read existing reserving classes through the server connection instead of the shared drive.
+# Version: 1.10.0
+# Release Note: Every message, dialog title and review-table label now reads "Arco" instead of the old product name.
 # Description: Offer the fixed list of default reserving classes in a review table, all preselected, with an Overwrite checkbox in the same window, then import each accepted class from ResQ through the ArcRho Bridge one at a time, copying the class to a dated backup folder first, creating the ArcRho folder for any class the project does not hold yet, with batch progress and a final summary.
 # Scope: Project
 # Icon: layers
@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ from arcrho_api.resq_import_backup import IMPORT_BACKUP_RELATIVE_DIR
 
 TITLE = "Import ResQ Reserving Classes"
 REVIEW_POLL_SECONDS = 0.5
+INDEX_FILE_NAME = "index.json"
 MAX_REPORTED_FAILURES = 12
 OVERWRITE_OPTION_KEY = "overwrite"
 NEW_CLASS_LABEL = "New"
@@ -95,10 +97,53 @@ def _report_macro_activity() -> None:
         activity_reporter()
 
 
-def _existing_class_counts(server_root, project_name: str) -> dict[str, int | None]:
-    from arcrho_api.gateway import GatewayClient
+def _read_json(path: Path) -> dict[str, Any] | None:
+    try:
+        with path.open("r", encoding="utf-8-sig") as stream:
+            payload = json.load(stream)
+    except (FileNotFoundError, PermissionError, OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
-    return GatewayClient().read("resq_class_inventory", project_name=project_name)
+
+def _existing_class_counts(server_root, project_name: str) -> dict[str, int | None]:
+    """Casefolded class path -> indexed item count for every class folder held.
+
+    The folder name is an encoded form of the class path, so the canonical
+    spelling comes from each class's own ``index.json`` when it has one and is
+    only decoded from the folder name when it does not — the same rule the
+    Engine's source-refresh job applies when it enumerates a project. The
+    lookup only tells a listed class that already exists from one that is new;
+    classes outside the fixed list are never offered.
+    """
+
+    from arcrho_api.dataset_index_contract import decode_filename_segment
+
+    data_dir = Path(server_root) / "projects" / str(project_name) / "data"
+    try:
+        entries = [entry for entry in data_dir.iterdir() if entry.is_dir()]
+    except FileNotFoundError:
+        return {}
+
+    counts: dict[str, int | None] = {}
+    for entry in entries:
+        if entry.name.startswith("."):
+            continue
+        index_payload = _read_json(entry / INDEX_FILE_NAME)
+        name = ""
+        dataset_count = None
+        if index_payload is not None:
+            name = str(index_payload.get("reserving_class") or "").strip()
+            files = index_payload.get("files")
+            if isinstance(files, list):
+                dataset_count = len(files)
+        if not name:
+            name = decode_filename_segment(entry.name).strip()
+        key = name.casefold()
+        if not name or key in counts:
+            continue
+        counts[key] = dataset_count
+    return counts
 
 
 def fixed_reserving_classes(server_root, project_name: str) -> list[dict[str, Any]]:

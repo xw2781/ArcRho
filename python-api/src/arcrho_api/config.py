@@ -279,7 +279,9 @@ def upsert_server_profile(
     profile_id = (profile_id.strip() or profile_id_for(name)).lower()
     if not PROFILE_ID_PATTERN.match(profile_id):
         raise ValueError("A server profile id uses letters, digits, '_' or '-' only.")
-    validate_server_root(root)
+    if not root.strip():
+        raise ValueError("A server folder is required.")
+    # A client records the folder as an alias; only the server opens it.
     profile = {"id": profile_id, "name": name.strip() or profile_id, "root": root.strip()}
     if gateway_config.strip():
         profile["gateway_config"] = gateway_config.strip()

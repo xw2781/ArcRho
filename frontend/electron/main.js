@@ -997,6 +997,7 @@ function buildArcodeUrl(options = {}) {
   if (theme) params.set("theme", theme);
   const openPath = String(options.path || options.openPath || "").trim();
   if (openPath) params.set("path", openPath);
+  if (options.projectJson) params.set("projectJson", JSON.stringify(options.projectJson));
   if (options.dfmMethod) params.set("dfm", JSON.stringify(options.dfmMethod));
   if (options.fresh) params.set("fresh", "1");
   return `http://${HOST}:${getBackendPort()}/ui/arcode/main.html?${params.toString()}`;
@@ -1099,8 +1100,8 @@ function createArcodeWindow(options = {}) {
     if (arcodeWin.isMinimized()) arcodeWin.restore();
     arcodeWin.show();
     arcodeWin.focus();
-    if (openPath || options.dfmMethod) {
-      arcodeWin.webContents.send("arcode:open-file", { path: openPath, dfmMethod: options.dfmMethod || null });
+    if (openPath || options.dfmMethod || options.projectJson) {
+      arcodeWin.webContents.send("arcode:open-file", { path: openPath, dfmMethod: options.dfmMethod || null, projectJson: options.projectJson || null });
     }
     return arcodeWin;
   }
@@ -1379,6 +1380,10 @@ ipcMain.handle("open-path", async (_event, payload) => {
     || String(payload?.openMode || payload?.open_mode || "").trim().toLowerCase() === "read-only";
   // "Open DFM JSON" names a method, not a file: Arcode loads it through the
   // hosted DFM load and shows it read only, so nothing here touches the share.
+  if (preferredApp === "arcode" && payload?.projectJson) {
+    createArcodeWindow({ projectJson: payload.projectJson });
+    return { ok: true, opener: "arcode" };
+  }
   if (preferredApp === "arcode" && payload?.dfmMethod) {
     createArcodeWindow({ dfmMethod: payload.dfmMethod });
     return { ok: true, opener: "arcode" };

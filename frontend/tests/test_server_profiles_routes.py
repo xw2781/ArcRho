@@ -200,12 +200,15 @@ class ServerProfileRouteTests(unittest.TestCase):
         self.assertEqual(opened, [("http://127.0.0.1:28767/api/health", client.GATEWAY_HEALTH_TIMEOUT_SECONDS)])
 
     def test_inspecting_a_folder_names_it_without_reading_its_registry(self) -> None:
-        found = router.inspect_server_folder(root=str(self.local))
+        with patch.object(Path, "exists", side_effect=AssertionError("No share access")), patch.object(
+            Path, "resolve", side_effect=AssertionError("No path resolution on the share")
+        ):
+            found = router.inspect_server_folder(root=str(self.local))
 
         self.assertEqual(found, {"ok": True, "root": str(self.local.resolve()), "name": "local"})
 
         with self.assertRaises(HTTPException) as caught:
-            router.inspect_server_folder(root=str(self.settings))
+            router.inspect_server_folder(root="")
         self.assertEqual(caught.exception.status_code, 400)
 
     def test_the_server_connection_save_keeps_the_address_and_reports_the_sign_up(self) -> None:

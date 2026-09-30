@@ -1,0 +1,11 @@
+{
+  "type": "fix",
+  "scope": "server connection",
+  "audience": "user",
+  "summary": "More project actions work without access to the shared drive.",
+  "details": [
+    "Project Instance JSON previews load read only from the server; ordinary Arcode editing is unchanged.",
+    "Active DFM macros save through the server, and dataset loads recover their location after a server restart.",
+    "Adding a server no longer requires its shared folder to be accessible."
+  ]
+}

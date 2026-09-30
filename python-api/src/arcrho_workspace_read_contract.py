@@ -71,6 +71,13 @@ class WorkspaceReadKind:
 # table; a request naming anything else, or passing an argument not listed
 # here, is rejected before any import happens.
 WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
+    "resq_class_inventory": WorkspaceReadKind(
+        "resq_class_inventory_service", "existing_class_counts", ("project_name",),
+    ),
+    "project_instance_json": WorkspaceReadKind(
+        "project_json_service", "read_project_json",
+        ("project_name", "reserving_class", "folder", "filename"),
+    ),
     "propagation_preflight": WorkspaceReadKind(
         "dependent_propagation_service", "check_propagation_preflight",
         ("scope",), ("project_name", "reserving_class"),
@@ -103,15 +110,11 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "triangle_grid_shape",
         ("project_name", "origin_length", "development_length"),
     ),
-    # The id-addressed grid load that follows a dataset run. ``ds_id`` is a
-    # per-process handle; the server resolves it only if it registered the
-    # handle itself (a hosted run or cached load in the same Gateway
-    # process) and otherwise answers with no dataset, which the client treats
-    # as "resolve locally".
+    # Handles are process-local. A client also sends the workspace-relative
+    # CSV location so a restarted Gateway can resolve a hosted run's result.
     "dataset_grid_load": WorkspaceReadKind(
-        "dataset_service",
-        "get_dataset",
-        ("ds_id", "project_name", "origin_length"),
+        "dataset_service", "get_dataset",
+        ("ds_id", "project_name", "origin_length"), ("dataset_path",),
     ),
     "dfm_method_load": WorkspaceReadKind(
         "dfm_service",

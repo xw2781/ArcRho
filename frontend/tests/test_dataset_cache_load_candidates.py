@@ -413,6 +413,23 @@ class DatasetCacheLoadDisplayShapeTests(unittest.TestCase):
             **kwargs,
         )
 
+    def test_a_remote_grid_handle_rebuilds_its_unwritten_view_after_gateway_restart(self) -> None:
+        opened = self._load(at_display_shape=True)
+        config.DATASETS.clear()
+        config.DATASET_ROLLUPS.clear()
+        # This fixture stores one class directly under its temporary root.
+        # The root's parent stands in for the project's data folder here.
+        data_root = self.cache_dir.parent.parent
+        relative = str(Path(opened["path"]).relative_to(data_root))
+        with (
+            patch.object(config, "get_root_path", return_value=str(data_root)),
+            patch.object(config, "get_project_data_dir", return_value=str(data_root)),
+        ):
+            loaded = dataset_service.get_dataset(opened["id"], "Example Project", 12, relative)
+        self.assertEqual(loaded["values"], opened["values"])
+        self.assertEqual(loaded["id"], opened["id"])
+        self.assertFalse(Path(opened["path"]).exists())
+
     def test_the_window_opens_at_the_display_shape_over_the_stored_file(self) -> None:
         result = self._load(at_display_shape=True)
 

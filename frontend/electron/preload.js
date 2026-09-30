@@ -205,7 +205,7 @@ ipcRenderer.on("arcode:zoom", (_event, payload) => {
 
 ipcRenderer.on("arcode:open-file", (_event, payload) => {
   try {
-    window.postMessage({ type: "arcode:open-file", path: payload?.path || "", dfmMethod: payload?.dfmMethod || null }, "*");
+    window.postMessage({ type: "arcode:open-file", path: payload?.path || "", dfmMethod: payload?.dfmMethod || null, projectJson: payload?.projectJson || null }, "*");
   } catch {
     // ignore
   }

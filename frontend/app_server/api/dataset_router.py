@@ -181,19 +181,11 @@ def get_dataset(ds_id: str, project_name: str, origin_length: int) -> Dict[str, 
     def load_locally() -> Dict[str, Any] | None:
         return dataset_service.get_dataset(ds_id, project_name=project_name, origin_length=origin_length)
 
-    # The dataset handle is per process: the Gateway resolves it only when it
-    # registered the id itself (a hosted dataset run or cached load in that
-    # process). An answer without a dataset therefore means "not known
-    # there", not "unknown", and this process — which registered the same id
-    # from the rebased response — resolves it locally.
+    kwargs = dataset_service.dataset_grid_read_arguments(ds_id, project_name, origin_length)
     result = workspace_read_client.run_workspace_read(
-        "dataset_grid_load",
-        {"ds_id": ds_id, "project_name": project_name, "origin_length": origin_length},
-        local=load_locally,
+        "dataset_grid_load", kwargs, local=load_locally,
     )
-    if isinstance(result, dict) and result.get("id") is None:
-        result = load_locally()
-    if result is None:
+    if not isinstance(result, dict) or result.get("id") is None:
         raise HTTPException(404, f"Unknown dataset: {ds_id}")
     return result
 
@@ -363,4 +355,14 @@ def save_dataset_sidecar(req: DatasetSidecarSaveRequest) -> Dict[str, Any]:
         req.reserving_class,
         plan_fingerprint=req.plan_fingerprint,
         **_dataset_sidecar_save_call(req),
+    )
+
+
+@router.get("/project-instance/json")
+def get_project_json(project_name: str, reserving_class: str, folder: str, filename: str) -> Dict[str, Any]:
+    from app_server.services.project_json_service import read_project_json
+
+    kwargs = dict(project_name=project_name, reserving_class=reserving_class, folder=folder, filename=filename)
+    return workspace_read_client.run_workspace_read(
+        "project_instance_json", kwargs, local=lambda: read_project_json(**kwargs),
     )

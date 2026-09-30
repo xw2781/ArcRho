@@ -213,9 +213,7 @@ def run_macro(active_dfm, active_context=None):
         # payload still carries the revision stamps of the last save.
         dirty["ratios_tab"]["average_formulas"]["inputs"][0][0] = formula
 
-        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir, patch.object(
-            scripting_macro_service.tempfile, "gettempdir", return_value=temp_dir
-        ):
+        with patch("arcrho_api.ArcRhoClient", side_effect=AssertionError("Must not open the share")):
             dfm = scripting_macro_service._build_active_dfm({"activeJson": dirty, "fields": {}})
 
         self.assertEqual(dfm.average_formulas["inputs"][0][0], formula)
@@ -223,9 +221,7 @@ def run_macro(active_dfm, active_context=None):
         # The UI stamps its live Notes tab text on the transient carrier so the
         # macro reads the dirty notes instead of the persisted sidecar.
         dirty.setdefault("method_metadata", {})["method_notes"] = "Unsaved UI note"
-        with tempfile.TemporaryDirectory(dir=TEST_TEMP_ROOT) as temp_dir, patch.object(
-            scripting_macro_service.tempfile, "gettempdir", return_value=temp_dir
-        ):
+        with patch("arcrho_api.ArcRhoClient", side_effect=AssertionError("Must not open the share")):
             seeded_dfm = scripting_macro_service._build_active_dfm({"activeJson": dirty, "fields": {}})
 
         self.assertEqual(seeded_dfm.notes, "Unsaved UI note")

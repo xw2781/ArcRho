@@ -300,7 +300,7 @@ def refresh_runtime_paths() -> None:
     MACRO_LIBRARY_DIR = _get_macro_library_dir()
     DATA_DIR = SCRIPTING_DIR
     ALLOWED_BOOK_DIRS = [
-        Path(PROJECT_SETTINGS_DIR).resolve(),
+        Path(os.path.abspath(PROJECT_SETTINGS_DIR)),
     ]
     REQUEST_DIR = _get_requests_dir()
 

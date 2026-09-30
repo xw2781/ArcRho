@@ -303,7 +303,7 @@ function joinWindowsPath(...parts) {
 
 function requestShellOpenPath(targetPath, options = {}) {
   const path = toText(targetPath);
-  if (!path) return Promise.resolve({ ok: false, error: "Empty path." });
+  if (!path && !options.projectJson) return Promise.resolve({ ok: false, error: "Empty path." });
   const requestId = `pi_reveal_path_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const preferredApp = toText(options.preferredApp);
   return new Promise((resolve) => {
@@ -322,7 +322,7 @@ function requestShellOpenPath(targetPath, options = {}) {
     window.addEventListener("message", onMessage);
     window.setTimeout(() => finish({ ok: false, error: "Timed out opening path." }), 6000);
     try {
-      window.parent?.postMessage({ type: "arcrho:open-path", requestId, path, preferredApp }, "*");
+      window.parent?.postMessage({ type: "arcrho:open-path", requestId, path, preferredApp, projectJson: options.projectJson }, "*");
     } catch (err) {
       finish({ ok: false, error: toText(err?.message) || "Failed to send open-path request." });
     }
@@ -402,7 +402,14 @@ async function openActiveDatasetRelatedFile(fileKind) {
 
   const label = fileKind === "sidecar" ? "dataset sidecar" : "dataset JSON file";
   setStatus(`Opening ${label}...`);
-  const result = await requestShellOpenPath(targetPath, { preferredApp: "arcode" });
+  const result = await requestShellOpenPath("", {
+    preferredApp: "arcode",
+    projectJson: {
+      project_name: projectName, reserving_class: windowPath,
+      folder: fileKind === "sidecar" ? "sidecars" : "methods",
+      filename: targetPath.split(/[\\/]/).pop(),
+    },
+  });
   if (result?.ok) {
     setStatus(`Opened ${label}: ${targetPath}`);
     return true;

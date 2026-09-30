@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Review Reserving Class against ResQ
-# Version: 1.2.0
-# Release Note: Submit the review through the server connection without writing to the shared drive.
+# Version: 1.1.0
+# Release Note: Compare the Method Notes on every DFM as well, line by line, on their own sheet beside the datasets and Result Selections.
 # Description: Lay the Arco values and the live ResQ values of the reserving class selected in the active Project Instance page side by side in one Excel workbook: every plain triangle and vector, every Result Selection with its Selected Ultimate, the Method Notes on every DFM, and a difference grid beside each pair. The Summary sheet links straight to whatever disagrees, and the workbook opens when the review finishes. Nothing is written back to Arco or ResQ.
 # Scope: Reserving Class
 # Icon: table
@@ -32,6 +32,7 @@ nothing collides.
 from __future__ import annotations
 
 import getpass
+import json
 import os
 import time
 import traceback
@@ -171,17 +172,25 @@ def publish_review_request(
     request_id: str,
     payload: dict[str, Any],
 ) -> Path:
-    """Submit through the Gateway; a refusal never writes the share."""
-    from arcrho_api.gateway import GatewayClient
+    """Atomically publish a Bridge request after the hard availability preflight."""
 
+    request_path, _ = _request_paths(server_root, request_id)
+    temp_path = request_path.with_name(f".{request_id}.tmp")
     try:
-        GatewayClient().mutate(
-            "resq_review_request_publish", project_name=payload["ProjectName"],
-            reserving_class=payload["Path"], request_id=request_id, request=payload,
-        )
+        request_path.parent.mkdir(parents=True, exist_ok=True)
+        with temp_path.open("x", encoding="utf-8") as stream:
+            json.dump(payload, stream, indent=2)
+            stream.write("\n")
+        os.replace(temp_path, request_path)
     except Exception as exc:
-        raise BridgeRequestError(f"Could not submit Arco Bridge request [{request_id}]: {exc}") from exc
-    return _request_paths(server_root, request_id)[0]
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
+        raise BridgeRequestError(
+            f"Could not publish Arco Bridge request [{request_id}]: {exc}"
+        ) from exc
+    return request_path
 
 
 def _observe(server_root: object, request_id: str = "") -> dict[str, Any] | None:

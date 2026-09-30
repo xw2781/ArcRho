@@ -431,13 +431,14 @@ export function initShellMessages() {
       const preferredApp = String(msg.preferredApp || "").trim();
       const readOnly = !!msg.readOnly;
       const dfmMethod = msg.dfmMethod || null;
+      const projectJson = msg.projectJson || null;
       const source = e?.source;
       const reply = (payload) => { if (requestId && source?.postMessage) { try { source.postMessage({ type: "arcrho:open-path-result", requestId, ...payload }, "*"); } catch {} } };
       if (!requestId) return;
-      if (!targetPath && !dfmMethod) { reply({ ok: false, error: "Empty path." }); return; }
+      if (!targetPath && !dfmMethod && !projectJson) { reply({ ok: false, error: "Empty path." }); return; }
       const hostApi = shell.getHostApi?.();
       if (!hostApi || typeof hostApi.openPath !== "function") { reply({ ok: false, error: "Open path requires desktop app." }); return; }
-      Promise.resolve(hostApi.openPath({ path: targetPath, preferredApp, readOnly, ...(dfmMethod ? { dfmMethod } : {}) })).then((result) => reply(result?.ok ? { ok: true } : { ok: false, error: String(result?.error || `Path not found: ${targetPath}`) })).catch((err) => reply({ ok: false, error: String(err?.message || err) }));
+      Promise.resolve(hostApi.openPath({ path: targetPath, preferredApp, readOnly, projectJson, ...(dfmMethod ? { dfmMethod } : {}) })).then((result) => reply(result?.ok ? { ok: true } : { ok: false, error: String(result?.error || `Path not found: ${targetPath}`) })).catch((err) => reply({ ok: false, error: String(err?.message || err) }));
       return;
     }
     if (msg.type === "arcrho:agent-guide-load") {

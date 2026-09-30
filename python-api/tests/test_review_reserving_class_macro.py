@@ -17,7 +17,7 @@ import time
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 TEST_TEMP_ROOT = Path(__file__).resolve().parents[2] / "test"
@@ -137,6 +137,26 @@ class ReviewMacroTests(unittest.TestCase):
         self.api_module = types.ModuleType("arcrho_api")
         self.api_module.ArcRhoUI = lambda: self.ui
         self.api_module.get_server_root = lambda **_kwargs: self.server_root
+        def hosted_publish(kind, **kwargs):
+            self.assertEqual(kind, "resq_review_request_publish")
+            path, _ = self.module._request_paths(self.server_root, kwargs["request_id"])
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(kwargs["request"]), encoding="utf-8")
+            return {"ok": True}
+
+        self.gateway = Mock()
+        self.gateway.mutate.side_effect = hosted_publish
+        patcher = patch("arcrho_api.gateway.GatewayClient", return_value=self.gateway)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+
+    def test_gateway_refusal_never_publishes_a_local_request(self):
+        identifier, payload = self.module.create_review_request(project_name="Demo", rc_path="COL")
+        self.gateway.mutate.side_effect = RuntimeError("Gateway unavailable")
+        with patch.object(Path, "open", side_effect=AssertionError("Client file write")):
+            with self.assertRaisesRegex(self.module.BridgeRequestError, "Gateway unavailable"):
+                self.module.publish_review_request(server_root=self.server_root, request_id=identifier, payload=payload)
 
     def _write_worker(self, *, role="bridge_worker", gui_running=True, age_sec=0.0):
         path = self.server_root / self.module.BRIDGE_WORKER_DIR / "worker.json"

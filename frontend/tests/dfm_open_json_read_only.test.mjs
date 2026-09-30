@@ -184,8 +184,8 @@ test("Open DFM JSON names the method and loads it through the hosted DFM load", 
   assert.match(projectInstance, /if \(!path && !dfmMethod\) \{/u);
   assert.match(projectInstance, /\.\.\.\(dfmMethod \? \{ dfmMethod \} : \{\}\)/u);
   const shell = read("../ui/shell/shell_messages.js");
-  assert.match(shell, /if \(!targetPath && !dfmMethod\)/u);
-  assert.match(shell, /hostApi\.openPath\(\{ path: targetPath, preferredApp, readOnly, \.\.\.\(dfmMethod \? \{ dfmMethod \} : \{\}\) \}\)/u);
+  assert.match(shell, /if \(!targetPath && !dfmMethod && !projectJson\)/u);
+  assert.match(shell, /hostApi\.openPath\(\{ path: targetPath, preferredApp, readOnly, projectJson, \.\.\.\(dfmMethod \? \{ dfmMethod \} : \{\}\) \}\)/u);
 
   // The host opens Arcode before it would touch a path on the share.
   const main = read("../electron/main.js");
@@ -196,7 +196,7 @@ test("Open DFM JSON names the method and loads it through the hosted DFM load", 
 
   // Arcode gives the tab no path, so nothing reopens it as a file.
   const arcode = read("../ui/arcode/main.js");
-  assert.match(arcode, /const filePath = dfmMethod \? "" : String\(options\.path/u);
+  assert.match(arcode, /const filePath = \(dfmMethod \|\| projectJson\) \? "" : String\(options\.path/u);
   assert.match(arcode, /if \(tab\.dfmMethod\) params\.set\("dfm", JSON\.stringify\(tab\.dfmMethod\)\);/u);
   assert.match(arcode, /readOnly && \(action === "save" \|\| action === "save-as"\)/u);
 
@@ -205,4 +205,37 @@ test("Open DFM JSON names the method and loads it through the hosted DFM load", 
   assert.match(codeEditor, /const response = await loadDfmMethod\(identity\);/u);
   assert.match(codeEditor, /host\.formatPersistedJsonText\(\{ data: response\.method \}\)/u);
   assert.match(codeEditor, /readOnlySource: dfmMethodSource\(new URLSearchParams\(window\.location\.search\)\.get\("dfm"\)\)/u);
+});
+
+
+test("Project Instance JSON loads over HTTP and reports a refused read", async () => {
+  const source = read("../ui/arcode/code-editor/index.js");
+  const makeSource = new Function("shared", `return (${sliceFunction(source, "function projectJsonSource(param) {")});`);
+  const calls = [];
+  let ok = true;
+  const factory = makeSource({
+    scriptingFetch: async (url) => {
+      calls.push(url);
+      return { ok, json: async () => ok ? { data: { notes: "Original" } } : { detail: "Sign in again" } };
+    },
+    getHostApi: () => ({ formatPersistedJsonText: ({ data }) => JSON.stringify(data) }),
+  });
+  const identity = { project_name: "Demo", reserving_class: "Auto\\NJ", folder: "sidecars", filename: "Paid.json" };
+  const preview = factory(JSON.stringify(identity));
+  assert.equal(await preview.load(), '{"notes":"Original"}');
+  assert.equal(calls[0], `/project-instance/json?${new URLSearchParams(identity)}`);
+  assert.equal(preview.name, "Paid.json");
+  ok = false;
+  await assert.rejects(preview.load(), /Sign in again/);
+});
+
+test("Project Instance Help passes a logical JSON identity without a share path", () => {
+  const source = read("../ui/project_instance/project_instance_messages.js");
+  const open = sliceFunction(source, "async function openActiveDatasetRelatedFile(fileKind) {");
+  assert.match(open, /requestShellOpenPath\("", \{/u);
+  assert.match(open, /project_name: projectName, reserving_class: windowPath/u);
+  assert.match(open, /folder: fileKind === "sidecar" \? "sidecars" : "methods"/u);
+  const main = read("../electron/main.js");
+  const handler = main.slice(main.indexOf('ipcMain.handle("open-path"'));
+  assert.ok(handler.indexOf("payload?.projectJson") < handler.indexOf("fs.existsSync"));
 });

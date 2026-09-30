@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -17,7 +17,7 @@ TEST_TEMP_ROOT = _REPO_ROOT / "test"
 TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 _MACROS_DIR = Path(__file__).resolve().parents[1] / "macros"
 _SRC_DIR = Path(__file__).resolve().parents[1] / "src"
-for path in (_SRC_DIR, _MACROS_DIR):
+for path in (_SRC_DIR, _MACROS_DIR, _REPO_ROOT / "frontend"):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
@@ -136,7 +136,13 @@ class FixedReservingClassesTests(unittest.TestCase):
             (data / "Auto_%5C_NJ").mkdir()
             (data / ".arcrho-cache").mkdir()
 
-            classes = self.module.fixed_reserving_classes(root, "Demo")
+            from app_server.services import resq_class_inventory_service as inventory
+            with patch.object(inventory.config, "get_project_data_dir", return_value=str(data)), patch(
+                "arcrho_api.gateway.GatewayClient"
+            ) as gateway:
+                gateway.return_value.read.side_effect = lambda kind, **kwargs: inventory.existing_class_counts(**kwargs)
+                classes = self.module.fixed_reserving_classes(root, "Demo")
+                gateway.return_value.read.assert_called_once_with("resq_class_inventory", project_name="Demo")
 
         self.assertEqual([item["path"] for item in classes], list(self.module.RC_PATHS))
         by_path = {item["path"]: item for item in classes}
@@ -153,9 +159,19 @@ class FixedReservingClassesTests(unittest.TestCase):
         self.assertNotIn("Auto\\NJ", by_path)
 
     def test_a_project_with_no_data_folder_offers_every_class_as_new(self):
-        classes = self.module.fixed_reserving_classes("Q:\\absent", "Demo")
+        with patch("arcrho_api.gateway.GatewayClient") as gateway:
+            gateway.return_value.read.return_value = {}
+            classes = self.module.fixed_reserving_classes("Q:\\absent", "Demo")
         self.assertEqual([item["path"] for item in classes], list(self.module.RC_PATHS))
         self.assertFalse(any(item["exists"] for item in classes))
+
+    def test_inventory_failure_never_lists_the_client_share(self):
+        with patch("arcrho_api.gateway.GatewayClient") as gateway, patch.object(
+            Path, "iterdir", side_effect=AssertionError("Client share listing")
+        ):
+            gateway.return_value.read.side_effect = RuntimeError("Gateway unavailable")
+            with self.assertRaisesRegex(RuntimeError, "Gateway unavailable"):
+                self.module.fixed_reserving_classes("Q:/unmounted", "Demo")
 
     def test_the_review_table_marks_new_classes_and_preselects_everything(self):
         payload = self.module.review_table_payload(
@@ -181,6 +197,8 @@ class BatchImportMacroTests(unittest.TestCase):
 
         self.module = load_macro_module()
         self.single = self.module._load_single_import_macro()
+        self.single.BRIDGE_SILENCE_LIMIT_SEC = 0.05
+        self.single.POLL_INTERVAL_SEC = 0.01
         # The flow tests drive the macro with a short fixed list; the real
         # built-in list is covered by FixedReservingClassesTests.
         self.module.RC_PATHS = ["Auto\\NJ", "Auto\\PA"]
@@ -189,6 +207,29 @@ class BatchImportMacroTests(unittest.TestCase):
         self.server_root = Path(self.tempdir.name)
         self._write_worker()
         self._write_classes("Auto\\NJ", "Auto\\PA")
+        # These flow fixtures stand in for the hosted server. Transport failure
+        # is covered separately; all local callbacks use this test's root.
+        from app_server import config
+        from app_server.services import workspace_read_client, workspace_mutation_client
+        for patcher in (
+            patch.object(config, "get_root_path", return_value=str(self.server_root)),
+            patch.object(workspace_read_client, "run_workspace_read", side_effect=lambda *args, local, **kwargs: local()),
+            patch.object(workspace_mutation_client, "run_workspace_mutation", side_effect=lambda *args, local, **kwargs: local()),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+        from app_server.services import resq_class_inventory_service as inventory
+        self.gateway = Mock()
+        def hosted_inventory(kind, **kwargs):
+            self.assertEqual(kind, "resq_class_inventory")
+            with patch.object(inventory.config, "get_project_data_dir", return_value=str(self.server_root / "projects" / "Demo" / "data")):
+                return inventory.existing_class_counts(**kwargs)
+        self.gateway.read.side_effect = hosted_inventory
+        patcher = patch("arcrho_api.gateway.GatewayClient", return_value=self.gateway)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
 
     def _write_worker(self):
         path = self.server_root / self.single.BRIDGE_WORKER_DIR / "worker.json"

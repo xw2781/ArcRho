@@ -126,8 +126,8 @@ class ServerProfileTests(unittest.TestCase):
         self.assertEqual(cfg["workspace_root"], str(moved))
 
     def test_a_profile_needs_a_server_folder_and_a_plain_id(self) -> None:
-        with self.assertRaises(InvalidArcRhoServerError):
-            api_config.upsert_server_profile(name="Missing", root=str(self.local / "absent"))
+        with self.assertRaises(ValueError):
+            api_config.upsert_server_profile(name="Missing", root="")
         with self.assertRaises(ValueError):
             api_config.upsert_server_profile(name="Bad", root=str(self.local), profile_id="../x")
         with self.assertRaises(ValueError):
