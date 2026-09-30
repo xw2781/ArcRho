@@ -1,7 +1,7 @@
 # More than one ArcRho app on one PC
 
-Status: Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time, no decisions open; 0 of 7 done.
-Last updated: 2026-09-13
+Status: Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time, no decisions open; 1 of 7 done (step 1 committed 2026-09-30).
+Last updated: 2026-09-30
 
 ## Progress
 
@@ -9,7 +9,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 
 | # | Step | Done | Date | Est. | Actual | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| 1 | Opening a second app no longer disturbs the first | [ ] | | 40 min | | |
+| 1 | Opening a second app no longer disturbs the first | [x] | 2026-09-30 | 40 min | 4 min | A second app that cannot share the running app's server starts its own instead of shutting the first one down. |
 | 2 | A macro's windows stay in the app it was started from | [ ] | | 55 min | | |
 | 3 | A stray question about a review table no longer kills a macro | [ ] | | 35 min | | |
 | 4 | Closing the last window really shuts the app down | [ ] | | 60 min | | |
@@ -17,7 +17,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 6 | What a second window can and cannot remember is known | [ ] | | 30 min | | |
 | 7 | Checked with two apps open, written down, and released | [ ] | | 45 min | | |
 
-Overall: 0 of 7 steps done. Estimated 325 min, actual so far 0 min.
+Overall: 1 of 7 steps done. Estimated 325 min, actual so far 4 min.
 
 ## How agents work this plan
 
@@ -115,18 +115,19 @@ Steps 1 to 3 are ordered: the port fix removes the cross-attachment that makes o
 
 **Do.**
 
-- [ ] Decide whether a listener may be cleared from the live window markers and the health reply, not from compatibility alone: a port claimed by a live window of this profile is left alone, a port held by a server with no live window behind it is still cleared.
-- [ ] Put that decision in a plain function beside the other port helpers, where a test can reach it without Electron, and call it from the startup sequence.
-- [ ] When the preferred port is left alone, fall through to the free-port path that already exists, and log which port was taken and why in the same voice as the existing fallback message.
-- [ ] Leave the reuse path untouched: an app that finds a compatible server still shares it rather than starting a second one.
+- [x] Decide whether a listener may be cleared from the live window markers and the health reply, not from compatibility alone: a port claimed by a live window of this profile is left alone, a port held by a server with no live window behind it is still cleared.
+- [x] Put that decision in a plain function beside the other port helpers, where a test can reach it without Electron, and call it from the startup sequence.
+- [x] When the preferred port is left alone, fall through to the free-port path that already exists, and log which port was taken and why in the same voice as the existing fallback message.
+- [x] Leave the reuse path untouched: an app that finds a compatible server still shares it rather than starting a second one.
 
 **Tests.**
 
 - [backend_port.test.mjs](../../frontend/tests/backend_port.test.mjs) gains the new decision: a live sibling's port is left alone, an abandoned server's port is cleared, another profile's port is left alone, and a free preferred port is taken.
+- [backend_health_compatibility.test.mjs](../../frontend/tests/backend_health_compatibility.test.mjs) pinned the old inline profile check by source text; it now pins the call into the new decision instead.
 
 **Done when.** Starting the installed app while a development build is running leaves the development server alive, the installed app comes up on its own port, and each window's pages come from its own app.
 
-Estimate: code edit 30 min, test/validation 10 min, total 40 min.
+Estimate: code edit 30 min, test/validation 10 min, total 40 min. Actual: code edit 1 min, test/validation 3 min, total 4 min; far under because the change was one decision function and one call site, and the live two-app check is left to step 7, which runs it with both apps installed.
 
 ### Step 2 — A macro's windows stay in the app it was started from
 

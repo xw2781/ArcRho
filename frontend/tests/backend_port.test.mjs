@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const {
   resolvePreferredBackendPort,
   findAvailableBackendPort,
+  decidePreferredPortListener,
   getAppEndpointPath,
   writeAppEndpointFile,
   removeAppEndpointFile,
@@ -59,6 +60,46 @@ test("findAvailableBackendPort falls back to a different free port when occupied
   } finally {
     await new Promise((resolve) => blocker.close(resolve));
   }
+});
+
+test("decidePreferredPortListener leaves a port a live sibling window is using", () => {
+  const result = decidePreferredPortListener({
+    port: 28765,
+    health: { ok: true, app: "arcrho" },
+    sameProfile: true,
+    livePorts: [28765],
+    listenerPids: [5100],
+  });
+  assert.equal(result.action, "leave");
+  assert.match(result.reason, /live Arco window/);
+});
+
+test("decidePreferredPortListener clears a server no live window is using", () => {
+  const result = decidePreferredPortListener({
+    port: 28765,
+    health: { ok: true, app: "arcrho" },
+    sameProfile: true,
+    livePorts: [31000],
+    listenerPids: [5100],
+  });
+  assert.equal(result.action, "clear");
+});
+
+test("decidePreferredPortListener leaves another profile's listener alone", () => {
+  const result = decidePreferredPortListener({
+    port: 28765,
+    health: { ok: true, app: "arcrho" },
+    sameProfile: false,
+    livePorts: [],
+    listenerPids: [5100],
+  });
+  assert.equal(result.action, "leave");
+  assert.match(result.reason, /another or an unscoped user profile/);
+});
+
+test("decidePreferredPortListener takes a free preferred port", () => {
+  const result = decidePreferredPortListener({ port: 28765, health: null, sameProfile: false });
+  assert.equal(result.action, "take");
 });
 
 test("getAppEndpointPath derives the per-user AppData location by mode", () => {

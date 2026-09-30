@@ -36,6 +36,21 @@ async function findAvailableBackendPort(host, preferredPort) {
   return { port: freePort, fallback: true };
 }
 
+// Decides what a starting app may do with a listener on its preferred port that it cannot reuse.
+// "leave" keeps the listener and sends the app to a free port; "clear" stops a server no live
+// window is using; "take" means nothing is listening. `livePorts` are the ports claimed by the
+// other live windows of this profile.
+function decidePreferredPortListener({ port, health, sameProfile, livePorts = [], listenerPids = [] }) {
+  if (health?.ok === true && !sameProfile) {
+    return { action: "leave", reason: "it belongs to another or an unscoped user profile" };
+  }
+  if (livePorts.map(Number).includes(Number(port))) {
+    return { action: "leave", reason: "another live Arco window is using it" };
+  }
+  if (!listenerPids.length) return { action: "take", reason: "" };
+  return { action: "clear", reason: "no live Arco window is using it" };
+}
+
 function getAppEndpointPath({ appMode, env = process.env } = {}) {
   const appdata = String(env.APPDATA || "").trim()
     || path.join(os.homedir(), "AppData", "Roaming");
@@ -76,6 +91,7 @@ module.exports = {
   APP_ENDPOINT_FORMAT,
   resolvePreferredBackendPort,
   findAvailableBackendPort,
+  decidePreferredPortListener,
   getAppEndpointPath,
   writeAppEndpointFile,
   removeAppEndpointFile,

@@ -168,8 +168,9 @@ test("backend ownership checks fail closed for another or an unscoped profile", 
 
 test("backend lifecycle bypasses a healthy listener outside the current profile", () => {
   const lifecycleSource = readFileSync(new URL("../electron/backend_lifecycle.js", import.meta.url), "utf8");
-  assert.match(lifecycleSource, /health\?\.ok === true && !isBackendHealthFromSameProfile/u);
-  assert.match(lifecycleSource, /belongs to another or an unscoped user profile/u);
+  // The leave-or-clear decision itself is covered in backend_port.test.mjs.
+  assert.match(lifecycleSource, /decidePreferredPortListener\(\{/u);
+  assert.match(lifecycleSource, /sameProfile: isBackendHealthFromSameProfile\(health/u);
 });
 
 test("Electron creates backend tokens from its current user-data profile", () => {

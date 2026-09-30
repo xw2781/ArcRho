@@ -14,6 +14,7 @@ const {
 const {
   resolvePreferredBackendPort,
   findAvailableBackendPort,
+  decidePreferredPortListener,
   writeAppEndpointFile,
   removeAppEndpointFile,
 } = require("./backend_port");
@@ -345,22 +346,25 @@ async function ensureBackendArtifactId() {
   return backendArtifactIdPromise;
 }
 
+// Returns why the listener was left alone, or "" when the port was cleared or already free.
 async function stopMismatchedBackendListener(port = PORT) {
   let health = null;
   try {
     health = await requestBackendHealth(700, port);
   } catch {}
-  if (isCompatibleBackendHealth(health)) return;
-  if (health?.ok === true && !isBackendHealthFromSameProfile(health, {
-    appMode: APP_MODE,
-    backendToken: BACKEND_TOKEN,
-  })) {
-    appendElectronLog(
-      `Leaving backend listener on ${HOST}:${port} untouched because it belongs to another or an unscoped user profile.`,
-    );
-    return;
-  }
+  if (isCompatibleBackendHealth(health)) return "";
   const pids = await getBackendPortListenerPids(port);
+  const { action, reason } = decidePreferredPortListener({
+    port,
+    health,
+    sameProfile: isBackendHealthFromSameProfile(health, { appMode: APP_MODE, backendToken: BACKEND_TOKEN }),
+    livePorts: getKnownBackendClientPorts(),
+    listenerPids: pids,
+  });
+  if (action === "leave") {
+    appendElectronLog(`Leaving backend listener on ${HOST}:${port} untouched because ${reason}.`);
+    return reason;
+  }
   for (const pid of pids) {
     if (serverProc && pid === serverProc.pid) continue;
     try {
@@ -368,6 +372,7 @@ async function stopMismatchedBackendListener(port = PORT) {
     } catch {}
   }
   if (pids.length) await sleep(700);
+  return "";
 }
 
 function getKnownBackendClientPorts() {
@@ -499,12 +504,13 @@ async function startBackendWithRetry() {
       publishBackendEndpoint();
       return;
     }
-    await stopMismatchedBackendListener(PREFERRED_PORT);
+    const leftAloneReason = await stopMismatchedBackendListener(PREFERRED_PORT);
     const { port, fallback } = await findAvailableBackendPort(HOST, PREFERRED_PORT);
     PORT = port;
     if (fallback) {
+      const why = leftAloneReason || "possibly held by another user session on this machine";
       appendElectronLog(
-        `Backend port ${PREFERRED_PORT} is unavailable (possibly held by another user session on this machine); using free local port ${PORT} instead.`
+        `Backend port ${PREFERRED_PORT} is unavailable (${why}); using free local port ${PORT} instead.`
       );
     }
     startBackend();
