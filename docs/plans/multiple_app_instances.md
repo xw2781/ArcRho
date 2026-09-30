@@ -1,6 +1,6 @@
 # More than one ArcRho app on one PC
 
-Status: Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time, no decisions open; 6 of 7 done (steps 1 to 6 committed 2026-09-30).
+Status: Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time; 6 of 7 done (steps 1 to 6 committed 2026-09-30). Step 7's app check found that closing the owning app mid-review still fails the macro, so one decision is open and step 7 waits on it.
 Last updated: 2026-09-30
 
 ## Progress
@@ -15,7 +15,7 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 4 | Closing the last window really shuts the app down | [x] | 2026-09-30 | 60 min | 4 min | Closing the last app window now stops its server even when another app started it, a server left behind by a crashed window is cleared at the next start, and restarting asks first when another window shares the server. |
 | 5 | Scripts and screenshots can pick which app they mean | [x] | 2026-09-30 | 60 min | 4 min | With two apps open, both are listed where scripts look for the app, and a script run from a terminal reaches the newest one or the one it names. |
 | 6 | What a second window can and cannot remember is known | [x] | 2026-09-30 | 30 min | 18 min | Measured: the colour theme and table style survive from either window, but other browser-kept settings changed in a second app window are lost when it closes. |
-| 7 | Checked with two apps open, written down, and released | [ ] | | 45 min | | |
+| 7 | Checked with two apps open, written down, and released | [ ] | | 45 min | | In progress 2026-09-30: two apps now keep their own servers and an export's windows stay in its own app, but closing the owning app mid-review still ends the macro with an error and a traceback; waiting on the decision under Open decisions. |
 
 Overall: 6 of 7 steps done. Estimated 325 min, actual so far 42 min.
 
@@ -89,7 +89,10 @@ Two smaller things follow from those rules: the endpoint and window-ready files 
 
 ## Open decisions
 
-None. Six questions came up while writing this plan and are answered here so no step has to guess.
+Two questions came up in step 7's app check on 2026-09-30 and are open. Six more came up while writing this plan and are answered below them so no step has to guess.
+
+- **Open: what ends a macro whose owning app closes mid-review?** Observed on the Server PC with the development build, run from a clean checkout of `48ac6eda`: app A started a server on a free port (the user's app kept 28765), app B shared A's server, and an export of `PRNJ - PA\PA\All States\Direct Group\Auto Liab Total` started in A showed its progress window and review table in A only. Closing A while the review table was open left B's server running, but 31 seconds later B showed "Export to ResQ failed ... Timed out waiting for UI command: ui.reviewTableStatus" with a traceback, not a cancelled review. Two gaps in [ui_automation_service.py](../../frontend/app_server/services/ui_automation_service.py) explain it. A status question A had already taken, or one B handed back, stays with A: nothing re-offers a command a window took and never answered, and A still counts as live for up to 45 seconds after its last poll began, so B's hand-back is queued for a window that has gone. And even when B is the last window, it answers a review table it never held with "Review table is not available", which the macro also reports as a failure with a traceback. **Recommended:** a closing app tells the server it is leaving, which ends its liveness at once and re-queues anything it took but did not answer; and a status or close question about a review table that no live window holds settles as a cancelled completion, the answer a closed hosting tab already gives. That is one change in the queue and one in the shell, with a queue test for the departed owner.
+- **Open: two development apps from one checkout share the server's stop and restart markers.** The app server writes its stop and restart markers into the `frontend/` folder it runs from, and every development supervisor started from that folder watches the same file. In the same check the last window's stop marker was left in the checkout after the server stopped; had the second app run from the user's own checkout, the user's supervisor could have taken that marker and stopped the user's server. Installed apps are not affected. **Recommended:** name the markers per port, so a supervisor only obeys its own server's marker.
 
 - **Do we forbid a second app instead?** No. Running two is wanted, occasionally, and the whole plan exists to make it safe.
 - **A sibling holds the preferred port.** The new app starts its own server on a free port. It clears a listener only when no live window claims it, which keeps the original purpose of the killing, cleaning up a server left behind by an older build of the same app.
