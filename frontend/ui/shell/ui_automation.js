@@ -6,7 +6,10 @@ import {
 import { createReviewTableDialog } from "../shared/components/review_table/review_table.js?v=20260828f";
 
 const API_BASE = window.location.origin;
-const POLL_CLIENT_ID = `shell_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+// The one name this shell page answers to. It rides on every poll, and a macro
+// started here sends it with the run request, so the server hands that macro's
+// commands back to this window rather than to another app sharing the server.
+export const AUTOMATION_CLIENT_ID = `shell_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const RESULT_MESSAGE_TYPE = "arcrho:automation-command-result";
 const TASK_DESIGNER_COMMAND_MESSAGE = "arcrho:task-designer-automation-command";
 const TASK_DESIGNER_RESULT_MESSAGE = "arcrho:task-designer-automation-result";
@@ -1297,7 +1300,7 @@ async function pollOnce() {
   const response = await fetch(`${API_BASE}/ui_automation/commands/poll`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ client_id: POLL_CLIENT_ID, timeout_sec: 20 }),
+    body: JSON.stringify({ client_id: AUTOMATION_CLIENT_ID, timeout_sec: 20 }),
   });
   const payload = await response.json();
   const command = payload?.command;

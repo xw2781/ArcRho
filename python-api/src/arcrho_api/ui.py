@@ -253,6 +253,27 @@ def run_macro_source(
     )
 
 
+# The shell window that started the running macro. The macro host sets it for the
+# length of a run so every command the macro sends goes back to that window, even
+# when another ArcRho app shares the same server. Empty leaves commands unaddressed.
+_COMMAND_OWNER = ""
+
+
+def set_command_owner(owner: str | None) -> str:
+    """Address every following UI command to one shell window; return the previous owner."""
+
+    global _COMMAND_OWNER
+    previous = _COMMAND_OWNER
+    _COMMAND_OWNER = str(owner or "").strip()
+    return previous
+
+
+def get_command_owner() -> str:
+    """The shell window UI commands are currently addressed to, or empty."""
+
+    return _COMMAND_OWNER
+
+
 def send_command(
     command: str,
     *,
@@ -269,6 +290,8 @@ def send_command(
         "args": args or {},
         "timeout_sec": float(timeout_sec),
     }
+    if _COMMAND_OWNER:
+        payload["owner"] = _COMMAND_OWNER
     response = _post_json("/ui_automation/commands", payload, timeout_sec, app_url=app_url)
     result = response.get("result") if isinstance(response.get("result"), dict) else {}
     out = UiCommandResult(

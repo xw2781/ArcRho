@@ -3,6 +3,8 @@ import { macroContextFingerprint } from "./macro_context_fingerprint.js?v=202607
 import { syncLibraryMacros } from "./macro_library_client.js?v=20260908a";
 import { openMacroLibraryWindow } from "./macro_library_window.js?v=20260908a";
 import { createMacroWindowFrame } from "./macro_window_frame.js?v=20260808b";
+// Same version stamp as the shell's own import, so both share one module and one window identity.
+import { AUTOMATION_CLIENT_ID } from "../shell/ui_automation.js?v=20260904resize2";
 import { focusMacroListItem, initMacroListDrag, initMacroListKeyboard, syncMacroListSelection } from "./macro_list_interactions.js?v=20260908a";
 
 const API_BASE = window.location.origin;
@@ -1071,6 +1073,7 @@ async function runMacro(macro) {
         task_window_id: isTaskWrapper ? "task-designer-main" : "",
         task_session_id: taskSessionId,
         task_mode: isTaskWrapper ? "wrapper" : "",
+        client_id: AUTOMATION_CLIENT_ID,
       }),
     });
     const result = await response.json();

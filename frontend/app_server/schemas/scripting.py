@@ -68,6 +68,8 @@ class ScriptMacroRunRequest(BaseModel):
     task_window_id: str = ""
     task_session_id: str = ""
     task_mode: str = ""
+    # The shell window that started the run; the macro's UI commands go back to it.
+    client_id: str = ""
 
 
 class ScriptMacroSourceRunRequest(BaseModel):

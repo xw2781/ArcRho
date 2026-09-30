@@ -17,7 +17,7 @@ const testableSource = automationSource
     /import \{ createReviewTableDialog \} from "\.\.\/shared\/components\/review_table\/review_table\.js\?v=[^"]+";/u,
     "const createReviewTableDialog = () => ({ close() {} });",
   );
-const { automationCommandTimeoutMs } = await import(
+const { AUTOMATION_CLIENT_ID, automationCommandTimeoutMs } = await import(
   `data:text/javascript;base64,${Buffer.from(testableSource).toString("base64")}`
 );
 delete globalThis.window;
@@ -59,4 +59,28 @@ test("neither in-page automation path keeps a hard-coded wait", () => {
   }
   assert.doesNotMatch(automationSource, /Timed out waiting for Project Instance\." \}\), 10000\)/u);
   assert.doesNotMatch(automationSource, /Timed out waiting for Task Designer\." \}\), 10000\)/u);
+});
+
+test("the shell sends one window identity on the poll and the run-macro request", async () => {
+  // The server hands a macro's commands only to the window that started it, so
+  // the run request and the poll must carry the very same name.
+  assert.match(AUTOMATION_CLIENT_ID, /^shell_\d+_[a-z0-9]+$/u);
+  assert.match(automationSource, /export const AUTOMATION_CLIENT_ID = /u);
+  assert.match(automationSource, /client_id: AUTOMATION_CLIENT_ID, timeout_sec: 20/u);
+  assert.doesNotMatch(automationSource, /POLL_CLIENT_ID/u);
+
+  const macroSource = await readFile(new URL("../ui/macro/macro_window.js", import.meta.url), "utf8");
+  // The import must use the shell's own version stamp, or the page would load a
+  // second copy of the module with a different identity.
+  const shellImports = [
+    await readFile(new URL("../ui/shell/ui_shell.js", import.meta.url), "utf8"),
+    await readFile(new URL("../ui/shell/shell_messages.js", import.meta.url), "utf8"),
+  ];
+  const stamp = macroSource.match(/import \{ AUTOMATION_CLIENT_ID \} from "\.\.\/shell\/ui_automation\.js\?v=([^"]+)";/u)?.[1];
+  assert.ok(stamp, "macro window imports the shell identity");
+  for (const consumer of shellImports) {
+    assert.ok(consumer.includes(`ui_automation.js?v=${stamp}"`));
+  }
+  const runRequest = macroSource.slice(macroSource.indexOf("/scripting/run-macro"));
+  assert.match(runRequest.slice(0, 600), /client_id: AUTOMATION_CLIENT_ID,/u);
 });

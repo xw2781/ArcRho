@@ -348,7 +348,7 @@ print(f"restored={sys.gettrace() is trace_before}")
             patch.object(macro_library_service, "sync_library_macro", return_value=None) as sync,
             patch.object(scripting_macro_service, "run_macro_source", return_value={"success": True}) as runner,
         ):
-            result = scripting_macro_service.run_macro("registered.py", {"activeJson": {}})
+            result = scripting_macro_service.run_macro("registered.py", {"activeJson": {}}, client_id="shell_a")
 
         self.assertTrue(result["success"])
         self.assertNotIn("library_update", result)
@@ -361,6 +361,7 @@ print(f"restored={sys.gettrace() is trace_before}")
             task_window_id="",
             task_session_id="",
             task_mode="",
+            client_id="shell_a",
         )
 
     def test_registered_macro_takes_the_newer_library_version_before_it_runs(self) -> None:

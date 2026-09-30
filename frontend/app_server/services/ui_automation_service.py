@@ -18,7 +18,10 @@ class _PendingCommand:
     # The submitter's own deadline, carried to the shell so an in-page handler can
     # size its wait to the caller's budget instead of guessing at a fixed one.
     timeout_sec: float = 30.0
+    # The shell window that should run the command. Empty means any window may.
+    owner: str = ""
     created_at: float = field(default_factory=time.time)
+    created_monotonic: float = field(default_factory=time.monotonic)
     result: Optional[Dict[str, Any]] = None
 
 
@@ -26,6 +29,10 @@ _LOCK = Condition()
 _QUEUE: List[str] = []
 _PENDING: Dict[str, _PendingCommand] = {}
 _MAX_TIMEOUT_SEC = 120.0
+# How long a command addressed to one window waits for that window before any
+# window may take it. A window that has gone (its app closed mid-macro) must not
+# stall the macro until the caller's own deadline.
+OWNER_GRACE_SEC = 3.0
 
 
 def _clean_dict(value: Any) -> Dict[str, Any]:
@@ -47,11 +54,26 @@ def _command_payload(item: _PendingCommand) -> Dict[str, Any]:
         "target": item.target,
         "args": item.args,
         "timeout_sec": item.timeout_sec,
+        "owner": item.owner,
         "created_at": item.created_at,
     }
 
 
-def submit_command(command: str, target: Dict[str, Any], args: Dict[str, Any], timeout_sec: float) -> Dict[str, Any]:
+def _owner_wait_remaining(item: _PendingCommand, client_id: str, now: float) -> float:
+    """Seconds before `client_id` may take `item`; zero when it may take it now."""
+    if not item.owner or item.owner == client_id:
+        return 0.0
+    return max(0.0, item.created_monotonic + OWNER_GRACE_SEC - now)
+
+
+def submit_command(
+    command: str,
+    target: Dict[str, Any],
+    args: Dict[str, Any],
+    timeout_sec: float,
+    *,
+    owner: str = "",
+) -> Dict[str, Any]:
     name = str(command or "").strip()
     if not name:
         raise HTTPException(400, "Command is required.")
@@ -63,6 +85,7 @@ def submit_command(command: str, target: Dict[str, Any], args: Dict[str, Any], t
         target=_clean_dict(target),
         args=_clean_dict(args),
         timeout_sec=timeout,
+        owner=str(owner or "").strip(),
     )
     deadline = time.monotonic() + timeout
     with _LOCK:
@@ -84,21 +107,35 @@ def submit_command(command: str, target: Dict[str, Any], args: Dict[str, Any], t
         return item.result
 
 
-def poll_command(timeout_sec: float = 20.0) -> Dict[str, Any]:
+def poll_command(timeout_sec: float = 20.0, *, client_id: Optional[str] = None) -> Dict[str, Any]:
+    """Hand the oldest command this window may run to it.
+
+    A command addressed to another window is left queued for its owner until the
+    grace period passes; after that any window may take it.
+    """
     timeout = _normalize_timeout(timeout_sec, default=20.0)
+    client = str(client_id or "").strip()
     deadline = time.monotonic() + timeout
     with _LOCK:
         while True:
-            while _QUEUE:
-                command_id = _QUEUE.pop(0)
+            now = time.monotonic()
+            next_claimable: Optional[float] = None
+            for command_id in list(_QUEUE):
                 item = _PENDING.get(command_id)
-                if item is not None and item.result is None:
+                if item is None or item.result is not None:
+                    _QUEUE.remove(command_id)
+                    continue
+                wait = _owner_wait_remaining(item, client, now)
+                if wait <= 0:
+                    _QUEUE.remove(command_id)
                     return {"ok": True, "command": _command_payload(item)}
+                next_claimable = wait if next_claimable is None else min(next_claimable, wait)
 
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return {"ok": True, "command": None}
-            _LOCK.wait(timeout=remaining)
+            # Wake when an addressed command this window is waiting on becomes free.
+            _LOCK.wait(timeout=remaining if next_claimable is None else min(remaining, next_claimable))
 
 
 def cancel_command(command_id: str) -> Dict[str, Any]:
@@ -161,7 +198,7 @@ def queue_status() -> Dict[str, Any]:
             "queued": len(_QUEUE),
             "pending": len(_PENDING),
             "commands": [
-                {"id": item.id, "command": item.command, "created_at": item.created_at}
+                {"id": item.id, "command": item.command, "owner": item.owner, "created_at": item.created_at}
                 for item in _PENDING.values()
             ],
         }

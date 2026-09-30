@@ -115,6 +115,7 @@ def scripting_run_macro(req: ScriptMacroRunRequest) -> Dict[str, Any]:
         task_window_id=req.task_window_id,
         task_session_id=req.task_session_id,
         task_mode=req.task_mode,
+        client_id=req.client_id,
     )
 
 

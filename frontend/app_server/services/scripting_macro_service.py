@@ -828,6 +828,23 @@ def _invoke_macro_runner(runner: Any, active_dfm: Any, active_context: Dict[str,
     return runner()
 
 
+def _set_macro_command_owner(client_id: str) -> str:
+    """Address the running macro's UI commands to the window that started it.
+
+    Runs are serialised by the execution lock, so one process-wide owner is
+    enough. Returns the previous owner so the caller can restore it.
+    """
+    _ensure_arcrho_api_import_path()
+    try:
+        from arcrho_api import ui as arcrho_ui
+    except Exception:
+        return ""
+    setter = getattr(arcrho_ui, "set_command_owner", None)
+    if not callable(setter):
+        return ""
+    return str(setter(client_id) or "")
+
+
 def _execute_macro_source_body(
     source: str,
     compile_path: str,
@@ -839,10 +856,12 @@ def _execute_macro_source_body(
     output: io.StringIO,
     cancel_event: threading.Event,
     activity: _ExecutionActivity,
+    client_id: str = "",
 ) -> Dict[str, Any]:
     com_apartment = _initialize_macro_com_apartment()
     try:
         with _MACRO_EXECUTION_LOCK:
+            previous_owner = _set_macro_command_owner(client_id)
             previous_trace = sys.gettrace()
             macro_root = _get_macros_dir()
             sys.settrace(
@@ -934,6 +953,7 @@ def _execute_macro_source_body(
                     except ValueError:
                         pass
                 sys.settrace(previous_trace)
+                _set_macro_command_owner(previous_owner)
     finally:
         if com_apartment is not None:
             com_apartment.CoUninitialize()
@@ -948,6 +968,7 @@ def run_macro_source(
     task_window_id: str = "",
     task_session_id: str = "",
     task_mode: str = "",
+    client_id: str = "",
 ) -> Dict[str, Any]:
     output = io.StringIO()
     compile_path = str(source_path or filename or "untitled_macro.py")
@@ -968,6 +989,7 @@ def run_macro_source(
                 output,
                 cancel_event,
                 activity,
+                client_id,
             ),
             _MACRO_TIMEOUT_SEC,
             cancel_event,
@@ -1036,6 +1058,7 @@ def run_macro(
     task_window_id: str = "",
     task_session_id: str = "",
     task_mode: str = "",
+    client_id: str = "",
 ) -> Dict[str, Any]:
     # The library module imports this one, so it is imported here rather than at
     # module level. A newer published version replaces the local copy before the
@@ -1063,6 +1086,7 @@ def run_macro(
         task_window_id=task_window_id,
         task_session_id=task_session_id,
         task_mode=task_mode,
+        client_id=client_id,
     )
     if library_update:
         result["library_update"] = library_update

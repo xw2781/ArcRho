@@ -18,13 +18,15 @@ router = APIRouter()
 @router.post("/ui_automation/commands")
 def submit_ui_automation_command(req: UiAutomationCommandRequest, request: Request) -> Dict[str, Any]:
     require_local_client(request, "UI automation")
-    return ui_automation_service.submit_command(req.command, req.target, req.args, req.timeout_sec)
+    return ui_automation_service.submit_command(
+        req.command, req.target, req.args, req.timeout_sec, owner=req.owner
+    )
 
 
 @router.post("/ui_automation/commands/poll")
 def poll_ui_automation_command(req: UiAutomationPollRequest, request: Request) -> Dict[str, Any]:
     require_local_client(request, "UI automation")
-    return ui_automation_service.poll_command(req.timeout_sec)
+    return ui_automation_service.poll_command(req.timeout_sec, client_id=req.client_id)
 
 
 @router.post("/ui_automation/commands/{command_id}/complete")

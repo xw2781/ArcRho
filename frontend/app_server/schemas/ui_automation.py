@@ -10,6 +10,8 @@ class UiAutomationCommandRequest(BaseModel):
     target: Dict[str, Any] = Field(default_factory=dict)
     args: Dict[str, Any] = Field(default_factory=dict)
     timeout_sec: float = 30.0
+    # The shell window that should run the command; empty lets any window take it.
+    owner: str = ""
 
 
 class UiAutomationPollRequest(BaseModel):

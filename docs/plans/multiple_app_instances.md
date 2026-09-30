@@ -1,6 +1,6 @@
 # More than one ArcRho app on one PC
 
-Status: Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time, no decisions open; 1 of 7 done (step 1 committed 2026-09-30).
+Status: Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time, no decisions open; 2 of 7 done (steps 1 and 2 committed 2026-09-30).
 Last updated: 2026-09-30
 
 ## Progress
@@ -10,14 +10,14 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | # | Step | Done | Date | Est. | Actual | What changed for the user |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | 1 | Opening a second app no longer disturbs the first | [x] | 2026-09-30 | 40 min | 4 min | A second app that cannot share the running app's server starts its own instead of shutting the first one down. |
-| 2 | A macro's windows stay in the app it was started from | [ ] | | 55 min | | |
+| 2 | A macro's windows stay in the app it was started from | [x] | 2026-09-30 | 55 min | 8 min | A macro's progress window, messages and review table now open in the app it was started from, even when another app shares the same server. |
 | 3 | A stray question about a review table no longer kills a macro | [ ] | | 35 min | | |
 | 4 | Closing the last window really shuts the app down | [ ] | | 60 min | | |
 | 5 | Scripts and screenshots can pick which app they mean | [ ] | | 60 min | | |
 | 6 | What a second window can and cannot remember is known | [ ] | | 30 min | | |
 | 7 | Checked with two apps open, written down, and released | [ ] | | 45 min | | |
 
-Overall: 1 of 7 steps done. Estimated 325 min, actual so far 4 min.
+Overall: 2 of 7 steps done. Estimated 325 min, actual so far 12 min.
 
 ## How agents work this plan
 
@@ -140,16 +140,17 @@ Estimate: code edit 30 min, test/validation 10 min, total 40 min. Actual: code e
 - [schemas/ui_automation.py](../../frontend/app_server/schemas/ui_automation.py) and [ui_automation_router.py](../../frontend/app_server/api/ui_automation_router.py).
 - [ui_automation.js:1-30](../../frontend/ui/shell/ui_automation.js#L1-L30) and [ui_automation.js:1290-1315](../../frontend/ui/shell/ui_automation.js#L1290-L1315).
 - [macro_window.js:1060-1080](../../frontend/ui/macro/macro_window.js#L1060-L1080) and [schemas/scripting.py:63-68](../../frontend/app_server/schemas/scripting.py#L63-L68).
-- [scripting_macro_service.py:972-1100](../../frontend/app_server/services/scripting_macro_service.py#L972-L1100).
+- [scripting_macro_service.py:972-1100](../../frontend/app_server/services/scripting_macro_service.py#L972-L1100), and the macro body runner above it (`_execute_macro_source_body`), where the run is held under the execution lock.
+- [test_scripting_macro_source.py](../../frontend/tests/test_scripting_macro_source.py), which pins the exact arguments the registered-macro path passes on.
 - [ui.py:256-282](../../python-api/src/arcrho_api/ui.py#L256-L282) in the public Python API, which is what a macro calls. This step touches the frontend and that package together; they land in one commit.
 
 **Do.**
 
-- [ ] Export the shell's existing client identity from the automation module so the whole shell page has one name for the window, and send it with the run-macro request.
-- [ ] Carry it on the run-macro request model and into the macro service.
-- [ ] Hold it in the public Python API for the length of the run, and include it on every command the macro submits. The macro host sets it before the macro source runs and clears it afterwards, so a macro's own code needs no change.
-- [ ] Store the owner on the pending command in the queue, and hand a command out only to its owner, to any window when it has no owner, or to any window once the grace period has passed.
-- [ ] Keep the other call sites unchanged: a command submitted from anywhere else stays unaddressed and any window may answer it.
+- [x] Export the shell's existing client identity from the automation module so the whole shell page has one name for the window, and send it with the run-macro request.
+- [x] Carry it on the run-macro request model and into the macro service.
+- [x] Hold it in the public Python API for the length of the run, and include it on every command the macro submits. The macro host sets it before the macro source runs and clears it afterwards, so a macro's own code needs no change.
+- [x] Store the owner on the pending command in the queue, and hand a command out only to its owner, to any window when it has no owner, or to any window once the grace period has passed.
+- [x] Keep the other call sites unchanged: a command submitted from anywhere else stays unaddressed and any window may answer it.
 
 **Tests.**
 
@@ -158,7 +159,7 @@ Estimate: code edit 30 min, test/validation 10 min, total 40 min. Actual: code e
 
 **Done when.** With two apps sharing one server, a macro started in one shows its progress window, its message boxes and its review table in that same app, and the other app never sees them.
 
-Estimate: code edit 40 min, test/validation 15 min, total 55 min.
+Estimate: code edit 40 min, test/validation 15 min, total 55 min. Actual: code edit 5 min, test/validation 3 min, total 8 min; far under because every piece already existed (the shell identity, the poll field, one send path in the public API) and only needed wiring, and the two-app check is left to step 7.
 
 ### Step 3 — A stray question about a review table no longer kills a macro
 
