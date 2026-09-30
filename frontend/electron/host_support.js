@@ -6,6 +6,7 @@ const os = require("os");
 const path = require("path");
 const { formatJsonForSave } = require("./persisted_json_text");
 const { pruneAgedLogFiles } = require("./log_retention");
+const { isProcessAlive } = require("./backend_port");
 
 let electronLogPath = "";
 
@@ -66,17 +67,6 @@ function withTimeout(promise, timeoutMs, label) {
   return Promise.race([promise, timeout]).finally(() => {
     if (timeoutId) clearTimeout(timeoutId);
   });
-}
-
-function isProcessAlive(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  if (pid === process.pid) return true;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function execFileAsync(file, args, options = {}) {

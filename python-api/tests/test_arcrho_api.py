@@ -592,7 +592,9 @@ class AppUrlResolutionTests(unittest.TestCase):
     """Cover arcrho_api.ui._base_url discovery of the desktop app endpoint."""
 
     def setUp(self) -> None:
-        self._tempdir = tempfile.TemporaryDirectory(dir=str(Path(__file__).parent))
+        test_root = Path(__file__).resolve().parents[2] / "test"
+        test_root.mkdir(parents=True, exist_ok=True)
+        self._tempdir = tempfile.TemporaryDirectory(dir=str(test_root))
         self.appdata = Path(self._tempdir.name)
         self.addCleanup(self._tempdir.cleanup)
 
@@ -649,6 +651,37 @@ class AppUrlResolutionTests(unittest.TestCase):
         self._write_endpoint("{not valid json")
         with patch.dict(os.environ, self._env(), clear=True):
             self.assertEqual(ui_module._base_url(), "http://127.0.0.1:28765")
+
+    def _write_two_apps(self) -> None:
+        apps = [
+            {"app": "arcrho", "url": "http://127.0.0.1:31001", "port": 31001, "pid": 101},
+            {"app": "arcrho", "url": "http://127.0.0.1:31002", "port": 31002, "pid": 102},
+            {"app": "arcrho", "url": "http://127.0.0.1:28765", "port": 28765, "pid": 103},
+        ]
+        self._write_endpoint({**apps[0], "apps": apps})
+
+    def test_list_picks_newest_live_app_by_default(self) -> None:
+        from arcrho_api import ui as ui_module
+
+        self._write_two_apps()
+        with patch.dict(os.environ, self._env(), clear=True), \
+                patch.object(ui_module, "_pid_alive", side_effect=lambda pid: pid != 101):
+            self.assertEqual([app["pid"] for app in ui_module.running_apps()], [102, 103])
+            self.assertEqual(ui_module._base_url(), "http://127.0.0.1:31002")
+
+    def test_list_picks_the_named_app(self) -> None:
+        from arcrho_api import ui as ui_module
+
+        self._write_two_apps()
+        with patch.dict(os.environ, self._env(), clear=True), \
+                patch.object(ui_module, "_pid_alive", return_value=True):
+            self.assertEqual(ui_module.ArcRhoUI(pid=103).base_url, "http://127.0.0.1:28765")
+            self.assertEqual(ui_module.ArcRhoUI(port=31002).base_url, "http://127.0.0.1:31002")
+            with self.assertRaises(ui_module.ArcRhoApiError):
+                ui_module.ArcRhoUI(pid=999)
+        with patch.dict(os.environ, self._env(ARCRHO_APP_PID="102"), clear=True), \
+                patch.object(ui_module, "_pid_alive", return_value=True):
+            self.assertEqual(ui_module._base_url(), "http://127.0.0.1:31002")
 
 
 class ServerRootResolutionTests(unittest.TestCase):

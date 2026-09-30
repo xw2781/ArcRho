@@ -1,6 +1,6 @@
 # More than one ArcRho app on one PC
 
-Status: Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time, no decisions open; 4 of 7 done (steps 1 to 4 committed 2026-09-30).
+Status: Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time, no decisions open; 5 of 7 done (steps 1 to 5 committed 2026-09-30).
 Last updated: 2026-09-30
 
 ## Progress
@@ -13,11 +13,11 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 2 | A macro's windows stay in the app it was started from | [x] | 2026-09-30 | 55 min | 8 min | A macro's progress window, messages and review table now open in the app it was started from, even when another app shares the same server. |
 | 3 | A stray question about a review table no longer kills a macro | [x] | 2026-09-30 | 35 min | 4 min | A window asked about a review table or progress window it does not hold passes the question to the other app instead of failing the macro. |
 | 4 | Closing the last window really shuts the app down | [x] | 2026-09-30 | 60 min | 4 min | Closing the last app window now stops its server even when another app started it, a server left behind by a crashed window is cleared at the next start, and restarting asks first when another window shares the server. |
-| 5 | Scripts and screenshots can pick which app they mean | [ ] | | 60 min | | |
+| 5 | Scripts and screenshots can pick which app they mean | [x] | 2026-09-30 | 60 min | 4 min | With two apps open, both are listed where scripts look for the app, and a script run from a terminal reaches the newest one or the one it names. |
 | 6 | What a second window can and cannot remember is known | [ ] | | 30 min | | |
 | 7 | Checked with two apps open, written down, and released | [ ] | | 45 min | | |
 
-Overall: 4 of 7 steps done. Estimated 325 min, actual so far 20 min.
+Overall: 5 of 7 steps done. Estimated 325 min, actual so far 24 min.
 
 ## How agents work this plan
 
@@ -228,10 +228,10 @@ Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code e
 
 **Do.**
 
-- [ ] Make the endpoint file hold an entry per running app, keyed by process, with the newest first and dead entries dropped on write, while keeping the single-app shape readable by anything that has not been updated.
-- [ ] Do the same for the window-ready marker an automation harness waits on, so it can wait for a named window rather than the newest one.
-- [ ] Let the public Python API choose: by default the newest live entry, and by an explicit process or port when the caller names one.
-- [ ] Keep the existing rule that an app removes only its own entry on exit.
+- [x] Make the endpoint file hold an entry per running app, keyed by process, with the newest first and dead entries dropped on write, while keeping the single-app shape readable by anything that has not been updated.
+- [x] Do the same for the window-ready marker an automation harness waits on, so it can wait for a named window rather than the newest one.
+- [x] Let the public Python API choose: by default the newest live entry, and by an explicit process or port when the caller names one.
+- [x] Keep the existing rule that an app removes only its own entry on exit.
 
 **Tests.**
 
@@ -240,7 +240,7 @@ Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code e
 
 **Done when.** With two apps running, the endpoint file names both, and a macro run from a terminal reaches the one it was told to.
 
-Estimate: code edit 40 min, test/validation 20 min, total 60 min.
+Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code edit 3 min, test/validation 1 min, total 4 min; far under because both files already had one writer and one owner-only remover each, so one shared list helper served both, and the two-app check is left to step 7. The newest entry stays at the top level of each file, so the dev-control tool and older readers keep working; the harness waits on a named window with its new process-id option, and a terminal macro names its app with the `ARCRHO_APP_PID` or `ARCRHO_PORT` variable.
 
 ### Step 6 — What a second window can and cannot remember is known
 

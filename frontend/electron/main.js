@@ -31,6 +31,7 @@ const {
   cleanupBackendEndpoint,
 } = require("./backend_lifecycle");
 const { createBackendLaunchToken } = require("./backend_health_compatibility");
+const { publishAppEntry, unpublishAppEntry } = require("./backend_port");
 
 // Detect Windows 11 (build number >= 22000)
 function isWindows11() {
@@ -219,10 +220,11 @@ function getUiReadyMarkerPath() {
   );
 }
 
+// Lists every running app, newest first, like app_endpoint.json, so a harness can wait for a
+// named process rather than whichever app painted last.
 function writeUiReadyMarker() {
-  const markerPath = getUiReadyMarkerPath();
   try {
-    const payload = {
+    publishAppEntry(getUiReadyMarkerPath(), {
       format: "arcrho.app_ui_ready.v1",
       app: APP_MODE,
       pid: process.pid,
@@ -230,26 +232,15 @@ function writeUiReadyMarker() {
       window_id: win && !win.isDestroyed() ? win.id : null,
       test_profile: UI_TEST_PROFILE,
       shown_at: new Date().toISOString(),
-    };
-    fs.mkdirSync(path.dirname(markerPath), { recursive: true });
-    const tempPath = `${markerPath}.${process.pid}.tmp`;
-    fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2), "utf8");
-    fs.renameSync(tempPath, markerPath);
+    });
   } catch (err) {
     appendElectronLog("Failed to write UI ready marker", err);
   }
 }
 
 function removeUiReadyMarker() {
-  try {
-    const markerPath = getUiReadyMarkerPath();
-    const payload = JSON.parse(fs.readFileSync(markerPath, "utf8"));
-    // Only clear our own marker, so a second instance's file survives.
-    if (Number(payload?.pid) !== Number(process.pid)) return;
-    fs.unlinkSync(markerPath);
-  } catch {
-    // Missing or unreadable marker is not an error on shutdown.
-  }
+  // Only our own entry goes, so a second instance's entry survives.
+  unpublishAppEntry(getUiReadyMarkerPath(), process.pid);
 }
 
 function getScriptingShortcutsPath() {

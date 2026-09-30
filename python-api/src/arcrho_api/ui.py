@@ -100,13 +100,33 @@ class ArcRhoWindowProperties:
         }
 
 
-def _discovered_app_url() -> str:
-    """Return the Arco desktop app URL published in the per-user endpoint file.
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name != "nt":
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return False
+        return True
+    import ctypes
 
-    The Electron host writes ``%APPDATA%\\ArcRho\\app_endpoint.json`` after its app
-    server is ready. When the default local port is held by another user session on
-    the same machine, the app falls back to a free port and this file is the only
-    record of the actual endpoint.
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(0x00100000 | 0x1000, False, pid)  # SYNCHRONIZE | QUERY_LIMITED
+    if not handle:
+        return False
+    try:
+        return kernel32.WaitForSingleObject(handle, 0) == 0x102  # WAIT_TIMEOUT: still running
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def running_apps() -> list[dict[str, Any]]:
+    """Every running Arco desktop app on this PC for this Windows user, newest first.
+
+    The Electron host lists each app in ``%APPDATA%\\ArcRho\\app_endpoint.json`` once its
+    app server is ready. A second app, or one whose preferred port was taken, runs on its
+    own port, so this file is the only record of where each app is.
     """
     appdata = str(os.environ.get("APPDATA") or "").strip()
     if not appdata:
@@ -116,15 +136,37 @@ def _discovered_app_url() -> str:
         with open(endpoint_path, "r", encoding="utf-8") as handle:
             payload = json.load(handle)
     except (OSError, json.JSONDecodeError):
-        return ""
+        return []
     if not isinstance(payload, dict):
-        return ""
-    if str(payload.get("app") or "").strip().lower() != "arcrho":
-        return ""
-    url = str(payload.get("url") or "").strip()
-    if not (url.startswith("http://") or url.startswith("https://")):
-        return ""
-    return url.rstrip("/")
+        return []
+    entries = payload.get("apps") if isinstance(payload.get("apps"), list) else [payload]
+    apps = []
+    for entry in entries:
+        if not isinstance(entry, dict) or str(entry.get("app") or "").strip().lower() != "arcrho":
+            continue
+        url = str(entry.get("url") or "").strip()
+        if not (url.startswith("http://") or url.startswith("https://")):
+            continue
+        try:
+            pid = int(entry.get("pid") or 0)
+        except (TypeError, ValueError):
+            pid = 0
+        # An entry without a process id comes from a writer older than the list; trust it.
+        if "pid" in entry and not _pid_alive(pid):
+            continue
+        apps.append({**entry, "url": url.rstrip("/")})
+    return apps
+
+
+def _discovered_app_url(*, pid: int | str | None = None, port: int | str | None = None) -> str:
+    """The newest running app's URL, or the one with the named process id or port."""
+    for entry in running_apps():
+        if pid not in (None, "") and str(entry.get("pid")) != str(pid).strip():
+            continue
+        if port not in (None, "") and str(entry.get("port")) != str(port).strip():
+            continue
+        return entry["url"]
+    return ""
 
 
 def _base_url(app_url: str | None = None) -> str:
@@ -135,7 +177,7 @@ def _base_url(app_url: str | None = None) -> str:
     port = str(os.environ.get("ARCRHO_PORT") or "").strip()
     if host or port:
         return f"http://{host or '127.0.0.1'}:{port or '28765'}"
-    discovered = _discovered_app_url()
+    discovered = _discovered_app_url(pid=os.environ.get("ARCRHO_APP_PID"))
     if discovered:
         return discovered
     return "http://127.0.0.1:28765"
@@ -1013,8 +1055,19 @@ class MacroAutomation:
 class ArcRhoUI:
     """Convenience object for ArcRho UI automation commands."""
 
-    def __init__(self, app_url: str | None = None) -> None:
+    def __init__(
+        self,
+        app_url: str | None = None,
+        *,
+        pid: int | None = None,
+        port: int | None = None,
+    ) -> None:
+        """Pass ``pid`` or ``port`` to reach one of several running apps (see ``running_apps``)."""
         self.app_url = str(app_url or "").strip() or None
+        if not self.app_url and (pid is not None or port is not None):
+            self.app_url = _discovered_app_url(pid=pid, port=port)
+            if not self.app_url:
+                raise ArcRhoApiError(f"No running Arco app matches pid={pid}, port={port}.")
 
     @property
     def base_url(self) -> str:

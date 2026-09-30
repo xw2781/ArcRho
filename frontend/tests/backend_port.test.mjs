@@ -142,3 +142,33 @@ test("writeAppEndpointFile publishes the endpoint and removeAppEndpointFile resp
     fs.rmSync(appdata, { recursive: true, force: true });
   }
 });
+
+test("the endpoint file lists every running app, newest first, and drops dead ones", () => {
+  const appdata = makeTempAppData();
+  const env = { APPDATA: appdata };
+  const alive = new Set([101, 102]);
+  const isAlive = (pid) => alive.has(pid);
+  const write = (pid, port) => writeAppEndpointFile({ appMode: "arcrho", host: "127.0.0.1", port, pid, env, isAlive });
+  const read = () => JSON.parse(fs.readFileSync(getAppEndpointPath({ appMode: "arcrho", env }), "utf8"));
+  try {
+    write(101, 28765);
+    write(102, 31002);
+    let payload = read();
+    assert.deepEqual(payload.apps.map((entry) => entry.pid), [102, 101]);
+    // The newest entry stays readable in the single-app shape.
+    assert.equal(payload.pid, 102);
+    assert.equal(payload.url, "http://127.0.0.1:31002");
+
+    alive.delete(101);
+    write(103, 31003);
+    assert.deepEqual(read().apps.map((entry) => entry.pid), [103, 102]);
+
+    // An app removes only its own entry, and the next newest takes the top level.
+    assert.equal(removeAppEndpointFile({ appMode: "arcrho", pid: 103, env }), true);
+    payload = read();
+    assert.deepEqual(payload.apps.map((entry) => entry.pid), [102]);
+    assert.equal(payload.port, 31002);
+  } finally {
+    fs.rmSync(appdata, { recursive: true, force: true });
+  }
+});

@@ -44,7 +44,14 @@ def app_ui_ready_marker_path(*, app_mode: str = "arcrho", env: dict[str, str] | 
     return Path(appdata) / folder / UI_READY_MARKER_FILE
 
 
-def read_ui_ready_marker(*, app_mode: str = "arcrho", env: dict[str, str] | None = None) -> dict[str, Any] | None:
+def read_ui_ready_marker(
+    *,
+    app_mode: str = "arcrho",
+    env: dict[str, str] | None = None,
+    pid: int | None = None,
+) -> dict[str, Any] | None:
+    """The newest app's ready entry, or the entry of the app with process id ``pid``."""
+
     path = app_ui_ready_marker_path(app_mode=app_mode, env=env)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -52,9 +59,14 @@ def read_ui_ready_marker(*, app_mode: str = "arcrho", env: dict[str, str] | None
         return None
     if not isinstance(payload, dict):
         return None
-    if str(payload.get("format") or "") != UI_READY_MARKER_FORMAT:
-        return None
-    return payload
+    entries = payload.get("apps") if isinstance(payload.get("apps"), list) else [payload]
+    for entry in entries:
+        if not isinstance(entry, dict) or str(entry.get("format") or "") != UI_READY_MARKER_FORMAT:
+            continue
+        if pid is not None and str(entry.get("pid")) != str(pid):
+            continue
+        return entry
+    return None
 
 
 def wait_for_ui_ready(
@@ -63,8 +75,9 @@ def wait_for_ui_ready(
     poll_interval_sec: float = 0.5,
     app_mode: str = "arcrho",
     env: dict[str, str] | None = None,
+    pid: int | None = None,
 ) -> dict[str, Any]:
-    """Block until the ArcRho window is painted and visible.
+    """Block until the ArcRho window is painted and visible; with ``pid``, that app's window.
 
     Waiting on `app_endpoint.json` instead would return while the splash screen is still up,
     because that file is written when the *backend* becomes ready.
@@ -73,7 +86,7 @@ def wait_for_ui_ready(
     deadline = time.monotonic() + max(0.0, float(timeout_sec))
     last: dict[str, Any] | None = None
     while True:
-        last = read_ui_ready_marker(app_mode=app_mode, env=env)
+        last = read_ui_ready_marker(app_mode=app_mode, env=env, pid=pid)
         if last is not None:
             return last
         if time.monotonic() >= deadline:
