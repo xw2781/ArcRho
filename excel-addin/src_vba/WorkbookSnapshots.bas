@@ -155,11 +155,12 @@ End Function
 Public Sub SnapshotCommit(ByVal book As Workbook, ByVal updates As Object, Optional ByVal replaceAll As Boolean = False)
     Dim previous As Object, merged As Object, key As Variant, refreshed As String
     Dim oldSheet As Worksheet, newSheet As Worksheet, savedSheet As Object
-    Dim oldName As String, oldAlerts As Boolean, oldEvents As Boolean
+    Dim oldName As String, oldAlerts As Boolean, oldEvents As Boolean, oldScreen As Boolean
     Dim errorNumber As Long, errorText As String
     On Error GoTo Failed
     oldAlerts = Application.DisplayAlerts
     oldEvents = Application.EnableEvents
+    oldScreen = Application.ScreenUpdating
     If book.ProtectStructure Then Err.Raise 5, , "Unprotect the workbook structure before refreshing Arco."
     Set savedSheet = book.ActiveSheet
     Set previous = EntriesForBook(book)
@@ -175,10 +176,12 @@ Public Sub SnapshotCommit(ByVal book As Workbook, ByVal updates As Object, Optio
     Next key
     Application.EnableEvents = False
     Set oldSheet = CacheSheet(book)
+    ' Adding a worksheet activates it, including during manual formula entry.
+    Application.ScreenUpdating = False
     Set newSheet = book.Worksheets.Add(After:=book.Sheets(book.Sheets.Count))
-    WriteSnapshot newSheet, merged, refreshed
     savedSheet.Activate
     newSheet.Visible = xlSheetVeryHidden
+    WriteSnapshot newSheet, merged, refreshed
     If Not oldSheet Is Nothing Then
         oldName = SNAPSHOT_SHEET & "_previous"
         oldSheet.Name = oldName
@@ -192,6 +195,7 @@ Public Sub SnapshotCommit(ByVal book As Workbook, ByVal updates As Object, Optio
     SnapshotForget book
     snapshotBooks.Add book
     snapshotEntries.Add merged
+    Application.ScreenUpdating = oldScreen
     Application.DisplayAlerts = oldAlerts
     Application.EnableEvents = oldEvents
     Exit Sub
@@ -207,6 +211,7 @@ Failed:
         oldSheet.Visible = xlSheetVeryHidden
     End If
     If Not savedSheet Is Nothing Then savedSheet.Activate
+    Application.ScreenUpdating = oldScreen
     Application.DisplayAlerts = oldAlerts
     Application.EnableEvents = oldEvents
     On Error GoTo 0

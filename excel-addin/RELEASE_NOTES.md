@@ -3,6 +3,10 @@
 Newest first. The About window opens this file from beside the add-in on the
 Arco Server share.
 
+## 4.2.2 - 2026-09-30
+
+- Entering an Arco formula keeps the cache data sheet out of view while saving its results.
+
 ## 4.2.1 - 2026-09-28
 
 - Refresh Workbook shows why a refresh failed instead of stopping with a
