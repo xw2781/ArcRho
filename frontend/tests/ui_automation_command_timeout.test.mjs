@@ -17,7 +17,7 @@ const testableSource = automationSource
     /import \{ createReviewTableDialog \} from "\.\.\/shared\/components\/review_table\/review_table\.js\?v=[^"]+";/u,
     "const createReviewTableDialog = () => ({ close() {} });",
   );
-const { AUTOMATION_CLIENT_ID, automationCommandTimeoutMs } = await import(
+const { AUTOMATION_CLIENT_ID, automationCommandTimeoutMs, initUiAutomation } = await import(
   `data:text/javascript;base64,${Buffer.from(testableSource).toString("base64")}`
 );
 delete globalThis.window;
@@ -83,4 +83,26 @@ test("the shell sends one window identity on the poll and the run-macro request"
   }
   const runRequest = macroSource.slice(macroSource.indexOf("/scripting/run-macro"));
   assert.match(runRequest.slice(0, 600), /client_id: AUTOMATION_CLIENT_ID,/u);
+});
+
+test("a closing page tells the server its window is leaving", async () => {
+  // The server frees what a departed window held only when told, so the shell
+  // names itself on the leave route as its page goes away.
+  const handlers = {};
+  const beacons = [];
+  const savedNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const savedFetch = globalThis.fetch;
+  globalThis.window = { addEventListener: (type, handler) => { handlers[type] = handler; } };
+  Object.defineProperty(globalThis, "navigator", { value: { sendBeacon: (url) => beacons.push(url) }, configurable: true });
+  globalThis.fetch = () => new Promise(() => {});
+  try {
+    initUiAutomation();
+    handlers.pagehide();
+  } finally {
+    delete globalThis.window;
+    globalThis.fetch = savedFetch;
+    if (savedNavigator) Object.defineProperty(globalThis, "navigator", savedNavigator);
+    else delete globalThis.navigator;
+  }
+  assert.deepEqual(beacons, [`http://localhost/ui_automation/clients/${AUTOMATION_CLIENT_ID}/leave`]);
 });

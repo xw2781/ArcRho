@@ -27,12 +27,11 @@ const {
   isProcessAlive,
 } = require("./host_support");
 
-const BACKEND_CONTROL_FLAGS = [
-  ".restart_app",
-  ".shutdown_app",
-  ".restart_electron",
-  ".shutdown_electron",
-];
+// The server's restart and stop markers are named per port, so a supervisor
+// obeys only its own server (app_server/app_control_flags.py owns the names).
+function backendControlFlagNames(port) {
+  return [`.restart_app_${port}`, `.shutdown_app_${port}`, ".restart_electron", ".shutdown_electron"];
+}
 
 // Host context; set once via initBackendLifecycle before any other call.
 let APP_MODE = "arcrho";
@@ -172,7 +171,7 @@ function getBackendFlagRoots() {
 
 function clearBackendControlFlags() {
   for (const root of getBackendFlagRoots()) {
-    for (const flagName of BACKEND_CONTROL_FLAGS) {
+    for (const flagName of backendControlFlagNames(PORT)) {
       const flagPath = path.join(root, flagName);
       try {
         if (fs.existsSync(flagPath)) fs.unlinkSync(flagPath);
@@ -537,7 +536,6 @@ async function startBackendWithRetry() {
   await clearAbandonedBackendListeners();
   let lastErr = null;
   for (let attempt = 1; attempt <= BACKEND_STARTUP_ATTEMPTS; attempt++) {
-    clearBackendControlFlags();
     const reusablePort = await findReusableBackendPort();
     if (reusablePort != null) {
       PORT = reusablePort;
@@ -557,6 +555,8 @@ async function startBackendWithRetry() {
         `Backend port ${PREFERRED_PORT} is unavailable (${why}); using free local port ${PORT} instead.`
       );
     }
+    // Only now is the port known, so only this server's stale markers go.
+    clearBackendControlFlags();
     startBackend();
     try {
       await waitForServer(BACKEND_STARTUP_TIMEOUT_MS);

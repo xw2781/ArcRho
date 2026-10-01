@@ -9,6 +9,7 @@ Local UI automation command bridge for Python macros and scripts that need to as
 <!-- AUTO-GEN:BEGIN app_server.ui_automation.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
+| `POST` | `/ui_automation/clients/{client_id}/leave` | `leave_ui_automation_client` | `Request` | - | `ui_automation_service.leave_client` |
 | `POST` | `/ui_automation/commands` | `submit_ui_automation_command` | `UiAutomationCommandRequest` | [`app_server/schemas/ui_automation.py`](../../../app_server/schemas/ui_automation.py) | `ui_automation_service.submit_command` |
 | `POST` | `/ui_automation/commands/drain` | `drain_ui_automation_commands` | `Request` | - | `ui_automation_service.drain_pending` |
 | `POST` | `/ui_automation/commands/poll` | `poll_ui_automation_command` | `UiAutomationPollRequest` | [`app_server/schemas/ui_automation.py`](../../../app_server/schemas/ui_automation.py) | `ui_automation_service.poll_command` |
@@ -31,6 +32,7 @@ Local UI automation command bridge for Python macros and scripts that need to as
 - `POST /ui_automation/commands` submits a typed command from local Python code and waits for the frontend shell result.
 - `POST /ui_automation/commands/poll` is consumed by the active shell to receive pending commands.
 - `POST /ui_automation/commands/{command_id}/complete` lets the shell return `{ ok, result, error }` for the waiting Python caller.
+- `POST /ui_automation/clients/{client_id}/leave` is sent by a shell page as it closes or reloads. The window stops counting as live at once, a poll it left running takes nothing more, and every command addressed to it or taken by it and not yet answered goes straight to the windows still open. A review-table status or close that no remaining window holds answers a cancelled completion, the same answer a closed hosting tab gives, so a macro whose owning app closed mid-review ends cleanly.
 - Supported commands include `ui.messageBox`, `ui.progressOpen`, `ui.progressUpdate`, `ui.progressClose`, the asynchronous `ui.reviewTableOpen`/`ui.reviewTableStatus`/`ui.reviewTableClose` review flow, `macro.captureActiveDfmContext`, `macro.reviewAndApplyResult`, `taskDesigner.*`, `projectInstance.context`, `projectInstance.openDataset`, `projectInstance.refreshDatasets`, and Project Instance window actions. `projectInstance.openDataset` can open DFM and Result Selection method windows when the caller supplies `openMethod` plus the method type.
 - An ArcRho macro run started from Arcode uses two short macro commands: capture returns the live unsaved DFM JSON plus a one-use target token, then review/apply verifies the exact shell tab/Project Instance window and its context fingerprint before applying the source result. Python executes between the commands so macros remain free to issue nested message-box, progress, Task Designer, and other UI automation calls without blocking the shell poll loop.
 - `ui.messageBox` accepts optional `autoCloseMs`/`auto_close_ms` arguments for informational dialogs that should close themselves after a short delay.

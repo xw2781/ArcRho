@@ -27,7 +27,6 @@ const {
   stopBackendForUpdate,
   registerBackendClient,
   unregisterBackendClient,
-  clearBackendControlFlags,
   cleanupBackendEndpoint,
 } = require("./backend_lifecycle");
 const { createBackendLaunchToken } = require("./backend_health_compatibility");
@@ -2102,7 +2101,6 @@ app.whenReady().then(async () => {
   try {
     if (START_BACKEND) {
       updateSplashProgress(10, "Starting app server...");
-      clearBackendControlFlags();
 
       updateSplashProgress(30, "Waiting for server...");
       appendElectronLog("Starting bundled/backend app server.");

@@ -387,8 +387,6 @@ _AUDIT_LOG_LOCK = threading.Lock()
 # ---------------------------------------------------------------------------
 
 BASE_DIR = PROJECT_ROOT
-RESTART_FLAG = BASE_DIR / ".restart_app"
-SHUTDOWN_FLAG = BASE_DIR / ".shutdown_app"
 ELECTRON_RESTART_FLAG = BASE_DIR / ".restart_electron"
 ELECTRON_SHUTDOWN_FLAG = BASE_DIR / ".shutdown_electron"
 

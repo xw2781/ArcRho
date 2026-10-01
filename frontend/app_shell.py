@@ -7,9 +7,9 @@ import sys
 import time
 from pathlib import Path
 
+from app_server.app_control_flags import restart_flag, shutdown_flag
+
 BASE_DIR = Path(__file__).resolve().parent
-RESTART_FLAG = BASE_DIR / ".restart_app"
-SHUTDOWN_FLAG = BASE_DIR / ".shutdown_app"
 
 
 def build_cmd(host: str, port: int, reload: bool, app_mode: str = "arcrho") -> list[str]:
@@ -60,6 +60,8 @@ def run_supervisor(host: str, port: int, reload: bool) -> None:
   env = ensure_env_defaults(os.environ)
   app_mode = "arcode" if env.get("ARCRHO_APP_MODE", "").strip().lower() == "arcode" else "arcrho"
   cmd = build_cmd(host, port, reload, app_mode)
+  RESTART_FLAG = restart_flag(BASE_DIR, port)
+  SHUTDOWN_FLAG = shutdown_flag(BASE_DIR, port)
   console_mode = env.get("ARCRHO_BACKEND_CONSOLE", "").strip().lower()
   if os.name == "nt":
     creationflags = subprocess.CREATE_NEW_PROCESS_GROUP

@@ -1,6 +1,6 @@
 # More than one ArcRho app on one PC
 
-Status: Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time; 6 of 7 done (steps 1 to 6 committed 2026-09-30). Step 7's app check found that closing the owning app mid-review still fails the macro, so one decision is open and step 7 waits on it.
+Status: Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time, plus step 8 (40 minutes) added 2026-09-30 for the two gaps step 7's app check found; 7 of 8 done (steps 1 to 6 and 8 committed 2026-09-30). Step 7 is next: it re-runs the two-app check, now including the owning-app-closed case, and deploys.
 Last updated: 2026-09-30
 
 ## Progress
@@ -15,9 +15,10 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 4 | Closing the last window really shuts the app down | [x] | 2026-09-30 | 60 min | 4 min | Closing the last app window now stops its server even when another app started it, a server left behind by a crashed window is cleared at the next start, and restarting asks first when another window shares the server. |
 | 5 | Scripts and screenshots can pick which app they mean | [x] | 2026-09-30 | 60 min | 4 min | With two apps open, both are listed where scripts look for the app, and a script run from a terminal reaches the newest one or the one it names. |
 | 6 | What a second window can and cannot remember is known | [x] | 2026-09-30 | 30 min | 18 min | Measured: the colour theme and table style survive from either window, but other browser-kept settings changed in a second app window are lost when it closes. |
-| 7 | Checked with two apps open, written down, and released | [ ] | | 45 min | | In progress 2026-09-30: two apps now keep their own servers and an export's windows stay in its own app, but closing the owning app mid-review still ends the macro with an error and a traceback; waiting on the decision under Open decisions. |
+| 7 | Checked with two apps open, written down, and released | [ ] | | 45 min | | In progress 2026-09-30: two apps now keep their own servers and an export's windows stay in its own app, but closing the owning app mid-review still ended the macro with an error and a traceback; step 8 fixes that, and this step's check runs again after it. |
+| 8 | Closing the app that owns a review ends the macro cleanly | [x] | 2026-09-30 | 40 min | 18 min | Closing the app that started a macro while its review table is open now ends the macro as a cancelled review in the other app, and two development apps run from one copy of the code can no longer stop each other's server. |
 
-Overall: 6 of 7 steps done. Estimated 325 min, actual so far 42 min.
+Overall: 7 of 8 steps done. Estimated 365 min, actual so far 60 min. Step 8 was added after step 7's first check and runs before step 7's re-run.
 
 ## How agents work this plan
 
@@ -89,10 +90,10 @@ Two smaller things follow from those rules: the endpoint and window-ready files 
 
 ## Open decisions
 
-Two questions came up in step 7's app check on 2026-09-30 and are open. Six more came up while writing this plan and are answered below them so no step has to guess.
+Two questions came up in step 7's app check on 2026-09-30; the user approved both recommended answers the same day and step 8 implements them. Six more came up while writing this plan and are answered below them so no step has to guess.
 
-- **Open: what ends a macro whose owning app closes mid-review?** Observed on the Server PC with the development build, run from a clean checkout of `48ac6eda`: app A started a server on a free port (the user's app kept 28765), app B shared A's server, and an export of `PRNJ - PA\PA\All States\Direct Group\Auto Liab Total` started in A showed its progress window and review table in A only. Closing A while the review table was open left B's server running, but 31 seconds later B showed "Export to ResQ failed ... Timed out waiting for UI command: ui.reviewTableStatus" with a traceback, not a cancelled review. Two gaps in [ui_automation_service.py](../../frontend/app_server/services/ui_automation_service.py) explain it. A status question A had already taken, or one B handed back, stays with A: nothing re-offers a command a window took and never answered, and A still counts as live for up to 45 seconds after its last poll began, so B's hand-back is queued for a window that has gone. And even when B is the last window, it answers a review table it never held with "Review table is not available", which the macro also reports as a failure with a traceback. **Recommended:** a closing app tells the server it is leaving, which ends its liveness at once and re-queues anything it took but did not answer; and a status or close question about a review table that no live window holds settles as a cancelled completion, the answer a closed hosting tab already gives. That is one change in the queue and one in the shell, with a queue test for the departed owner.
-- **Open: two development apps from one checkout share the server's stop and restart markers.** The app server writes its stop and restart markers into the `frontend/` folder it runs from, and every development supervisor started from that folder watches the same file. In the same check the last window's stop marker was left in the checkout after the server stopped; had the second app run from the user's own checkout, the user's supervisor could have taken that marker and stopped the user's server. Installed apps are not affected. **Recommended:** name the markers per port, so a supervisor only obeys its own server's marker.
+- **Answered (step 8): what ends a macro whose owning app closes mid-review?** Observed on the Server PC with the development build, run from a clean checkout of `48ac6eda`: app A started a server on a free port (the user's app kept 28765), app B shared A's server, and an export of `PRNJ - PA\PA\All States\Direct Group\Auto Liab Total` started in A showed its progress window and review table in A only. Closing A while the review table was open left B's server running, but 31 seconds later B showed "Export to ResQ failed ... Timed out waiting for UI command: ui.reviewTableStatus" with a traceback, not a cancelled review. Two gaps in [ui_automation_service.py](../../frontend/app_server/services/ui_automation_service.py) explain it. A status question A had already taken, or one B handed back, stays with A: nothing re-offers a command a window took and never answered, and A still counts as live for up to 45 seconds after its last poll began, so B's hand-back is queued for a window that has gone. And even when B is the last window, it answers a review table it never held with "Review table is not available", which the macro also reports as a failure with a traceback. **Recommended:** a closing app tells the server it is leaving, which ends its liveness at once and re-queues anything it took but did not answer; and a status or close question about a review table that no live window holds settles as a cancelled completion, the answer a closed hosting tab already gives. That is one change in the queue and one in the shell, with a queue test for the departed owner.
+- **Answered (step 8): two development apps from one checkout share the server's stop and restart markers.** The app server writes its stop and restart markers into the `frontend/` folder it runs from, and every development supervisor started from that folder watches the same file. In the same check the last window's stop marker was left in the checkout after the server stopped; had the second app run from the user's own checkout, the user's supervisor could have taken that marker and stopped the user's server. Installed apps are not affected. **Recommended:** name the markers per port, so a supervisor only obeys its own server's marker.
 
 - **Do we forbid a second app instead?** No. Running two is wanted, occasionally, and the whole plan exists to make it safe.
 - **A sibling holds the preferred port.** The new app starts its own server on a free port. It clears a listener only when no live window claims it, which keeps the original purpose of the killing, cleaning up a server left behind by an older build of the same app.
@@ -103,7 +104,7 @@ Two questions came up in step 7's app check on 2026-09-30 and are open. Six more
 
 ## Plan
 
-Steps 1 to 3 are ordered: the port fix removes the cross-attachment that makes ownership ambiguous. Steps 4, 5 and 6 are independent of each other and of steps 2 and 3, and may be taken in any order once step 1 is in. Step 7 is last.
+Steps 1 to 3 are ordered: the port fix removes the cross-attachment that makes ownership ambiguous. Steps 4, 5 and 6 are independent of each other and of steps 2 and 3, and may be taken in any order once step 1 is in. Step 8 was appended after step 7's first check failed; it runs before step 7 is taken up again, and step 7 stays last.
 
 ### Step 1 — Opening a second app no longer disturbs the first
 
@@ -291,9 +292,39 @@ Estimate: code edit 10 min, test/validation 20 min, total 30 min. Actual: code e
 
 Estimate: code edit 20 min, test/validation 25 min, total 45 min, plus the user's two checks in the app.
 
+### Step 8 — Closing the app that owns a review ends the macro cleanly
+
+Appended 2026-09-30 after step 7's first app check; it runs before step 7 is taken up again.
+
+**Goal.** A closing app frees what its window held at once, a review question no remaining window holds ends as a cancelled review, and two development apps from one checkout each obey only their own server's stop and restart markers.
+
+**Read first.**
+
+- This plan down to the Plan section, above all the two answered entries at the top of Open decisions.
+- [ui_automation_service.py](../../frontend/app_server/services/ui_automation_service.py) in full, as changed by steps 2 and 3, and [ui_automation_router.py](../../frontend/app_server/api/ui_automation_router.py).
+- [ui_automation.js:836-880](../../frontend/ui/shell/ui_automation.js#L836-L880) and [ui_automation.js:1340-1370](../../frontend/ui/shell/ui_automation.js#L1340-L1370).
+- The markers: [app_control_router.py](../../frontend/app_server/api/app_control_router.py), [config.py:385-395](../../frontend/app_server/config.py#L385-L395), [app_shell.py](../../frontend/app_shell.py), and [backend_lifecycle.js:30-35](../../frontend/electron/backend_lifecycle.js#L30-L35), [backend_lifecycle.js:165-185](../../frontend/electron/backend_lifecycle.js#L165-L185) and [backend_lifecycle.js:534-565](../../frontend/electron/backend_lifecycle.js#L534-L565).
+
+**Do.**
+
+- [x] Add a leave route to the command queue. A leaving window stops counting as live at once, a poll it left running takes nothing more, and every command addressed to it or taken by it and not yet answered goes to the windows still open without waiting for the grace period.
+- [x] Have the shell call it as its page goes away, which covers closing the app, quitting it and reloading the page.
+- [x] Answer a review-table status or close for a dialog no window holds with the cancelled completion a closed hosting tab already gives, from one shared answer, so the last window ends the macro cleanly and a hand-back that every window declines settles the same way.
+- [x] Name the server's stop and restart markers per port in one small module the server and the development supervisor both use. The Electron host clears only the markers of the port it is about to start a server on, once that port is known, so it no longer clears a sibling's.
+
+**Tests.**
+
+- [test_ui_automation_command_owner.py](../../frontend/tests/test_ui_automation_command_owner.py) gains the departed owner: a command it took goes to the last window at once and that window may not hand it back, a queued command addressed to it skips the grace period, and a poll it left running takes nothing.
+- [ui_automation_command_timeout.test.mjs](../../frontend/tests/ui_automation_command_timeout.test.mjs) gains a check that a closing page sends the leave call naming its own window; [review_table.test.mjs](../../frontend/tests/review_table.test.mjs) now pins the cancelled answer for an unknown dialog.
+- A new [test_app_control_flags.py](../../frontend/tests/test_app_control_flags.py) checks that the markers differ per port, that the server writes the marker for its own port, and that the supervisor and the Electron host use the same names.
+
+**Done when.** With two apps sharing one server, closing the app that owns an open review table ends the macro in the other app as a cancelled review with no traceback, also when the other app is the last window; and a stop marker written for one development app's server is never taken by the other's supervisor. The live check is step 7's re-run.
+
+Estimate: code edit 25 min, test/validation 15 min, total 40 min. Actual: code edit 12 min, test/validation 6 min, total 18 min; under because both answers had one obvious place each to land, and the live check is left to step 7.
+
 ## Rough size
 
-Seven sessions, one per step, estimated at 325 minutes of agent time: 205 minutes of code edit and 120 minutes of test, validation and deploy. Steps 2 and 5 each touch the frontend and the public Python API together; every other step stays inside one component. The ResQ checks in step 7 are the user's time and are not counted.
+Eight sessions, one per step, estimated at 365 minutes of agent time: 230 minutes of code edit and 135 minutes of test, validation and deploy. Step 8 was added after step 7's first check. Steps 2 and 5 each touch the frontend and the public Python API together, and step 8 touches the app server, the shell and the Electron host's marker clean-up together; every other step stays inside one component. The ResQ checks in step 7 are the user's time and are not counted.
 
 ## Out of scope
 

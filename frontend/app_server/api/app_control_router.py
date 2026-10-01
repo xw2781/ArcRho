@@ -5,18 +5,19 @@ import time
 import threading
 from typing import Any, Dict
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app_server import config
+from app_server.app_control_flags import restart_flag, shutdown_flag
 from app_server.services import arcbot_prompt_service, workspace_read_client
 
 router = APIRouter()
 
 
 @router.post("/app/restart")
-def app_restart() -> Dict[str, Any]:
+def app_restart(request: Request) -> Dict[str, Any]:
     try:
-        config.RESTART_FLAG.write_text(str(time.time()), encoding="utf-8")
+        restart_flag(config.BASE_DIR, request.scope["server"][1]).write_text(str(time.time()), encoding="utf-8")
     except Exception:
         pass
 
@@ -47,9 +48,9 @@ def app_shutdown_electron() -> Dict[str, Any]:
 
 
 @router.post("/app/shutdown")
-def app_shutdown() -> Dict[str, Any]:
+def app_shutdown(request: Request) -> Dict[str, Any]:
     try:
-        config.SHUTDOWN_FLAG.write_text(str(time.time()), encoding="utf-8")
+        shutdown_flag(config.BASE_DIR, request.scope["server"][1]).write_text(str(time.time()), encoding="utf-8")
     except Exception:
         pass
 

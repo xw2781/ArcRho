@@ -159,6 +159,77 @@ class UiAutomationCommandDeclineTests(unittest.TestCase):
         self.assertFalse(polled["may_decline"])
 
 
+class UiAutomationClientLeaveTests(unittest.TestCase):
+    """A window whose app closes frees what it held at once."""
+
+    def setUp(self) -> None:
+        ui_automation_service.drain_pending()
+        ui_automation_service._CLIENT_SEEN.clear()
+        self.addCleanup(ui_automation_service._CLIENT_SEEN.clear)
+        self.addCleanup(ui_automation_service._LEFT.clear)
+        self.results: list[dict] = []
+        self._worker: threading.Thread | None = None
+
+    def tearDown(self) -> None:
+        ui_automation_service.drain_pending()
+        if self._worker is not None:
+            self._worker.join(timeout=5.0)
+
+    def _submit(self, owner: str = "") -> None:
+        def submit() -> None:
+            self.results.append(
+                ui_automation_service.submit_command(
+                    "ui.reviewTableStatus", {}, {"dialogId": "d1"}, 30.0, owner=owner
+                )
+            )
+
+        self._worker = threading.Thread(target=submit, daemon=True)
+        self._worker.start()
+        deadline = time.monotonic() + 5.0
+        while ui_automation_service.queue_status()["queued"] < 1 and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+    def test_a_command_the_departed_owner_took_goes_to_the_last_window_at_once(self) -> None:
+        ui_automation_service.poll_command(timeout_sec=0.1, client_id="shell_b")
+        self._submit(owner="shell_a")
+        taken = ui_automation_service.poll_command(timeout_sec=1.0, client_id="shell_a")["command"]
+        self.assertTrue(taken["may_decline"])
+
+        ui_automation_service.leave_client("shell_a")
+
+        started = time.monotonic()
+        polled = ui_automation_service.poll_command(timeout_sec=1.0, client_id="shell_b")["command"]
+        self.assertEqual(polled["id"], taken["id"])
+        self.assertLess(time.monotonic() - started, 0.5)
+        # The departed window no longer counts, so the last one answers itself.
+        self.assertFalse(polled["may_decline"])
+
+    def test_a_queued_command_addressed_to_the_departed_window_skips_the_grace_period(self) -> None:
+        self._submit(owner="shell_a")
+        ui_automation_service.leave_client("shell_a")
+
+        started = time.monotonic()
+        polled = ui_automation_service.poll_command(timeout_sec=2.0, client_id="shell_b")["command"]
+        self.assertEqual(polled["owner"], "shell_a")
+        self.assertLess(time.monotonic() - started, 0.5)
+
+    def test_a_poll_the_departed_window_left_running_takes_nothing(self) -> None:
+        polls: list[dict] = []
+        poller = threading.Thread(
+            target=lambda: polls.append(ui_automation_service.poll_command(timeout_sec=3.0, client_id="shell_a")),
+            daemon=True,
+        )
+        poller.start()
+        time.sleep(0.1)
+        ui_automation_service.leave_client("shell_a")
+        poller.join(timeout=2.0)
+        self.assertIsNone(polls[0]["command"])
+
+        self._submit()
+        self.assertIsNone(ui_automation_service.poll_command(timeout_sec=0.2, client_id="shell_a")["command"])
+        self.assertEqual(ui_automation_service.queue_status()["queued"], 1)
+
+
 class PublicApiCommandOwnerTests(unittest.TestCase):
     def setUp(self) -> None:
         previous = arcrho_ui.set_command_owner("")

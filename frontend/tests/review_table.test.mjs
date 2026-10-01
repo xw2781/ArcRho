@@ -345,14 +345,14 @@ test("a projectInstance-hosted review table runs as a nested pi-window", async (
 test("a window hands back a review table or progress window it does not hold instead of failing", async () => {
   const automation = await source("ui/shell/ui_automation.js");
 
-  // An unknown dialog id is declined with the answer this window would have
-  // given, rather than thrown on, unless the server says no window is left or
-  // the command is addressed to this very window.
+  // An unknown dialog id is declined rather than thrown on, unless the server
+  // says no window is left or the command is addressed to this very window;
+  // then, as when no window holds it at all, it answers a cancelled review so
+  // the macro ends cleanly.
   assert.match(
     automation,
-    /if \(!hostTab && dialogId && !reviewTableDialogs\.has\(dialogId\)\) \{\s*return declineOrAnswer\(command, isClose/u,
+    /if \(!hostTab && dialogId && !reviewTableDialogs\.has\(dialogId\)\) \{\s*return declineOrAnswer\(command, cancelledReviewAnswer\(dialogId, isClose\)\);/u,
   );
-  assert.match(automation, /error: `Review table is not available: \$\{dialogId\}`/u);
   assert.match(automation, /command\?\.may_decline && toText\(command\?\.owner\) !== AUTOMATION_CLIENT_ID/u);
   // A progress update for a window this app never opened is handed back
   // instead of opening a second progress window.
@@ -361,7 +361,8 @@ test("a window hands back a review table or progress window it does not hold ins
   assert.match(automation, /payload\?\.declined \? "decline" : "complete"/u);
   assert.match(automation, /client_id: AUTOMATION_CLIENT_ID/u);
   // A hosting page that genuinely closed still answers a cancelled completion.
-  assert.match(automation, /reviewTableHostTabs\.delete\(dialogId\);\s*return isClose/u);
+  assert.match(automation, /reviewTableHostTabs\.delete\(dialogId\);\s*return cancelledReviewAnswer\(dialogId, isClose\);/u);
+  assert.match(automation, /status: "completed", pending: false, accepted: false/u);
 });
 
 test("an implicit active-window query with no open window reports None instead of an error", async () => {

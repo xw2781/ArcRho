@@ -23,8 +23,8 @@ __pycache__/
 tmp_data/
 *.tmp
 *.log
-.restart_app
-.shutdown_app
+.restart_app_*
+.shutdown_app_*
 .restart_electron
 .shutdown_electron
 

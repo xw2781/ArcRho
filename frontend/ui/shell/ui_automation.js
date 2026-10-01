@@ -844,14 +844,21 @@ function declineOrAnswer(command, answer) {
   return handBack ? { ...answer, declined: true } : answer;
 }
 
+// A review that can never finish here - its hosting tab closed, or no window
+// left holds it - answers a cancelled completion, so the caller exits its poll
+// loop cleanly instead of failing.
+function cancelledReviewAnswer(dialogId, isClose) {
+  return isClose
+    ? { ok: true, result: { dialogId, closed: false, cancelled: false } }
+    : { ok: true, result: { dialogId, status: "completed", pending: false, accepted: false, selectedRowIds: [], optionStates: {} } };
+}
+
 async function routeReviewTableFollowUp(command, isClose) {
   const args = command.args || {};
   const dialogId = reviewTableIdFromArgs(args);
   const hostTab = dialogId ? reviewTableHostTabs.get(dialogId) : null;
   if (!hostTab && dialogId && !reviewTableDialogs.has(dialogId)) {
-    return declineOrAnswer(command, isClose
-      ? { ok: true, result: { dialogId, closed: false, cancelled: false } }
-      : { ok: false, error: `Review table is not available: ${dialogId}` });
+    return declineOrAnswer(command, cancelledReviewAnswer(dialogId, isClose));
   }
   if (!hostTab) {
     return {
@@ -860,13 +867,8 @@ async function routeReviewTableFollowUp(command, isClose) {
     };
   }
   if (!isLiveShellTab(hostTab) || !hostTab.iframe?.contentWindow) {
-    // The hosting Project Instance tab was closed, so the review can never
-    // finish: report a cancelled completion instead of an error so the caller
-    // exits its poll loop cleanly.
     reviewTableHostTabs.delete(dialogId);
-    return isClose
-      ? { ok: true, result: { dialogId, closed: false, cancelled: false } }
-      : { ok: true, result: { dialogId, status: "completed", pending: false, accepted: false, selectedRowIds: [], optionStates: {} } };
+    return cancelledReviewAnswer(dialogId, isClose);
   }
   const outcome = await sendCommandToProjectInstance(command, {
     tab: hostTab,
@@ -1351,5 +1353,11 @@ export function initUiAutomation() {
   if (automationStarted) return;
   automationStarted = true;
   automationStopped = false;
+  // A closing or reloading page tells the server it is leaving, so whatever it
+  // held goes to a window still open instead of waiting for this one.
+  window.addEventListener("pagehide", () => {
+    automationStopped = true;
+    navigator.sendBeacon(`${API_BASE}/ui_automation/clients/${encodeURIComponent(AUTOMATION_CLIENT_ID)}/leave`);
+  });
   void pollLoop();
 }

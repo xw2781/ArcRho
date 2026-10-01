@@ -56,6 +56,12 @@ def cancel_ui_automation_command(command_id: str, request: Request) -> Dict[str,
     return ui_automation_service.cancel_command(command_id)
 
 
+@router.post("/ui_automation/clients/{client_id}/leave")
+def leave_ui_automation_client(client_id: str, request: Request) -> Dict[str, Any]:
+    require_local_client(request, "UI automation")
+    return ui_automation_service.leave_client(client_id)
+
+
 @router.post("/ui_automation/commands/drain")
 def drain_ui_automation_commands(request: Request) -> Dict[str, Any]:
     require_local_client(request, "UI automation")

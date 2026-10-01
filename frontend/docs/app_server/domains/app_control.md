@@ -9,9 +9,9 @@ Application lifecycle control domain (restart/shutdown flags) coordinated betwee
 <!-- AUTO-GEN:BEGIN app_server.app_control.entry_points -->
 | Method | Path | Handler | Request Model | Schema | Service Calls |
 | --- | --- | --- | --- | --- | --- |
-| `POST` | `/app/restart` | `app_restart` | - | - | - |
+| `POST` | `/app/restart` | `app_restart` | `Request` | - | - |
 | `POST` | `/app/restart_electron` | `app_restart_electron` | - | - | - |
-| `POST` | `/app/shutdown` | `app_shutdown` | - | - | - |
+| `POST` | `/app/shutdown` | `app_shutdown` | `Request` | - | - |
 | `POST` | `/app/shutdown_electron` | `app_shutdown_electron` | - | - | - |
 | `GET` | `/arcbot/prompt-files` | `arcbot_prompt_files` | - | - | `workspace_read_client.run_workspace_read` |
 <!-- AUTO-GEN:END -->
@@ -34,7 +34,7 @@ Application lifecycle control domain (restart/shutdown flags) coordinated betwee
 
 ## Data/State/Caches
 <!-- MANUAL:BEGIN -->
-- Uses lifecycle flag files under project root: `.restart_app`, `.shutdown_app`, `.restart_electron`, `.shutdown_electron`.
+- Uses lifecycle flag files under project root: `.restart_app_<port>`, `.shutdown_app_<port>`, `.restart_electron`, `.shutdown_electron`. The server markers carry the port of the server that wrote them (`app_server/app_control_flags.py`), so two development apps run from one checkout each stop or restart only their own server; the host clears only the markers of the port it is about to start a server on.
 - The development Electron supervisor (`electron_shell.py`, used only by `launch_arcrho_dev_mode.bat`) relaunches Electron only when `.restart_electron` was observed. Electron exiting on its own ends the supervisor, because a user closing the app and a crash are indistinguishable from an exit code and relaunching either one leaves an app that cannot be closed. `.shutdown_electron` remains an external stop signal for the supervisor; no in-app path writes it, since the ordinary quit path is simply Electron exiting.
 <!-- MANUAL:END -->
 
@@ -46,5 +46,5 @@ Application lifecycle control domain (restart/shutdown flags) coordinated betwee
 ## Known Risks
 <!-- MANUAL:BEGIN -->
 - Incorrect flag behavior can cause app restart loops.
-- Stale `.shutdown_app` plus premature process kill can cause next-launch startup timeout.
+- Stale `.shutdown_app_<port>` plus premature process kill can cause next-launch startup timeout.
 <!-- MANUAL:END -->

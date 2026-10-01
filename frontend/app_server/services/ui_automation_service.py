@@ -25,6 +25,8 @@ class _PendingCommand:
     result: Optional[Dict[str, Any]] = None
     # Windows that handed the command back because they do not hold what it names.
     declined_by: Set[str] = field(default_factory=set)
+    # The window that took the command and has not answered it yet.
+    taken_by: str = ""
 
 
 _LOCK = Condition()
@@ -32,6 +34,8 @@ _QUEUE: List[str] = []
 _PENDING: Dict[str, _PendingCommand] = {}
 # Window id -> when it last began or ended a poll, to know who else could answer.
 _CLIENT_SEEN: Dict[str, float] = {}
+# Windows whose page has gone; a poll they left running takes nothing more.
+_LEFT: Set[str] = set()
 _MAX_TIMEOUT_SEC = 120.0
 # How long a command addressed to one window waits for that window before any
 # window may take it. A window that has gone (its app closed mid-macro) must not
@@ -137,10 +141,12 @@ def poll_command(timeout_sec: float = 20.0, *, client_id: Optional[str] = None) 
     client = str(client_id or "").strip()
     deadline = time.monotonic() + timeout
     with _LOCK:
-        if client:
+        if client and client not in _LEFT:
             # Seen at the start of a poll that lasts `timeout`, so it stays live until then.
             _CLIENT_SEEN[client] = time.monotonic() + timeout
         while True:
+            if client in _LEFT:
+                return {"ok": True, "command": None}
             now = time.monotonic()
             next_claimable: Optional[float] = None
             for command_id in list(_QUEUE):
@@ -153,6 +159,7 @@ def poll_command(timeout_sec: float = 20.0, *, client_id: Optional[str] = None) 
                 wait = _owner_wait_remaining(item, client, now)
                 if wait <= 0:
                     _QUEUE.remove(command_id)
+                    item.taken_by = client
                     may_decline = bool(client) and _has_other_candidate(item, client, now)
                     if client:
                         _CLIENT_SEEN[client] = now
@@ -233,6 +240,29 @@ def decline_command(
         }
         _LOCK.notify_all()
     return {"ok": True, "declined": True, "settled": True}
+
+
+def leave_client(client_id: str) -> Dict[str, Any]:
+    """Forget a window whose page is closing.
+
+    It stops counting as live at once, and every command addressed to it, or
+    taken by it and not yet answered, goes to the windows still open without
+    waiting for the grace period.
+    """
+    client = str(client_id or "").strip()
+    if not client:
+        raise HTTPException(400, "Client id is required.")
+
+    with _LOCK:
+        _LEFT.add(client)
+        _CLIENT_SEEN.pop(client, None)
+        for item in _PENDING.values():
+            if client in (item.owner, item.taken_by):
+                item.declined_by.add(client)
+            if item.taken_by == client and item.result is None and item.id not in _QUEUE:
+                _QUEUE.insert(0, item.id)
+        _LOCK.notify_all()
+    return {"ok": True}
 
 
 def drain_pending() -> Dict[str, Any]:
