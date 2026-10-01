@@ -1,6 +1,6 @@
 # More than one ArcRho app on one PC
 
-Status: Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time, plus step 8 (40 minutes) added 2026-09-30 for the two gaps step 7's app check found; 7 of 8 done (steps 1 to 6 and 8 committed 2026-09-30). Step 7 is next: it re-runs the two-app check, now including the owning-app-closed case, and deploys.
+Status: Completed 2026-09-30. Diagnosed 2026-09-13 from a failed ResQ export with two ArcRho apps open, then widened the same day from the macro fix alone to full support for two windows side by side; broken into 7 session-sized steps estimated at 325 minutes of agent time, plus step 8 (40 minutes) added 2026-09-30 for the two gaps step 7's first app check found; all 8 done. Step 7's re-run passed every two-app check with the Bridge, Engine and Gateway already deployed with step 8; the app part reaches users with the next app release.
 Last updated: 2026-09-30
 
 ## Progress
@@ -15,17 +15,17 @@ Plain-language tracking. The agent that finishes a step ticks its box, fills in 
 | 4 | Closing the last window really shuts the app down | [x] | 2026-09-30 | 60 min | 4 min | Closing the last app window now stops its server even when another app started it, a server left behind by a crashed window is cleared at the next start, and restarting asks first when another window shares the server. |
 | 5 | Scripts and screenshots can pick which app they mean | [x] | 2026-09-30 | 60 min | 4 min | With two apps open, both are listed where scripts look for the app, and a script run from a terminal reaches the newest one or the one it names. |
 | 6 | What a second window can and cannot remember is known | [x] | 2026-09-30 | 30 min | 18 min | Measured: the colour theme and table style survive from either window, but other browser-kept settings changed in a second app window are lost when it closes. |
-| 7 | Checked with two apps open, written down, and released | [ ] | | 45 min | | In progress 2026-09-30: two apps now keep their own servers and an export's windows stay in its own app, but closing the owning app mid-review still ended the macro with an error and a traceback; step 8 fixes that, and this step's check runs again after it. |
+| 7 | Checked with two apps open, written down, and released | [x] | 2026-09-30 | 45 min | 26 min | Checked with two apps open: each keeps its own server, an export's windows stay in the app it was started from, and closing that app mid-review ends the export as cancelled within seconds, with nothing written to ResQ. |
 | 8 | Closing the app that owns a review ends the macro cleanly | [x] | 2026-09-30 | 40 min | 18 min | Closing the app that started a macro while its review table is open now ends the macro as a cancelled review in the other app, and two development apps run from one copy of the code can no longer stop each other's server. |
 
-Overall: 7 of 8 steps done. Estimated 365 min, actual so far 60 min. Step 8 was added after step 7's first check and runs before step 7's re-run.
+Overall: 8 of 8 steps done. Estimated 365 min, actual 86 min. Step 8 was added after step 7's first check and ran before step 7's re-run.
 
 ## How agents work this plan
 
 - Take the first unticked step in the Progress table. One step is one context (a session or one workflow subagent), one commit.
 - Note the clock before the first file is read and again at the commit, keeping the two parts apart: time spent reading and editing, and time spent running tests, checks and deploys.
 - Read the sections between here and the Plan before starting, then only the files the step names. Do not read ahead into later steps.
-- A step is done when its "Done when" list holds, its tests pass, and the commit is in. In that same commit: tick the Progress row, write the date, the actual minutes and the one-line user note, update the "Overall" count and actual total, append the actual to the step's `Estimate:` line, and update the `Status:` line at the top and this plan's row in [README.md](README.md).
+- A step is done when its "Done when" list holds, its tests pass, and the commit is in. In that same commit: tick the Progress row, write the date, the actual minutes and the one-line user note, update the "Overall" count and actual total, append the actual to the step's `Estimate:` line, and update the `Status:` line at the top and this plan's row in [README.md](../README.md).
 - If a step turns out to need a decision that is not in "Open decisions", stop, record the question there, commit that note alone, and report it rather than guessing.
 - Do not start a step while the previous one is uncommitted.
 
@@ -50,7 +50,7 @@ The installed app could not bind the port, killed the listener holding it, and t
 127.0.0.1:56305 - "POST /ui_automation/commands/poll HTTP/1.1" 200 OK
 ```
 
-The dialog id begins with `review_pi_`, the marker the Project Instance host generates in [project_instance_review_table.js:58-59](../../frontend/ui/project_instance/project_instance_review_table.js#L58-L59), so the table really did open inside a Project Instance page in one of the two apps. The next command in the same conversation was answered by the other app, which had never heard of that dialog id and reported it missing.
+The dialog id begins with `review_pi_`, the marker the Project Instance host generates in [project_instance_review_table.js:58-59](../../../frontend/ui/project_instance/project_instance_review_table.js#L58-L59), so the table really did open inside a Project Instance page in one of the two apps. The next command in the same conversation was answered by the other app, which had never heard of that dialog id and reported it missing.
 
 Two further consequences were confirmed on the same machine the same evening. Two app servers were still running with no window behind them, from 18:25 and 18:41. And the file that tells an outside script where the app is holds one entry, so a macro run from a terminal reaches whichever app started last.
 
@@ -58,21 +58,21 @@ Two further consequences were confirmed on the same machine the same evening. Tw
 
 Do not rebuild these while working this plan.
 
-- **Another Windows user cannot be disturbed.** Reuse is refused unless the health reply carries the same Electron profile, and a listener belonging to another profile is explicitly left alone ([backend_health_compatibility.js:79-107](../../frontend/electron/backend_health_compatibility.js#L79-L107), [backend_lifecycle.js:348-368](../../frontend/electron/backend_lifecycle.js#L348-L368)).
-- **Live windows are already countable.** Each app writes a marker naming its process and port, dead ones are pruned on read, and the count decides whether a departing app stops the server ([backend_lifecycle.js:184-249](../../frontend/electron/backend_lifecycle.js#L184-L249)).
-- **A free port is already found when the preferred one is busy** ([backend_port.js:28-37](../../frontend/electron/backend_port.js#L28-L37)).
-- **Preference files merge instead of overwriting.** The project-user store deep-merges a patch under a write lock ([project_user_preferences_service.py:250-275](../../frontend/app_server/services/project_user_preferences_service.py#L250-L275)) and the local store merges at the top level ([scripting_preferences_service.py:256-300](../../frontend/app_server/services/scripting_preferences_service.py#L256-L300)), so two windows changing different settings do not clobber each other.
-- **Two windows on one object already warn each other.** The open-window change watch alerts and offers a reload when another writer touches the file ([object_change_watch.md](../../frontend/docs/app_server/domains/object_change_watch.md)).
+- **Another Windows user cannot be disturbed.** Reuse is refused unless the health reply carries the same Electron profile, and a listener belonging to another profile is explicitly left alone ([backend_health_compatibility.js:79-107](../../../frontend/electron/backend_health_compatibility.js#L79-L107), [backend_lifecycle.js:348-368](../../../frontend/electron/backend_lifecycle.js#L348-L368)).
+- **Live windows are already countable.** Each app writes a marker naming its process and port, dead ones are pruned on read, and the count decides whether a departing app stops the server ([backend_lifecycle.js:184-249](../../../frontend/electron/backend_lifecycle.js#L184-L249)).
+- **A free port is already found when the preferred one is busy** ([backend_port.js:28-37](../../../frontend/electron/backend_port.js#L28-L37)).
+- **Preference files merge instead of overwriting.** The project-user store deep-merges a patch under a write lock ([project_user_preferences_service.py:250-275](../../../frontend/app_server/services/project_user_preferences_service.py#L250-L275)) and the local store merges at the top level ([scripting_preferences_service.py:256-300](../../../frontend/app_server/services/scripting_preferences_service.py#L256-L300)), so two windows changing different settings do not clobber each other.
+- **Two windows on one object already warn each other.** The open-window change watch alerts and offers a reload when another writer touches the file ([object_change_watch.md](../../../frontend/docs/app_server/domains/object_change_watch.md)).
 - **Saving the same reserving class is already serialised** by the propagation hold, which refuses the second save rather than interleaving it.
 
 ## Why it happens
 
-- **The port is taken by force.** When the preferred port is held by a listener this app cannot reuse, it kills the process holding it and takes the port ([backend_lifecycle.js:348-368](../../frontend/electron/backend_lifecycle.js#L348-L368), called from [backend_lifecycle.js:502](../../frontend/electron/backend_lifecycle.js#L502)). Nothing asks whether a live window is using that server. A development build and an installed app never look compatible to each other, so whichever starts second kills the first one's server.
-- **Commands have no addressee.** The queue hands the oldest command to whoever asks first ([ui_automation_service.py](../../frontend/app_server/services/ui_automation_service.py)). The poll request already carries an identity ([schemas/ui_automation.py:16](../../frontend/app_server/schemas/ui_automation.py#L16)) that the shell already generates ([ui_automation.js:9](../../frontend/ui/shell/ui_automation.js#L9)), and the service ignores it.
-- **The shell is owner-aware only inside one app.** Follow-up commands are pinned to the tab hosting a review, and a closed tab answers a cancelled completion ([ui_automation.js:834-858](../../frontend/ui/shell/ui_automation.js#L834-L858)). A command that arrives in the wrong app falls past that into the modal bookkeeping and throws. A progress update for an unknown window opens a second progress window instead ([ui_automation.js:1030-1039](../../frontend/ui/shell/ui_automation.js#L1030-L1039)).
-- **Nobody stops an inherited server.** The owner leaves it running when other windows are attached ([backend_lifecycle.js:551-572](../../frontend/electron/backend_lifecycle.js#L551-L572)), and the windows that inherit it never owned it, so their own exit skips the shutdown. The server outlives every window.
-- **Restart is a marker in a folder, not a message to one window.** Writing it restarts the server for every window attached to it ([config.py:416-417](../../frontend/app_server/config.py#L416-L417), [app_shell.py:11-12](../../frontend/app_shell.py#L11-L12)).
-- **The address book holds one entry.** The endpoint file is rewritten by each launch ([backend_port.js:45-62](../../frontend/electron/backend_port.js#L45-L62)) and read as the single answer by the public Python API ([ui.py:103-127](../../python-api/src/arcrho_api/ui.py#L103-L127)). The window-ready marker an automation harness waits for behaves the same way ([main.js:182-205](../../frontend/electron/main.js#L182-L205)).
+- **The port is taken by force.** When the preferred port is held by a listener this app cannot reuse, it kills the process holding it and takes the port ([backend_lifecycle.js:348-368](../../../frontend/electron/backend_lifecycle.js#L348-L368), called from [backend_lifecycle.js:502](../../../frontend/electron/backend_lifecycle.js#L502)). Nothing asks whether a live window is using that server. A development build and an installed app never look compatible to each other, so whichever starts second kills the first one's server.
+- **Commands have no addressee.** The queue hands the oldest command to whoever asks first ([ui_automation_service.py](../../../frontend/app_server/services/ui_automation_service.py)). The poll request already carries an identity ([schemas/ui_automation.py:16](../../../frontend/app_server/schemas/ui_automation.py#L16)) that the shell already generates ([ui_automation.js:9](../../../frontend/ui/shell/ui_automation.js#L9)), and the service ignores it.
+- **The shell is owner-aware only inside one app.** Follow-up commands are pinned to the tab hosting a review, and a closed tab answers a cancelled completion ([ui_automation.js:834-858](../../../frontend/ui/shell/ui_automation.js#L834-L858)). A command that arrives in the wrong app falls past that into the modal bookkeeping and throws. A progress update for an unknown window opens a second progress window instead ([ui_automation.js:1030-1039](../../../frontend/ui/shell/ui_automation.js#L1030-L1039)).
+- **Nobody stops an inherited server.** The owner leaves it running when other windows are attached ([backend_lifecycle.js:551-572](../../../frontend/electron/backend_lifecycle.js#L551-L572)), and the windows that inherit it never owned it, so their own exit skips the shutdown. The server outlives every window.
+- **Restart is a marker in a folder, not a message to one window.** Writing it restarts the server for every window attached to it ([config.py:416-417](../../../frontend/app_server/config.py#L416-L417), [app_shell.py:11-12](../../../frontend/app_shell.py#L11-L12)).
+- **The address book holds one entry.** The endpoint file is rewritten by each launch ([backend_port.js:45-62](../../../frontend/electron/backend_port.js#L45-L62)) and read as the single answer by the public Python API ([ui.py:103-127](../../../python-api/src/arcrho_api/ui.py#L103-L127)). The window-ready marker an automation harness waits for behaves the same way ([main.js:182-205](../../../frontend/electron/main.js#L182-L205)).
 
 ## The design
 
@@ -92,14 +92,14 @@ Two smaller things follow from those rules: the endpoint and window-ready files 
 
 Two questions came up in step 7's app check on 2026-09-30; the user approved both recommended answers the same day and step 8 implements them. Six more came up while writing this plan and are answered below them so no step has to guess.
 
-- **Answered (step 8): what ends a macro whose owning app closes mid-review?** Observed on the Server PC with the development build, run from a clean checkout of `48ac6eda`: app A started a server on a free port (the user's app kept 28765), app B shared A's server, and an export of `PRNJ - PA\PA\All States\Direct Group\Auto Liab Total` started in A showed its progress window and review table in A only. Closing A while the review table was open left B's server running, but 31 seconds later B showed "Export to ResQ failed ... Timed out waiting for UI command: ui.reviewTableStatus" with a traceback, not a cancelled review. Two gaps in [ui_automation_service.py](../../frontend/app_server/services/ui_automation_service.py) explain it. A status question A had already taken, or one B handed back, stays with A: nothing re-offers a command a window took and never answered, and A still counts as live for up to 45 seconds after its last poll began, so B's hand-back is queued for a window that has gone. And even when B is the last window, it answers a review table it never held with "Review table is not available", which the macro also reports as a failure with a traceback. **Recommended:** a closing app tells the server it is leaving, which ends its liveness at once and re-queues anything it took but did not answer; and a status or close question about a review table that no live window holds settles as a cancelled completion, the answer a closed hosting tab already gives. That is one change in the queue and one in the shell, with a queue test for the departed owner.
+- **Answered (step 8): what ends a macro whose owning app closes mid-review?** Observed on the Server PC with the development build, run from a clean checkout of `48ac6eda`: app A started a server on a free port (the user's app kept 28765), app B shared A's server, and an export of `PRNJ - PA\PA\All States\Direct Group\Auto Liab Total` started in A showed its progress window and review table in A only. Closing A while the review table was open left B's server running, but 31 seconds later B showed "Export to ResQ failed ... Timed out waiting for UI command: ui.reviewTableStatus" with a traceback, not a cancelled review. Two gaps in [ui_automation_service.py](../../../frontend/app_server/services/ui_automation_service.py) explain it. A status question A had already taken, or one B handed back, stays with A: nothing re-offers a command a window took and never answered, and A still counts as live for up to 45 seconds after its last poll began, so B's hand-back is queued for a window that has gone. And even when B is the last window, it answers a review table it never held with "Review table is not available", which the macro also reports as a failure with a traceback. **Recommended:** a closing app tells the server it is leaving, which ends its liveness at once and re-queues anything it took but did not answer; and a status or close question about a review table that no live window holds settles as a cancelled completion, the answer a closed hosting tab already gives. That is one change in the queue and one in the shell, with a queue test for the departed owner.
 - **Answered (step 8): two development apps from one checkout share the server's stop and restart markers.** The app server writes its stop and restart markers into the `frontend/` folder it runs from, and every development supervisor started from that folder watches the same file. In the same check the last window's stop marker was left in the checkout after the server stopped; had the second app run from the user's own checkout, the user's supervisor could have taken that marker and stopped the user's server. Installed apps are not affected. **Recommended:** name the markers per port, so a supervisor only obeys its own server's marker.
 
 - **Do we forbid a second app instead?** No. Running two is wanted, occasionally, and the whole plan exists to make it safe.
 - **A sibling holds the preferred port.** The new app starts its own server on a free port. It clears a listener only when no live window claims it, which keeps the original purpose of the killing, cleaning up a server left behind by an older build of the same app.
 - **An owner that never polls.** A command addressed to a window that has gone becomes claimable by any window after 3 seconds, rather than waiting for the caller's own timeout. The caller polls a review table twice a second, so the delay is invisible in normal use and short enough that closing the owning app mid-macro ends the macro cleanly instead of stalling it.
 - **Two macros at once in one server.** Out of scope. The owner is held for the length of a run, and two overlapping runs in one server would share it. Runs are started from a window one at a time, and nothing here makes overlap worse than it is today.
-- **Macros started from Arcode.** Out of scope, and named as a known remainder in the domain doc by step 7. That path submits its commands from the service itself ([scripting_macro_service.py:1117-1197](../../frontend/app_server/services/scripting_macro_service.py#L1117-L1197)) with no window behind them, so they stay unaddressed and any window may answer them, as today.
+- **Macros started from Arcode.** Out of scope, and named as a known remainder in the domain doc by step 7. That path submits its commands from the service itself ([scripting_macro_service.py:1117-1197](../../../frontend/app_server/services/scripting_macro_service.py#L1117-L1197)) with no window behind them, so they stay unaddressed and any window may answer them, as today.
 - **If a second window cannot save its browser-stored settings.** Step 6 measures it and records the answer; it does not move any setting to another store. Moving settings between storage scopes is its own change with its own review, and would be a separate plan.
 
 ## Plan
@@ -113,9 +113,9 @@ Steps 1 to 3 are ordered: the port fix removes the cross-attachment that makes o
 **Read first.**
 
 - This plan down to the Plan section.
-- [backend_lifecycle.js:184-249](../../frontend/electron/backend_lifecycle.js#L184-L249), [backend_lifecycle.js:317-400](../../frontend/electron/backend_lifecycle.js#L317-L400) and [backend_lifecycle.js:488-525](../../frontend/electron/backend_lifecycle.js#L488-L525).
-- [backend_port.js](../../frontend/electron/backend_port.js) in full (about 80 lines).
-- [backend_health_compatibility.js:79-107](../../frontend/electron/backend_health_compatibility.js#L79-L107).
+- [backend_lifecycle.js:184-249](../../../frontend/electron/backend_lifecycle.js#L184-L249), [backend_lifecycle.js:317-400](../../../frontend/electron/backend_lifecycle.js#L317-L400) and [backend_lifecycle.js:488-525](../../../frontend/electron/backend_lifecycle.js#L488-L525).
+- [backend_port.js](../../../frontend/electron/backend_port.js) in full (about 80 lines).
+- [backend_health_compatibility.js:79-107](../../../frontend/electron/backend_health_compatibility.js#L79-L107).
 
 **Do.**
 
@@ -126,8 +126,8 @@ Steps 1 to 3 are ordered: the port fix removes the cross-attachment that makes o
 
 **Tests.**
 
-- [backend_port.test.mjs](../../frontend/tests/backend_port.test.mjs) gains the new decision: a live sibling's port is left alone, an abandoned server's port is cleared, another profile's port is left alone, and a free preferred port is taken.
-- [backend_health_compatibility.test.mjs](../../frontend/tests/backend_health_compatibility.test.mjs) pinned the old inline profile check by source text; it now pins the call into the new decision instead.
+- [backend_port.test.mjs](../../../frontend/tests/backend_port.test.mjs) gains the new decision: a live sibling's port is left alone, an abandoned server's port is cleared, another profile's port is left alone, and a free preferred port is taken.
+- [backend_health_compatibility.test.mjs](../../../frontend/tests/backend_health_compatibility.test.mjs) pinned the old inline profile check by source text; it now pins the call into the new decision instead.
 
 **Done when.** Starting the installed app while a development build is running leaves the development server alive, the installed app comes up on its own port, and each window's pages come from its own app.
 
@@ -140,13 +140,13 @@ Estimate: code edit 30 min, test/validation 10 min, total 40 min. Actual: code e
 **Read first.**
 
 - This plan down to the Plan section.
-- [ui_automation_service.py](../../frontend/app_server/services/ui_automation_service.py) in full (about 190 lines).
-- [schemas/ui_automation.py](../../frontend/app_server/schemas/ui_automation.py) and [ui_automation_router.py](../../frontend/app_server/api/ui_automation_router.py).
-- [ui_automation.js:1-30](../../frontend/ui/shell/ui_automation.js#L1-L30) and [ui_automation.js:1290-1315](../../frontend/ui/shell/ui_automation.js#L1290-L1315).
-- [macro_window.js:1060-1080](../../frontend/ui/macro/macro_window.js#L1060-L1080) and [schemas/scripting.py:63-68](../../frontend/app_server/schemas/scripting.py#L63-L68).
-- [scripting_macro_service.py:972-1100](../../frontend/app_server/services/scripting_macro_service.py#L972-L1100), and the macro body runner above it (`_execute_macro_source_body`), where the run is held under the execution lock.
-- [test_scripting_macro_source.py](../../frontend/tests/test_scripting_macro_source.py), which pins the exact arguments the registered-macro path passes on.
-- [ui.py:256-282](../../python-api/src/arcrho_api/ui.py#L256-L282) in the public Python API, which is what a macro calls. This step touches the frontend and that package together; they land in one commit.
+- [ui_automation_service.py](../../../frontend/app_server/services/ui_automation_service.py) in full (about 190 lines).
+- [schemas/ui_automation.py](../../../frontend/app_server/schemas/ui_automation.py) and [ui_automation_router.py](../../../frontend/app_server/api/ui_automation_router.py).
+- [ui_automation.js:1-30](../../../frontend/ui/shell/ui_automation.js#L1-L30) and [ui_automation.js:1290-1315](../../../frontend/ui/shell/ui_automation.js#L1290-L1315).
+- [macro_window.js:1060-1080](../../../frontend/ui/macro/macro_window.js#L1060-L1080) and [schemas/scripting.py:63-68](../../../frontend/app_server/schemas/scripting.py#L63-L68).
+- [scripting_macro_service.py:972-1100](../../../frontend/app_server/services/scripting_macro_service.py#L972-L1100), and the macro body runner above it (`_execute_macro_source_body`), where the run is held under the execution lock.
+- [test_scripting_macro_source.py](../../../frontend/tests/test_scripting_macro_source.py), which pins the exact arguments the registered-macro path passes on.
+- [ui.py:256-282](../../../python-api/src/arcrho_api/ui.py#L256-L282) in the public Python API, which is what a macro calls. This step touches the frontend and that package together; they land in one commit.
 
 **Do.**
 
@@ -158,8 +158,8 @@ Estimate: code edit 30 min, test/validation 10 min, total 40 min. Actual: code e
 
 **Tests.**
 
-- [test_ui_automation_command_budget.py](../../frontend/tests/test_ui_automation_command_budget.py) gains a sibling covering the queue: an addressed command is refused to a stranger and given to its owner, an unaddressed one goes to whoever asks, and an addressed one falls back to a stranger after the grace period.
-- [ui_automation_command_timeout.test.mjs](../../frontend/tests/ui_automation_command_timeout.test.mjs) gains a check that the shell sends one identity on both the poll and the run-macro request.
+- [test_ui_automation_command_budget.py](../../../frontend/tests/test_ui_automation_command_budget.py) gains a sibling covering the queue: an addressed command is refused to a stranger and given to its owner, an unaddressed one goes to whoever asks, and an addressed one falls back to a stranger after the grace period.
+- [ui_automation_command_timeout.test.mjs](../../../frontend/tests/ui_automation_command_timeout.test.mjs) gains a check that the shell sends one identity on both the poll and the run-macro request.
 
 **Done when.** With two apps sharing one server, a macro started in one shows its progress window, its message boxes and its review table in that same app, and the other app never sees them.
 
@@ -172,9 +172,9 @@ Estimate: code edit 40 min, test/validation 15 min, total 55 min. Actual: code e
 **Read first.**
 
 - This plan down to the Plan section.
-- [ui_automation.js:740-860](../../frontend/ui/shell/ui_automation.js#L740-L860) and [ui_automation.js:1000-1060](../../frontend/ui/shell/ui_automation.js#L1000-L1060).
-- [project_instance_review_table.js:89-125](../../frontend/ui/project_instance/project_instance_review_table.js#L89-L125).
-- [ui_automation_service.py](../../frontend/app_server/services/ui_automation_service.py) as changed by step 2, and its router.
+- [ui_automation.js:740-860](../../../frontend/ui/shell/ui_automation.js#L740-L860) and [ui_automation.js:1000-1060](../../../frontend/ui/shell/ui_automation.js#L1000-L1060).
+- [project_instance_review_table.js:89-125](../../../frontend/ui/project_instance/project_instance_review_table.js#L89-L125).
+- [ui_automation_service.py](../../../frontend/app_server/services/ui_automation_service.py) as changed by step 2, and its router.
 
 **Do.**
 
@@ -187,7 +187,7 @@ Estimate: code edit 40 min, test/validation 15 min, total 55 min. Actual: code e
 **Tests.**
 
 - The queue test file from step 2 gains a declined command being re-offered to another window and never to the decliner, and the all-declined case settling with an error.
-- [review_table.test.mjs](../../frontend/tests/review_table.test.mjs) gains a check that an unknown dialog id is declined rather than thrown on.
+- [review_table.test.mjs](../../../frontend/tests/review_table.test.mjs) gains a check that an unknown dialog id is declined rather than thrown on.
 
 **Done when.** With an identity deliberately stale, a review table poll answered by the wrong window is retried and answered correctly by the right one, and the macro finishes.
 
@@ -200,9 +200,9 @@ Estimate: code edit 25 min, test/validation 10 min, total 35 min. Actual: code e
 **Read first.**
 
 - This plan down to the Plan section.
-- [backend_lifecycle.js:184-249](../../frontend/electron/backend_lifecycle.js#L184-L249) and [backend_lifecycle.js:527-572](../../frontend/electron/backend_lifecycle.js#L527-L572).
-- [main.js:2135-2165](../../frontend/electron/main.js#L2135-L2165) and [main.js:2205-2230](../../frontend/electron/main.js#L2205-L2230).
-- The restart and shutdown markers: [config.py:410-425](../../frontend/app_server/config.py#L410-L425) and [app_shell.py:1-40](../../frontend/app_shell.py#L1-L40).
+- [backend_lifecycle.js:184-249](../../../frontend/electron/backend_lifecycle.js#L184-L249) and [backend_lifecycle.js:527-572](../../../frontend/electron/backend_lifecycle.js#L527-L572).
+- [main.js:2135-2165](../../../frontend/electron/main.js#L2135-L2165) and [main.js:2205-2230](../../../frontend/electron/main.js#L2205-L2230).
+- The restart and shutdown markers: [config.py:410-425](../../../frontend/app_server/config.py#L410-L425) and [app_shell.py:1-40](../../../frontend/app_shell.py#L1-L40).
 
 **Do.**
 
@@ -213,7 +213,7 @@ Estimate: code edit 25 min, test/validation 10 min, total 35 min. Actual: code e
 
 **Tests.**
 
-- A new test beside [backend_port.test.mjs](../../frontend/tests/backend_port.test.mjs) for the stop-or-keep decision, driven by marker sets rather than live processes: last window stops it, a window with siblings does not, a window that inherited the server still stops it when alone.
+- A new test beside [backend_port.test.mjs](../../../frontend/tests/backend_port.test.mjs) for the stop-or-keep decision, driven by marker sets rather than live processes: last window stops it, a window with siblings does not, a window that inherited the server still stops it when alone.
 
 **Done when.** Closing both windows leaves no app server process behind, and an in-app restart with two windows open warns before it restarts both.
 
@@ -226,9 +226,9 @@ Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code e
 **Read first.**
 
 - This plan down to the Plan section.
-- [backend_port.js:39-75](../../frontend/electron/backend_port.js#L39-L75).
-- [main.js:178-215](../../frontend/electron/main.js#L178-L215).
-- [ui.py:103-140](../../python-api/src/arcrho_api/ui.py#L103-L140). This step touches the Electron host and that package together; they land in one commit.
+- [backend_port.js:39-75](../../../frontend/electron/backend_port.js#L39-L75).
+- [main.js:178-215](../../../frontend/electron/main.js#L178-L215).
+- [ui.py:103-140](../../../python-api/src/arcrho_api/ui.py#L103-L140). This step touches the Electron host and that package together; they land in one commit.
 
 **Do.**
 
@@ -239,7 +239,7 @@ Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code e
 
 **Tests.**
 
-- [backend_port.test.mjs](../../frontend/tests/backend_port.test.mjs) gains the list shape: two apps each appear, a dead entry is dropped, and an app removes only its own entry.
+- [backend_port.test.mjs](../../../frontend/tests/backend_port.test.mjs) gains the list shape: two apps each appear, a dead entry is dropped, and an app removes only its own entry.
 - A Python test beside the other public-API tests for choosing the newest live entry and for an explicitly named one.
 
 **Done when.** With two apps running, the endpoint file names both, and a macro run from a terminal reaches the one it was told to.
@@ -253,7 +253,7 @@ Estimate: code edit 40 min, test/validation 20 min, total 60 min. Actual: code e
 **Read first.**
 
 - This plan down to the Plan section, and the Open decisions entry for this step.
-- [User Preference Storage Scopes](../../agent-instructions/user-preference-storage-scopes.md).
+- [User Preference Storage Scopes](../../../agent-instructions/user-preference-storage-scopes.md).
 - The memory note on launching the app detached and reading a screenshot back.
 
 **Do.**
@@ -275,22 +275,24 @@ Estimate: code edit 10 min, test/validation 20 min, total 30 min. Actual: code e
 **Read first.**
 
 - This plan in full.
-- [ui_automation.md](../../frontend/docs/app_server/domains/ui_automation.md), the domain doc that describes the command bus.
-- [Component Deployment Authorization](../../agent-instructions/component-deployment-authorization.md).
+- [ui_automation.md](../../../frontend/docs/app_server/domains/ui_automation.md), the domain doc that describes the command bus.
+- [Component Deployment Authorization](../../../agent-instructions/component-deployment-authorization.md).
 
 **Do.**
 
-- [ ] Start a development build and the installed app together and confirm each keeps its own server, each window loads its own pages, and neither restarts the other.
-- [ ] Export a reserving class to ResQ from one of them. The review table, the progress window and the completion message all appear in that app, and the export completes. This one needs ResQ and a real reserving class, so it is the user's time, not the agent's, and is not in the estimate below.
-- [ ] Repeat with the owning app closed while the review table is open, and confirm the macro reports a cancelled review instead of a traceback. Also the user's time.
-- [ ] Close both windows and confirm no app server is left running.
-- [ ] Describe the ownership rule, the grace period and the port behaviour in the domain doc, and note that macros started from Arcode are still unaddressed.
-- [ ] Add a release-note fragment under [frontend/changes/unreleased/](../../frontend/changes/unreleased/).
-- [ ] Rebuild and redeploy with `python server-components/deploy.py`. The app server is bundled into the Bridge, the Engine and the Gateway, so all three are stale after steps 2 and 3; let the tool decide rather than naming components.
+- [x] Start a development build and the installed app together and confirm each keeps its own server, each window loads its own pages, and neither restarts the other.
+- [x] Export a reserving class to ResQ from one of them. The review table, the progress window and the completion message all appear in that app, and the export completes. This one needs ResQ and a real reserving class, so it is the user's time, not the agent's, and is not in the estimate below.
+- [x] Repeat with the owning app closed while the review table is open, and confirm the macro reports a cancelled review instead of a traceback. Also the user's time.
+- [x] Close both windows and confirm no app server is left running.
+- [x] Describe the ownership rule, the grace period and the port behaviour in the domain doc, and note that macros started from Arcode are still unaddressed.
+- [x] Add a release-note fragment under [frontend/changes/unreleased/](../../../frontend/changes/unreleased/).
+- [x] Rebuild and redeploy with `python server-components/deploy.py`. The app server is bundled into the Bridge, the Engine and the Gateway, so all three are stale after steps 2 and 3; let the tool decide rather than naming components.
 
 **Done when.** The two-app checks pass, the domain doc and the fragment are in, and the deploy reports success.
 
-Estimate: code edit 20 min, test/validation 25 min, total 45 min, plus the user's two checks in the app.
+**Result of the re-run (2026-09-30, Server PC, two development apps from a clean checkout of `3937f0c5`, as the user directed, beside the user's own app).** The user's own app kept port 28765 and its server throughout. App A started its own server on a free port and app B shared it without restarting it; each window loaded its pages from that server. An export of `PRNJ - PA\PA\All States\Direct Group\Auto Liab Total` started in A showed its comparison, review table, progress window and results table in A only; B showed nothing. Only `E 42 - Prior for BF Paid` was ticked, and ResQ refused that one write with a database lock timeout, so the export finished "completed with errors" and wrote nothing to ResQ; the only Arco-side write was the saved default selection, which was already that one dataset. A second export, with its review table open, was ended by closing A: the macro returned "Export cancelled by user." about 6 seconds later, with no message or traceback in B and no export request sent. With B the last window, a review-table status for a dialog nobody holds answered a cancelled completion. Closing B stopped the shared server. The Bridge, Engine and Gateway were deployed with step 8 just before the re-run, and `deploy.py --stale` reported every component up to date, so nothing was rebuilt here.
+
+Estimate: code edit 20 min, test/validation 25 min, total 45 min, plus the user's two checks in the app. Actual: code edit 7 min, test/validation 19 min, total 26 min; the first, failed run of this check is not counted, and the deploy had already been run with step 8.
 
 ### Step 8 — Closing the app that owns a review ends the macro cleanly
 
@@ -301,9 +303,9 @@ Appended 2026-09-30 after step 7's first app check; it runs before step 7 is tak
 **Read first.**
 
 - This plan down to the Plan section, above all the two answered entries at the top of Open decisions.
-- [ui_automation_service.py](../../frontend/app_server/services/ui_automation_service.py) in full, as changed by steps 2 and 3, and [ui_automation_router.py](../../frontend/app_server/api/ui_automation_router.py).
-- [ui_automation.js:836-880](../../frontend/ui/shell/ui_automation.js#L836-L880) and [ui_automation.js:1340-1370](../../frontend/ui/shell/ui_automation.js#L1340-L1370).
-- The markers: [app_control_router.py](../../frontend/app_server/api/app_control_router.py), [config.py:385-395](../../frontend/app_server/config.py#L385-L395), [app_shell.py](../../frontend/app_shell.py), and [backend_lifecycle.js:30-35](../../frontend/electron/backend_lifecycle.js#L30-L35), [backend_lifecycle.js:165-185](../../frontend/electron/backend_lifecycle.js#L165-L185) and [backend_lifecycle.js:534-565](../../frontend/electron/backend_lifecycle.js#L534-L565).
+- [ui_automation_service.py](../../../frontend/app_server/services/ui_automation_service.py) in full, as changed by steps 2 and 3, and [ui_automation_router.py](../../../frontend/app_server/api/ui_automation_router.py).
+- [ui_automation.js:836-880](../../../frontend/ui/shell/ui_automation.js#L836-L880) and [ui_automation.js:1340-1370](../../../frontend/ui/shell/ui_automation.js#L1340-L1370).
+- The markers: [app_control_router.py](../../../frontend/app_server/api/app_control_router.py), [config.py:385-395](../../../frontend/app_server/config.py#L385-L395), [app_shell.py](../../../frontend/app_shell.py), and [backend_lifecycle.js:30-35](../../../frontend/electron/backend_lifecycle.js#L30-L35), [backend_lifecycle.js:165-185](../../../frontend/electron/backend_lifecycle.js#L165-L185) and [backend_lifecycle.js:534-565](../../../frontend/electron/backend_lifecycle.js#L534-L565).
 
 **Do.**
 
@@ -314,9 +316,9 @@ Appended 2026-09-30 after step 7's first app check; it runs before step 7 is tak
 
 **Tests.**
 
-- [test_ui_automation_command_owner.py](../../frontend/tests/test_ui_automation_command_owner.py) gains the departed owner: a command it took goes to the last window at once and that window may not hand it back, a queued command addressed to it skips the grace period, and a poll it left running takes nothing.
-- [ui_automation_command_timeout.test.mjs](../../frontend/tests/ui_automation_command_timeout.test.mjs) gains a check that a closing page sends the leave call naming its own window; [review_table.test.mjs](../../frontend/tests/review_table.test.mjs) now pins the cancelled answer for an unknown dialog.
-- A new [test_app_control_flags.py](../../frontend/tests/test_app_control_flags.py) checks that the markers differ per port, that the server writes the marker for its own port, and that the supervisor and the Electron host use the same names.
+- [test_ui_automation_command_owner.py](../../../frontend/tests/test_ui_automation_command_owner.py) gains the departed owner: a command it took goes to the last window at once and that window may not hand it back, a queued command addressed to it skips the grace period, and a poll it left running takes nothing.
+- [ui_automation_command_timeout.test.mjs](../../../frontend/tests/ui_automation_command_timeout.test.mjs) gains a check that a closing page sends the leave call naming its own window; [review_table.test.mjs](../../../frontend/tests/review_table.test.mjs) now pins the cancelled answer for an unknown dialog.
+- A new [test_app_control_flags.py](../../../frontend/tests/test_app_control_flags.py) checks that the markers differ per port, that the server writes the marker for its own port, and that the supervisor and the Electron host use the same names.
 
 **Done when.** With two apps sharing one server, closing the app that owns an open review table ends the macro in the other app as a cancelled review with no traceback, also when the other app is the last window; and a stop marker written for one development app's server is never taken by the other's supervisor. The live check is step 7's re-run.
 

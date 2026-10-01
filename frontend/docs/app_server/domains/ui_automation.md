@@ -48,6 +48,15 @@ Local UI automation command bridge for Python macros and scripts that need to as
 - `projectInstance.context` returns the active Project Instance `projectName` and selected reserving-class `selectedPath`, and fails clearly when no path is selected.
 - `projectInstance.refreshDatasets` asks the active Project Instance page to reload its selected reserving-class dataset table from disk and returns `{ refreshed, projectName, selectedPath }`.
 - Requests are restricted to local clients; the bridge is for the running desktop/local app session and does not use the shared ArcRho Server `requests` folder.
+
+### More than one app on one PC
+- **Port.** An app that finds the preferred port held by a compatible server shares it. When a live window of this profile holds the port with a server it cannot share, the new app starts its own server on a free port and leaves that one alone; a listener with no live window behind it is still cleared. Each app server writes its restart and stop markers per port, so a development supervisor obeys only its own server's markers.
+- **Ownership.** The shell sends its `client_id` with the run-macro request, the public Python API holds it for that run, and every command the macro submits carries it as `owner`. A poll hands a window only commands addressed to it or to nobody, so a macro's progress window, message boxes and review table open in the app it was started from even when two apps share one server.
+- **Grace period.** A command whose owner does not take it becomes free to any window after `OWNER_GRACE_SEC` (3 seconds).
+- **Hand-back.** A window asked about a review table or progress window it does not hold declines the command while another live window has not tried it; the last window answers as it can, which for a review-table status or close is the cancelled completion.
+- **Leaving.** A shell page sends the leave call on `pagehide`. Everything the closing window held or had taken goes to the windows still open at once. A command the macro submits after that, still addressed to the departed window, waits out the grace period first. Checked 2026-09-30 with two development apps sharing one server: closing the owning app with the export review open ended the macro as "Export cancelled by user." about 6 seconds later, with no message and nothing written to ResQ.
+- **Progress windows** are left as they are: an update or close for a progress window no remaining window holds opens or closes one in the window that answers.
+- **Macros started from Arcode** are still unaddressed. That path submits commands from the service with no window behind them, so any window may answer them.
 <!-- MANUAL:END -->
 
 ## Data/State/Caches

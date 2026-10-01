@@ -1,0 +1,12 @@
+{
+  "type": "fix",
+  "scope": "app",
+  "audience": "user",
+  "summary": "Two Arco apps open on one PC no longer disturb each other.",
+  "details": [
+    "Opening a second app no longer shuts down the first one's server; it starts its own when it cannot share it.",
+    "A macro's progress window, messages and review table stay in the app it was started from.",
+    "Closing the app that started a macro while its review table is open ends the macro as a cancelled review instead of an error.",
+    "Closing the last app window stops its server, whichever app started it."
+  ]
+}
