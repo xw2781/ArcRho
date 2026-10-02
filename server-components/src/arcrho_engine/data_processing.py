@@ -894,7 +894,27 @@ def UDF_ADASTri(arg):
     if not has_dev_date:
         df1['Age*Grp'] = dev_label[0]  # Single column: all rows get the same label
     else:
-        df1['Age*Grp'] = df1['Age*'].apply(lambda x: min([i for i in dev_label if i >= x]))
+        try:
+            df1['Age*Grp'] = df1['Age*'].apply(lambda x: min([i for i in dev_label if i >= x]))
+        except ValueError as exc:
+            latest_development = _as_month_period(df1[date_cols[1]].max())
+            development_end = project_settings['dev_end']
+            if latest_development > development_end:
+                source_month = datetime.strptime(str(latest_development), '%Y%m').strftime('%B %Y')
+                cutoff_month = datetime.strptime(str(development_end), '%Y%m').strftime('%B %Y')
+                message = (
+                    f"Source data includes development dates through {source_month}, "
+                    f"but the project's Development End Date is {cutoff_month}. "
+                    "Update Development End Date in Project Settings > General Settings "
+                    "to cover the imported data, then refresh the data."
+                )
+            else:
+                message = (
+                    "Source dates do not fit the project's origin and development periods. "
+                    "Check Origin Start Date, Origin End Date, and Development End Date "
+                    "in Project Settings > General Settings, then refresh the data."
+                )
+            raise DataProcessingConfigurationError(message) from exc
 
     df1 = df1.groupby(['Org*Grp', 'Age*Grp'])[required_datasets].sum().reset_index()
 

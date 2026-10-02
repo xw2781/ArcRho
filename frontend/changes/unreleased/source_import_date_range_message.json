@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Source refresh date-range errors now explain which date settings to correct instead of showing a technical calculation error."
+}
