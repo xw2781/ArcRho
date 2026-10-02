@@ -49,4 +49,7 @@ Application
 
 ## 4. Running Against A Live ResQ Instance
 
-ResQ is installed only on the Server PC, so in-process COM calls fail elsewhere with `Invalid class string`. Connection and sandbox rules — including the SSPI failure under sandboxed exec and the read-only sample project agents may use — are in [docs/plans/build_new_methods.md](../docs/plans/build_new_methods.md) under **ResQ Data Access**.
+ResQ is installed only on the Server PC, so in-process COM calls fail elsewhere with `Invalid class string`. Agents are free to read the project `NJ_Annual_Prod_202605_Fake` and pull all of it.
+
+- Connect with ResQ's default Windows authentication: empty user and password in `ConnectByName`.
+- A sandboxed exec strips the Windows security context SSPI needs, so `ConnectByName` fails with `SSL Provider: No credentials are available in the security package`. Run the connection script outside the sandbox (unsandboxed or escalated exec) so integrated authentication can negotiate.

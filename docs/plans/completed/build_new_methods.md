@@ -1,28 +1,10 @@
-# GUI Reference
-"E:\XWSpace\ResQ API Doc\assets"
-For UI design, need to follow current ArcRho UI rules and styles.
+# Build New Methods
 
-# API Reference
-- Official Doc:
-"E:\XWSpace\ResQ API Doc\reference\resq_help_manual.chm"
-"E:\XWSpace\ResQ API Doc\reference\resq_help_manual_decompiled"
-- User's Costum Python module used in production, many useful usage examples
-"E:\XWSpace\ResQ API Doc\reference\ResQToolBox2.py"
+Status: complete 2026-10-01. All five ResQ methods are built and released in Arco 1.8.0.
 
-Note: The ResQ COM API method and property names may not be intuitive sometimes, ask user to confirm details if needed.
-
-# ResQ Data Access
-- Agents are free to read project "NJ_Annual_Prod_202605_Fake" and pull all
-- Use default ResQ Windows authentication to connect (empty user/password in `ConnectByName`).
-- Sandboxed exec strips the Windows security context needed for SSPI, so `ConnectByName` fails with
-  `SSL Provider: No credentials are available in the security package`. Run the connection script
-  outside the sandbox (unsandboxed/escalated exec) so Windows integrated auth can negotiate normally.
+The ResQ reference paths and connection rules now live in [agent-instructions/resq-api-reference.md](../../../agent-instructions/resq-api-reference.md).
 
 # Methods to be added in ArcRho
-
-Status as of 2026-09-23 — all five are built; the Bootstrap and Stochastic
-Consolidation pages reach users with the next app release. This file stays
-open for the ResQ API and sample-project reference notes below.
 
 - B&S Case Reserve Adequacy Adjustment (berquistshermancra) — **done**
 - B&S Settlement Rate Adjustment (berquistshermansr) — **done**
