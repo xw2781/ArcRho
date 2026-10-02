@@ -56,10 +56,10 @@ from resq_migration.core import (  # noqa: E402
     _safe_attr,
 )
 from resq_migration.engine_parity import read_engine_csv  # noqa: E402
-from resq_migration.extractors import export_triangle, export_vector  # noqa: E402
+from resq_migration.extractors import _displayed_at, export_triangle, export_vector  # noqa: E402
 
 
-TARGET_PROJECT_NAME = "NJ_Annual_Prod_2026 Q3-Aug"
+TARGET_PROJECT_NAME = "NJ_Annual_Prod_2026 Sep"
 RC_PATHS = [
     r"PRNJ - PA\PA\NY\Direct Group\BI Total",
     r"PRNJ - PA\PA\NY\Direct Group\MP+PIP",
@@ -271,12 +271,35 @@ def _resq_dataset_type_name(dataset: Any) -> str:
     return _normalize_import_name(_safe_attr(_safe_attr(dataset, "DatasetType", None), "Name", ""))
 
 
+def _arcrho_display_lengths(kind: str, arcrho: dict | None) -> dict[str, int]:
+    """The ResQ length members that show a dataset at Arco's display shape."""
+
+    if not arcrho:
+        return {}
+    origin = int(arcrho.get("origin_length") or 0)
+    development = int(arcrho.get("development_length") or 0)
+    if kind == VECTOR_KIND:
+        return {"PeriodLength": origin} if origin > 0 else {}
+    lengths = {}
+    if origin > 0:
+        lengths["OriginLength"] = origin
+    if development > 0:
+        lengths["DevelopmentLength"] = development
+    return lengths
+
+
 def _read_resq_datasets(
     reserving_class: Any,
     source_kinds: tuple[str, ...],
     progress,
+    arcrho_datasets: dict[tuple[str, str], dict],
 ) -> tuple[dict[tuple[str, str], dict], list[tuple[str, str, str]]]:
-    """Map (kind, name) -> exported ResQ payload, plus any per-dataset read errors."""
+    """Map (kind, name) -> exported ResQ payload, plus any per-dataset read errors.
+
+    Each ResQ dataset is shown at Arco's display shape while it is read, so both
+    sides compare at the same shape. ResQ's own lengths are put back afterwards
+    and nothing is saved.
+    """
 
     out: dict[tuple[str, str], dict] = {}
     errors: list[tuple[str, str, str]] = []
@@ -301,7 +324,11 @@ def _read_resq_datasets(
             if _triangle_source_kind(name, dataset_type) not in source_kinds:
                 continue
             try:
-                payload = exporter(dataset)
+                lengths = _arcrho_display_lengths(kind, arcrho_datasets.get((kind, name)))
+                with _displayed_at(dataset, lengths) as switched:
+                    payload = exporter(dataset)
+                if lengths and not switched:
+                    payload["shape_switch_refused"] = True
             except Exception as exc:
                 errors.append((kind, name, f"could not read from ResQ: {type(exc).__name__}: {exc}"))
                 continue
@@ -376,6 +403,8 @@ def _build_record(
         note_parts.append("dataset exists in Arco only")
 
     resq_values = resq_payload.get("values") if resq_payload else None
+    if resq_payload and resq_payload.get("shape_switch_refused"):
+        note_parts.append("ResQ refused Arco's display shape; read at ResQ's own shape")
     origin_labels = [str(label) for label in (resq_payload or {}).get("origin_labels", []) or []]
     if kind == VECTOR_KIND:
         dev_labels = [VECTOR_COLUMN_LABEL]
@@ -536,7 +565,9 @@ def run_comparison(
                 rc_errors.append((rc_path, f"could not read ResQ reserving class: {type(exc).__name__}: {exc}"))
                 continue
 
-            resq_datasets, read_errors = _read_resq_datasets(reserving_class, source_kinds, progress)
+            resq_datasets, read_errors = _read_resq_datasets(
+                reserving_class, source_kinds, progress, arcrho_datasets
+            )
             for kind, name, message in read_errors:
                 rc_errors.append((rc_path, f"{kind} {name or '(collection)'}: {message}"))
 

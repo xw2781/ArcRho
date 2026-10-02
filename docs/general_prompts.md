@@ -51,7 +51,6 @@ py -3.10 python-api/migration/validation/rs_dataset_side_by_side_review.py --pro
 
 ### Datasets (Engine)
 py -3.10 python-api/migration/validation/dataset_side_by_side_review.py
-- Checked at 1:46 PM, 9/8/2026. 0 dataset(s) need review.
 
 py -3.10 python-api/migration/validation/dataset_side_by_side_review.py --source-kind all --rc "Legacy\HOL"
 
@@ -63,5 +62,8 @@ py -3.10 python-api/migration/validation/combined_side_by_side_review.py --rc "P
 py -3.10 python-api/migration/validation/combined_side_by_side_review.py --rc "PRNJ - PA\PA\All States\Direct Group\COL"
 
 py -3.10 python-api/migration/validation/combined_side_by_side_review.py --rc "PRNJ - PA\PA\All States\Direct Group\CMPxCAT"
+
+### Prior Quarter Selected 81/82
+py -3.10 python-api/migration/validation/prior_quarter_vectors_side_by_side_review.py --project "NJ_Annual_Prod_2026 Sep"
 
 
