@@ -361,6 +361,12 @@ def _load_source_snapshot(
             f"DFM precedent '{dataset_name}' has {len(raw_values)} rows; "
             f"expected {len(origin_labels)}.",
         )
+    if needs_rollup and not any(value is not None for row in raw_values for value in row):
+        raise HTTPException(
+            422,
+            f"DFM input '{dataset_name}' has no values at the project's current valuation date. "
+            "Update the source triangle before refreshing; the last valid method is preserved.",
+        )
     try:
         decimal_places = int(sidecar.get("decimal_places") or 0)
     except (TypeError, ValueError):
@@ -389,7 +395,23 @@ def _load_source_snapshot(
         }
     else:
         column_count = max((len(row) for row in raw_values), default=0)
-        method_development_labels = _axis_labels(canonical_development_labels)
+        method_development_labels = (
+            _axis_labels(sidecar.get("development_labels")) if not needs_rollup else []
+        ) or _axis_labels(canonical_development_labels)
+        if needs_rollup or _clean(sidecar.get("source_kind")).lower() in {"engine", "calculated"}:
+            from app_server.services import arcrho_runtime_service
+
+            headers = arcrho_runtime_service.get_project_headers(
+                project_name,
+                required_development_length or source_development_length,
+                timeout_sec=config.ENGINE_REQUEST_TIMEOUT_SEC,
+                period_type=1,
+            )
+            if not headers.get("ok"):
+                raise HTTPException(422, headers.get("message") or "DFM input development labels could not be refreshed.")
+            method_development_labels = _axis_labels(headers.get("labels"))
+            if not method_development_labels:
+                raise HTTPException(422, "DFM input development labels are missing from the project headers.")
         if method_development_labels and len(method_development_labels) < column_count:
             # A triangle is as wide as it has origins, so the columns past the
             # valuation date are blank; only those may be dropped.

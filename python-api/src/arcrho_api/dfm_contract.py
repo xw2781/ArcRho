@@ -1226,6 +1226,19 @@ def _set_revisions(payload: dict[str, Any]) -> None:
     metadata.update(method_revisions(payload))
 
 
+def _development_axis_shift(old_labels: list[str], new_labels: list[str]) -> bool:
+    """A valuation shift keeps the number and spacing of development columns."""
+    if not old_labels or len(old_labels) != len(new_labels):
+        return False
+    if any(not re.fullmatch(r"\d+(?:\.\d+)?m?", label.strip()) for label in old_labels + new_labels):
+        return False
+    offsets = {
+        float(_age_text(new)) - float(_age_text(old))
+        for old, new in zip(old_labels, new_labels)
+    }
+    return len(offsets) == 1
+
+
 def _apply_input_snapshot(payload: dict[str, Any], snapshot: Mapping[str, Any]) -> None:
     details = payload["details_tab"]
     old_ratio = payload["ratios_tab"]["ratio_triangle"]
@@ -1242,7 +1255,8 @@ def _apply_input_snapshot(payload: dict[str, Any], snapshot: Mapping[str, Any]) 
     duplicates = _duplicate_labels(origins)
     if duplicates:
         raise DfmContractError("DFM input snapshot has duplicate origin labels: " + ", ".join(duplicates))
-    if old_data_devs and old_data_devs != devs:
+    shifted = old_data_devs != devs and _development_axis_shift(old_data_devs, devs)
+    if old_data_devs and old_data_devs != devs and not shifted:
         raise DfmContractError(
             "DFM input development-label geometry changed; preserve the last valid method and require review."
         )
@@ -1285,7 +1299,12 @@ def _apply_input_snapshot(payload: dict[str, Any], snapshot: Mapping[str, Any]) 
     })
     ratio_labels = _ratio_development_labels(devs)
     origin_lookup = {label: index for index, label in enumerate(old_origins)}
-    dev_lookup = {label: index for index, label in enumerate(old_devs)}
+    dev_lookup = {label: index for index, label in enumerate(ratio_labels if shifted else old_devs)}
+    if shifted:
+        renamed_columns = dict(zip(old_devs, ratio_labels))
+        for table in payload['ratios_tab']['cell_notes'].values():
+            for row_name, notes in table.items():
+                table[row_name] = {renamed_columns.get(label, label): note for label, note in notes.items()}
     remapped: list[list[int]] = []
     for origin in origins:
         old_row = origin_lookup.get(origin)
@@ -1853,6 +1872,15 @@ def recalculate_dfm_method(
         data["input_data_triangle_values"], data["input_data_triangle_mask"], len(data["development_labels"])
     )
     prior_excluded = _int_matrix(ratio.get("excluded"))
+    if any(
+        value == 1
+        for row, excluded_row in enumerate(prior_excluded)
+        for value in excluded_row[len(ratio['ratio_values'][row]):]
+    ):
+        raise DfmContractError(
+            "DFM input values are missing for previously excluded ratio cells. "
+            "Update the source triangle before refreshing; the last valid method is preserved."
+        )
     ratio["excluded"] = [
         (prior_excluded[row] if row < len(prior_excluded) else [])[: len(ratio_values)]
         + [0] * max(0, len(ratio_values) - len(prior_excluded[row] if row < len(prior_excluded) else []))

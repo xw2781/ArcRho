@@ -50,6 +50,8 @@ class DfmServiceTests(unittest.TestCase):
         )
         self.patchers = [
             IsolatedPropagationWorkspace(),
+            mock.patch('app_server.services.arcrho_runtime_service.get_project_headers',
+                       return_value={'ok': True, 'labels': ['12', '24']}),
             mock.patch.object(dfm_service.config, "get_project_method_data_dir", return_value=str(self.methods)),
             mock.patch.object(dfm_service.config, "get_project_dataset_cache_dir", return_value=str(self.datasets)),
             mock.patch.object(dfm_service.config, "get_general_settings_path", return_value=str(settings)),
@@ -982,6 +984,9 @@ class DfmServiceTests(unittest.TestCase):
         with mock.patch(
             "app_server.services.arcrho_runtime_service.run_arcrho_tri",
             side_effect=run_arcrho_tri,
+        ), mock.patch(
+            "app_server.services.arcrho_runtime_service.get_project_headers",
+            return_value={"ok": True, "labels": ["3m", "6m"]},
         ):
             snapshot, _ = dfm_service._source_snapshots(
                 "Project",
@@ -992,6 +997,7 @@ class DfmServiceTests(unittest.TestCase):
             )
 
         self.assertEqual(snapshot["values"], [[10, 15], [20, None]])
+        self.assertEqual(snapshot["development_labels"], ["3m", "6m"])
         pairs, path, options = requests[0]
         self.assertEqual(
             (pairs["Function"], pairs["InstanceName"], pairs["OriginLength"], pairs["DevelopmentLength"]),

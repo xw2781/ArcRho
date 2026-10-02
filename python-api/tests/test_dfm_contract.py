@@ -724,6 +724,49 @@ class DfmContractTests(unittest.TestCase):
             "benchmark",
         )
 
+    def test_valuation_shift_preserves_patterns_and_refreshes_ratios(self) -> None:
+        method = recalculate_dfm_method(
+            owned_payload(), input_snapshot=input_snapshot(), ratio_basis_snapshot=basis_snapshot()
+        )
+        method['ratios_tab']['ratio_triangle']['excluded'][0][0] = 1
+        method = recalculate_dfm_method(method)
+        changed = input_snapshot(values=[[100, 170, 204], [200, 320, None], [400, None, None]])
+        changed['development_labels'] = ['13m', '25m', '37m']
+        refreshed = recalculate_dfm_method(method, input_snapshot=changed)
+        self.assertEqual(refreshed['data_tab']['development_labels'], changed['development_labels'])
+        self.assertEqual(refreshed['data_tab']['input_data_triangle_values'], changed['values'])
+        self.assertEqual(refreshed['ratios_tab']['ratio_triangle']['ratio_values'][0][0], 1.7)
+        self.assertEqual(refreshed['ratios_tab']['ratio_triangle']['excluded'],
+                         method['ratios_tab']['ratio_triangle']['excluded'])
+        for field in ('selected', 'inputs', 'display_inputs', 'custom_average_formula_settings'):
+            self.assertEqual(refreshed['ratios_tab']['average_formulas'][field],
+                             method['ratios_tab']['average_formulas'][field])
+        self.assertNotEqual(refreshed['ratios_tab']['average_formulas']['values'][0],
+                            method['ratios_tab']['average_formulas']['values'][0])
+        self.assertEqual(refreshed['ratios_tab']['cell_notes']['ratio_main_table']['2020'],
+                         {'(1) 13-25': 'Keep'})
+        self.assertEqual(normalize_dfm_method(refreshed), refreshed)
+
+    def test_changed_development_spacing_still_requires_review(self) -> None:
+        method = recalculate_dfm_method(
+            owned_payload(), input_snapshot=input_snapshot(), ratio_basis_snapshot=basis_snapshot()
+        )
+        changed = input_snapshot()
+        changed['development_labels'] = ['13m', '26m', '37m']
+        with self.assertRaisesRegex(DfmContractError, 'geometry changed'):
+            recalculate_dfm_method(method, input_snapshot=changed)
+
+    def test_missing_new_values_cannot_discard_an_existing_exclusion(self) -> None:
+        method = recalculate_dfm_method(
+            owned_payload(), input_snapshot=input_snapshot(), ratio_basis_snapshot=basis_snapshot()
+        )
+        method['ratios_tab']['ratio_triangle']['excluded'][0][1] = 1
+        method = recalculate_dfm_method(method)
+        changed = input_snapshot(values=[[100, 150, None], [200, 300, None], [400, None, None]])
+        changed['development_labels'] = ['13m', '25m', '37m']
+        with self.assertRaisesRegex(DfmContractError, 'previously excluded ratio cells'):
+            recalculate_dfm_method(method, input_snapshot=changed)
+
     def test_a_computed_row_keeps_the_tail_typed_on_it(self) -> None:
         # ResQ's tail cell is an input on every average row: MP+PIP's F 25
         # types 1.0018 on the computed "Volume - all" row and selects it.

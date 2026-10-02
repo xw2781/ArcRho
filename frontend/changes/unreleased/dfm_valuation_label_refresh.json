@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "DFM refresh now advances development labels with the valuation date while preserving selection patterns and exclusions.",
+  "details": [
+    "Input values, ratios, averages, and results recalculate using the refreshed triangle, and the method is marked for review."
+  ]
+}

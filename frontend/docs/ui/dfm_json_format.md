@@ -110,7 +110,7 @@ A formula containing any Excel reference freezes its complete stored result duri
 
 Opaque migrated average rows such as ResQ `Benchmark` keep their persisted values. They are not reinterpreted as a standard Simple or Volume average by either the canonical contract or the frontend renderer.
 
-Origin changes remap owned state by exact label; new origins default to included. Development geometry must remain compatible. Positional remapping is forbidden: an incompatible geometry leaves the prior publication intact and marks the DFM Review Needed.
+Origin changes remap owned state by exact label; new origins default to included. A valuation shift with the same development-column count and spacing preserves selections and exclusions by column and moves ratio-cell notes to the new labels. Input values, ratios, averages, and results recalculate, and automatic publication marks the DFM Review Needed. Other development-geometry changes leave the prior publication intact and require review.
 
 Ratio Basis values are aligned by exact origin label. A missing or duplicate required label is a refresh error rather than a positional fallback. The saved labels must equal the DFM origins exactly, so the method window re-reads the Ratio Basis dataset at the new Origin Length before it builds a payload on a changed origin basis; the embedded snapshot is never carried across bases.
 
