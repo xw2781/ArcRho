@@ -12,6 +12,7 @@ import hashlib
 import math
 import random
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 
 
@@ -19,6 +20,7 @@ SEED = 20260812
 START_ACCIDENT_MONTH = 201601
 END_ACCIDENT_MONTH = 202512
 VALUATION_MONTH = 202605
+MONETARY_SCALE = Decimal("0.01")
 
 HEADERS = (
     "LineOfBusiness",
@@ -78,6 +80,7 @@ class CoverageConfig:
     zero_payment_ratio: float
     seasonal_amplitude: float
     seasonal_peak_month: int
+    seed_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -215,7 +218,7 @@ LOBS = (
                 1,
             ),
             CoverageConfig(
-                "Physical Damage",
+                "Comprehensive",
                 105.0,
                 0.070,
                 9_000,
@@ -232,6 +235,7 @@ LOBS = (
                 0.09,
                 0.09,
                 1,
+                seed_name="Physical Damage",
             ),
         ),
     ),
@@ -373,7 +377,8 @@ def development_cdf(
 
 
 def money(cents: int) -> str:
-    return f"{cents / 100:.2f}"
+    # Scale after simulation so claim counts and development patterns stay fixed.
+    return f"{Decimal(cents) / 100 * MONETARY_SCALE:.4f}"
 
 
 def exposure_for(
@@ -416,7 +421,7 @@ def generate_rows():
                             lob.name,
                             state.code,
                             channel.code,
-                            coverage.name,
+                            coverage.seed_name or coverage.name,
                             accident_month,
                         )
 

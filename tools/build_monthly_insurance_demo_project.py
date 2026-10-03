@@ -234,6 +234,7 @@ AGGREGATE_RC_TYPE_ROWS = (
     ["All Lines", "1", '"Personal Auto" + "Commercial Auto" + Homeowners'],
     ["All States", "2", "CA + TX + OH"],
     ["All Channels", "3", "CH01 + CH02 + CH03"],
+    ["Physical Damage", "4", "Comprehensive"],
     [
         "Personal Auto Total",
         "4",
@@ -242,7 +243,7 @@ AGGREGATE_RC_TYPE_ROWS = (
     [
         "Commercial Auto Total",
         "4",
-        '"Auto Liability" + "Physical Damage"',
+        '"Auto Liability" + Comprehensive',
     ],
     [
         "Homeowners Total",
@@ -252,7 +253,7 @@ AGGREGATE_RC_TYPE_ROWS = (
     [
         "All Auto Coverages",
         "4",
-        '"Personal Auto Total" + "Commercial Auto Total"',
+        '"Bodily Injury Liability" + "Property Damage Liability" + Collision + Comprehensive + "Auto Liability"',
     ],
     [
         "All Coverages",
@@ -267,7 +268,7 @@ AGGREGATE_RC_TYPE_ROWS = (
     [
         "Property and Physical Damage",
         "4",
-        'Collision + Comprehensive + "Physical Damage" + "Dwelling Property" + "Personal Property"',
+        'Collision + Comprehensive + "Dwelling Property" + "Personal Property"',
     ],
 )
 
