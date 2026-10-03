@@ -1,7 +1,7 @@
 # <arcrho-macro>
 # Title: Load Prior Quarter Vectors
-# Version: 1.0.1
-# Release Note: Copy stored numeric values only, clearing destination in-cell formulas and links.
+# Version: 1.0.0
+# Release Note: Initial release.
 # Description: Run once a quarter. Pick the prior quarter's project from a list, then copy every
 #   Current Qtr Indicated and Selected vector (C 91/92, D 91/92, E 91/92, F 91/92, G 91/92 ...)
 #   of every reserving class in that project into the matching Prior Qtr vector
@@ -9,8 +9,7 @@
 #   Prior Qtr vector is replaced in full and takes the stored length of the vector it was
 #   copied from. A vector that is missing or empty in the prior project, or has no Prior Qtr
 #   vector in the active class, is left untouched and listed in the summary. Every copy is
-#   read back and checked against its source. Only stored values are copied; destination
-#   in-cell formulas and links are cleared.
+#   read back and checked against its source.
 # Scope: Project
 # Icon: sync
 # </arcrho-macro>
@@ -153,9 +152,6 @@ def copy_vector(gateway, source_project, project, rc, source, target, report) ->
             origin_length=length,
             development_length=length,
             values=values,
-            external_links=[],
-            internal_links=[],
-            formula_links=[],
             origin_labels=data.get("origin_labels"),
             stored_values_cleared=True,
         )

@@ -100,6 +100,19 @@ class CopyVectorTest(unittest.TestCase):
         self.assertIn("could not be read", self.copy("D 99 - Missing"))
         self.assertEqual(self.gateway.saves, [])
 
+    def test_copy_uses_stored_numbers_and_clears_destination_cell_links(self):
+        source_name = "D 91 - Current Qtr Indicated"
+        self.source[source_name].update(
+            formula_links=[{"target": "A2", "formula": "=1+2"}],
+            internal_links=[{"target": "A3", "reference": "Other!A1"}],
+            external_links=[{"target": "A1", "formula": "=External!A1"}],
+        )
+        self.assertEqual(self.copy(source_name), "")
+        kwargs = self.gateway.saves[0][-1]
+        self.assertEqual(kwargs["values"], [[None], [1.5], [2.25]])
+        for field in ("formula_links", "internal_links", "external_links"):
+            self.assertEqual(kwargs[field], [])
+
 
 if __name__ == "__main__":
     unittest.main()
