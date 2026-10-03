@@ -5,7 +5,8 @@ reserving-class paths of a project, this lays the persisted ArcRho values and
 the live ResQ values next to each other with a difference matrix, using the
 same workbook as ``dataset_side_by_side_review.py``. Use it after the "Load
 Prior Quarter Vectors" macro to confirm the loaded 81/82 vectors match what
-ResQ holds for the same project.
+ResQ holds for the same project. Each comparison uses the matching Arco dataset's
+display length, temporarily showing the ResQ vector at that length too.
 
 Nothing is written back to ArcRho or ResQ.
 
@@ -29,7 +30,7 @@ for _import_root in (_VALIDATION_DIR.parent, _VALIDATION_DIR):
 
 import resq_data_migration as migration  # noqa: E402
 from resq_migration.core import _encode_rc_folder, _normalize_import_name, _safe_attr  # noqa: E402
-from resq_migration.extractors import export_vector  # noqa: E402
+from resq_migration.extractors import _displayed_at, export_vector  # noqa: E402
 
 import dataset_side_by_side_review as review  # noqa: E402
 
@@ -41,13 +42,19 @@ def _is_prior_qtr_vector(name: str) -> bool:
     return bool(PRIOR_QTR_VECTOR.match(name))
 
 
-def _read_resq_prior_qtr_vectors(reserving_class, progress) -> dict[tuple[str, str], dict]:
+def _read_resq_prior_qtr_vectors(reserving_class, progress, arcrho_datasets) -> dict[tuple[str, str], dict]:
     out: dict[tuple[str, str], dict] = {}
     for vector in list(reserving_class.Vectors()):
         name = _normalize_import_name(_safe_attr(vector, "Name", ""))
         if _is_prior_qtr_vector(name):
             progress(f"    vector: {name}")
-            out[(review.VECTOR_KIND, name)] = export_vector(vector)
+            key = (review.VECTOR_KIND, name)
+            lengths = review._arcrho_display_lengths(review.VECTOR_KIND, arcrho_datasets.get(key))
+            with _displayed_at(vector, lengths) as switched:
+                payload = export_vector(vector)
+            if lengths and not switched:
+                payload["shape_switch_refused"] = True
+            out[key] = payload
     return out
 
 
@@ -73,7 +80,7 @@ def run_comparison(project_name: str, rc_paths: list[str], progress=print):
                 if key[0] == review.VECTOR_KIND and _is_prior_qtr_vector(key[1])
             }
             try:
-                resq = _read_resq_prior_qtr_vectors(project.ReservingClasses().Item(rc_path), progress)
+                resq = _read_resq_prior_qtr_vectors(project.ReservingClasses().Item(rc_path), progress, arcrho)
             except Exception as exc:
                 rc_errors.append((rc_path, f"could not read ResQ reserving class: {type(exc).__name__}: {exc}"))
                 continue
