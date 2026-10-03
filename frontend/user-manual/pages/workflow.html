@@ -3,55 +3,53 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Arco Manual - Workflow</title>
-  <link rel="stylesheet" href="../manual.css">
+  <title>Workflow · Arco User Guide</title>
+  <link rel="stylesheet" href="../guide.css">
+  <script src="../guide.js" defer></script>
 </head>
 <body data-page="workflow">
-  <main class="manual-page" data-page-title="Workflow" data-page-intro="Workflow files organize repeatable review steps and shared defaults for embedded Dataset and DFM pages.">
-    <section class="manual-section" id="workspace">
-      <div class="section-head"><p class="eyebrow">Workflow editor</p><h2>Step sidebar and embedded pages</h2></div>
-      <div class="workflow-demo">
-        <aside>
-          <div class="workflow-title hotspot" data-tip="Rename the workflow from the sidebar title.">Monthly Review Workflow</div>
-          <div class="tree-row active">Global Control</div>
-          <div class="tree-row">Folder: Loss Review</div>
-          <div class="tree-row nested">Paid Loss Dataset</div>
-          <div class="tree-row nested">Paid Ultimate DFM</div>
-        </aside>
-        <section>
-          <div class="table-toolbar"><span>Global Control</span><button>Add Row</button><button>Delete Row</button></div>
-          <table class="manual-table dense">
-            <thead><tr><th>Name</th><th>Type</th><th>Value</th></tr></thead>
-            <tbody>
-              <tr><td>&lt;Default Project&gt;</td><td>Project</td><td>NJ Annual Production 2026</td></tr>
-              <tr><td>Default Path</td><td>Reserving Class</td><td>PA\Direct Group\Collision</td></tr>
-              <tr><td>Prior Project</td><td>Project</td><td>NJ Annual Production 2025</td></tr>
-            </tbody>
-          </table>
-        </section>
-        <div class="manual-cursor"></div>
-      </div>
-    </section>
-    <section class="manual-section" id="use">
-      <div class="section-head"><p class="eyebrow">Use</p><h2>Build a reusable workflow</h2></div>
+  <main class="guide-content">
+    <header class="guide-header">
+      <p class="eyebrow">Workflow</p>
+      <h1>Organize a repeatable review</h1>
+      <p class="lede">Keep dataset views and DFM steps in one named workflow, with a shared project and segment.</p>
+      <div class="guide-meta"><span>Demo project: <strong>Monthly_Insurance_Dataset</strong></span></div>
+    </header>
+
+    <section class="guide-section" id="start">
+      <h2>Create a Workflow</h2>
       <ol class="step-list">
-        <li>Create or open a workflow file.</li>
-        <li>Add one Global Control step.</li>
-        <li>Set Default Project and Default Path.</li>
-        <li>Add Dataset and DFM steps.</li>
-        <li>Organize steps into folders if the workflow is long.</li>
-        <li>Save the workflow as a <code>.arcwf</code> file.</li>
+        <li>On Home, choose <strong>New Workflow</strong>.</li>
+        <li>Click <strong>Workflow Designer</strong> or its rename control and name the workflow <strong>Jordan Lee — Paid Review</strong>.</li>
+        <li>Click the <strong>+</strong> tile in the left panel to add a step, then choose <strong>Global Control</strong>.</li>
+        <li>Set the default project to <strong>Monthly_Insurance_Dataset</strong> and the default path to <strong>Commercial Auto → All States → CH02 → Comprehensive</strong>.</li>
       </ol>
+      <figure class="screenshot">
+        <img src="../assets/monthly-insurance/workflow-overview.png" alt="Workflow Designer with its step list and active workspace">
+        <figcaption><strong>The step list is your review sequence.</strong> Select a step to work in its workspace. Global Control provides the project and segment defaults for steps that use them.</figcaption>
+      </figure>
     </section>
-    <section class="manual-section" id="details">
-      <div class="section-head"><p class="eyebrow">Details</p><h2>Behavior to remember</h2></div>
-      <div class="task-grid">
-        <article class="task-card"><h3>Global Control</h3><ul><li>Only one Global Control step is allowed.</li><li>Fresh workflows initialize defaults from last project and path preferences.</li><li>Dataset and DFM steps can bind to defaults.</li></ul></article>
-        <article class="task-card"><h3>Sidebar</h3><ul><li>Steps and folders can be reordered.</li><li>Folders can nest up to three levels.</li><li>Context menus create folders and manage rows.</li></ul></article>
-        <article class="task-card"><h3>Save/load</h3><ul><li>Workflow state persists in <code>.arcwf</code>.</li><li>Dirty state is sent to the shell.</li><li>Embedded DFM settings include output vector when present.</li></ul></article>
-      </div>
+    <section class="guide-section" id="steps">
+      <h2>Add a Dataset and DFM Step</h2>
+      <ol class="step-list">
+        <li>Add another step and choose <strong>Open Dataset</strong>. Select <strong>Gross Paid Loss</strong> and use the workflow defaults for the project and segment.</li>
+        <li>Check the dataset's 12-month origin and development lengths and its cumulative view.</li>
+        <li>Add a <strong>DFM</strong> step. Configure its details using the <a href="dfm.html">DFM walkthrough</a>.</li>
+        <li>Right-click a step to <strong>Rename</strong> it, or <strong>Duplicate</strong> a step when you need a similar review view.</li>
+      </ol>
+      <p>Use <strong>New Folder</strong> from the step menu to group related work, then drag steps into the desired order. Select each step to inspect its own settings and output.</p>
+      <aside class="callout"><strong>Available step types</strong><p>Open Dataset, DFM, and Global Control have working editors. The workflow's Result Selection card is a placeholder; open a Result Selection method from the Project Page instead.</p></aside>
+    </section>
+    <section class="guide-section" id="save">
+      <h2>Save and Reopen the Workflow</h2>
+      <ol class="step-list">
+        <li>Choose <strong>File → Save</strong> or press <kbd>Ctrl</kbd> + <kbd>S</kbd> to save the workflow.</li>
+        <li>Use <strong>File → Save As</strong> when you need a separate workflow file, and give it a recognizable name.</li>
+        <li>To reopen a saved workflow, use <strong>Import from Path...</strong> on an empty workflow, or <strong>File → Import Workflow from...</strong>.</li>
+        <li>After loading, inspect Global Control and each step before continuing the review.</li>
+      </ol>
+      <p>Saving is explicit. Before closing, save the workflow and check any dataset or method save messages, including errors from work embedded in the steps.</p>
     </section>
   </main>
-  <script src="../manual.js"></script>
 </body>
 </html>

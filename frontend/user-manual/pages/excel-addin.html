@@ -3,74 +3,70 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Arco Manual - Excel Add-In</title>
-  <link rel="stylesheet" href="../manual.css">
+  <title>Excel Add-In · Arco User Guide</title>
+  <link rel="stylesheet" href="../guide.css">
+  <script src="../guide.js" defer></script>
 </head>
 <body data-page="excel-addin">
-  <main class="manual-page" data-page-title="Excel Add-In" data-page-intro="Arco 4.0.0 opens with your workbook's saved values and loads missing results when you enter or edit a formula. Use Refresh to update existing values, then save to share them.">
-    <section class="manual-section" id="ribbon">
-      <div class="section-head"><p class="eyebrow">Ribbon</p><h2>Arco tab in Excel</h2></div>
-      <div class="excel-demo">
-        <div class="excel-group"><strong>Unlimited Remote Access</strong><button class="hotspot" data-tip="Set workbook connection and login.">Connect and Login</button><button>Refresh Worksheet</button><button>Refresh Workbook</button></div>
-        <div class="excel-group"><strong>Shortcuts</strong><button>Insert Function</button><button>Clear Formulas</button><button class="hotspot" data-tip="Pick reserving class path values from the user form.">Load Reserving Classes</button><button>Select Datasets</button></div>
-        <div class="excel-group"><strong>Add-in Settings</strong><button>Reset Add-in References</button><button>Load and Calculate</button><button>Unload Add-In</button></div>
-        <div class="excel-group"><strong>Options</strong><button>Check Updates</button><button>Settings</button><button>About</button></div>
-        <div class="manual-cursor"></div>
-      </div>
-    </section>
-    <section class="manual-section" id="functions">
-      <div class="section-head"><p class="eyebrow">Functions</p><h2>Worksheet formulas</h2></div>
-      <div class="code-tabs" data-code-tabs>
-        <div class="tab-buttons"><button class="active" data-tab="tri">Triangle</button><button data-tab="vec">Vector</button><button data-tab="headers">Headers</button><button data-tab="metadata">Metadata</button></div>
-        <pre class="code-sample active" data-panel="tri"><code>=ArcoTri("PA\Direct Group\Collision","Paid Loss",TRUE,FALSE,FALSE,"NJ Annual Production 2026",12,12)
+  <main class="guide-content">
+    <header class="guide-header">
+      <p class="eyebrow">Excel Add-In</p>
+      <h1>Bring the demo's values into Excel</h1>
+      <p class="lede">Use the Arco add-in to insert a dataset formula, refresh its results, and save a workbook that carries the reviewed values.</p>
+      <div class="guide-meta"><span>Demo project: <strong>Monthly_Insurance_Dataset</strong></span></div>
+    </header>
 
-=ArcoTriDiag("PA\Direct Group\Collision","Paid Loss",0,TRUE,FALSE,"NJ Annual Production 2026",12,12)
-
-=ArcoTriCell("PA\Direct Group\Collision","Paid Loss",3,2,TRUE,"NJ Annual Production 2026",12,12)</code></pre>
-        <pre class="code-sample" data-panel="vec"><code>=ArcoVec("PA\Direct Group\Collision","Paid Ultimate",FALSE,"NJ Annual Production 2026",12)
-
-=ArcoVecCell("PA\Direct Group\Collision","Paid Ultimate",4,"NJ Annual Production 2026",12)</code></pre>
-        <pre class="code-sample" data-panel="headers"><code>=ArcoHeaders(1,FALSE,12,"NJ Annual Production 2026",-1,FALSE)
-
-periodType examples:
-1 = origin labels
-2 = development labels</code></pre>
-        <pre class="code-sample" data-panel="metadata"><code>=ArcoProjectSettings("NJ Annual Production 2026")
-=ArcoReservingClasses(3,TRUE,"NJ Annual Production 2026")
-=ArcoNodeContents("PA\Direct Group","Children","NJ Annual Production 2026")</code></pre>
-      </div>
+    <section class="guide-section" id="prepare">
+      <h2>Identify the Dataset First</h2>
+      <ol class="step-list">
+        <li>In Arco, open <strong>Monthly_Insurance_Dataset</strong> and select <strong>Commercial Auto → All States → CH02 → Comprehensive</strong>.</li>
+        <li>Open <strong>Gross Paid Loss</strong> and check its annual cumulative view before requesting the same data in Excel.</li>
+        <li>In Excel, confirm the <strong>Arco</strong> ribbon is available. Use the installed add-in supplied for your environment.</li>
+        <li>Choose <strong>Connect and Login</strong> and check the workbook's project connection.</li>
+      </ol>
+      <figure class="screenshot">
+        <img src="../assets/monthly-insurance/excel-addin-overview.png" alt="The real Insert Arco Function dialog with ArcoTri, the Commercial Auto demo path, and Gross Paid Loss selected">
+        <figcaption><strong>Use matching names and periods in both apps.</strong> The function builder shows the selected project, path, and triangle. Blank optional arguments use the defaults displayed below each field; this example uses cumulative data and 12-month periods.</figcaption>
+      </figure>
     </section>
-    <section class="manual-section" id="ribbon-actions">
-      <div class="section-head"><p class="eyebrow">Actions</p><h2>When to use each ribbon command</h2></div>
-      <table class="manual-table">
-        <thead><tr><th>Command</th><th>Use it when</th></tr></thead>
-        <tbody>
-          <tr><td>Connect and Login</td><td>A workbook needs a connection or login setup.</td></tr>
-          <tr><td>Refresh Worksheet</td><td>Fetch current Arco results for the active sheet and update its saved snapshot. The whole workbook is recalculated afterwards so dependent formulas are current.</td></tr>
-          <tr><td>Refresh Workbook</td><td>Fetch current Arco results throughout the active workbook, then recalculate every formula in it. Save afterwards to share the updated values.</td></tr>
-          <tr><td>Clear Formulas</td><td>Remove Arco formulas during workbook cleanup.</td></tr>
-          <tr><td>Load Reserving Classes</td><td>Use a picker to insert path components.</td></tr>
-          <tr><td>Select Datasets</td><td>Pick dataset names with format/category/search filters.</td></tr>
-          <tr><td>Reset Add-in References</td><td>Choose Arco or 64-bit ResQ, then Update workbook to change both add-in paths and supported formula names. Arco is always the default; ResQ is available only on NE7SASWPN02. Available in add-in 4.1.1.</td></tr>
-        </tbody>
-      </table>
+    <section class="guide-section" id="insert">
+      <h2>Insert a Triangle Formula</h2>
+      <ol class="step-list">
+        <li>Select an empty worksheet cell with room for the triangle to spill into the rows and columns beside it.</li>
+        <li>Choose <strong>Arco → Insert Function</strong>, then select <strong>ArcoTri</strong>.</li>
+        <li>Choose the demo project, segment path, and Gross Paid Loss. Use TRUE for <strong>Cumulative</strong>, FALSE for <strong>Transposed</strong> and <strong>Calendar</strong>, and 12 for both period lengths. You can leave an optional field blank when its displayed default matches.</li>
+        <li>Inspect the formula preview and insert it. Check that values appear in the intended cells.</li>
+      </ol>
+      <p>You can also put the project in B2, the path in B3, and the dataset name in B4, then enter:</p>
+      <pre class="code-sample"><code>B2: Monthly_Insurance_Dataset
+B3: Commercial Auto\All States\CH02\Comprehensive
+B4: Gross Paid Loss
+
+=ArcoTri($B$3,$B$4,TRUE,FALSE,FALSE,$B$2,12,12)</code></pre>
+      <figure class="screenshot">
+        <img src="../assets/monthly-insurance/excel-result.png" alt="The Arco Excel ribbon and the successfully inserted Gross Paid Loss triangle in the demo workbook" loading="lazy">
+        <figcaption><strong>Inspect the inserted array.</strong> The real add-in returns the full triangle to the worksheet. These displayed values match the annual cumulative view in Arco.</figcaption>
+      </figure>
+      <p>Use <strong>ArcoVec</strong> for a vector such as Guide Paid Ultimate. <strong>Load Reserving Classes</strong> and <strong>Select Datasets</strong> help fill paths and names; <strong>Refresh lists</strong> updates the Insert Function panel's available choices.</p>
     </section>
-    <section class="manual-section" id="reference-repair">
-      <div class="section-head"><p class="eyebrow">Workbook repair</p><h2>Update old add-in links and formula names</h2></div>
-      <p>Open the workbook to repair and choose <strong>Reset Add-in References</strong>. <strong>Arco Excel add-in</strong> is always selected by default. The dropdown also offers <strong>64-bit ResQ add-in</strong>, which changes Arco formula names to ResQ and points them to the 64-bit ResQ installation. On PCs other than NE7SASWPN02, this option is disabled with the explanation <strong>Only available on NE7SASWPN02</strong>.</p>
-      <p>Choose <strong>Update workbook</strong> to change both paths and formula names across visible and hidden sheets and defined names. Old 32-bit and 64-bit ResQ paths, UNC links, and beta links are recognized; formula arguments and quoted text are preserved. The 32-bit installation is not offered as a target.</p>
-      <p>The progress window shows each sheet, cells checked, formula ranges found, and update progress. Cancel during scanning leaves the workbook unchanged. Cancel during updating stops further changes and reports what was updated. Close the repair form with its window X.</p>
-      <p>The results identify protected content and legacy array formulas that exceed Excel's editing limit. If the same add-in filename is loaded from another location, load the desired copy first. After repair, use <strong>Refresh Workbook</strong> if data is missing, then save. Repair itself does not fetch data or save the workbook.</p>
+    <section class="guide-section" id="refresh">
+      <h2>Refresh and Share the Workbook</h2>
+      <ol class="step-list">
+        <li>Choose <strong>Refresh Worksheet</strong> for the active sheet or <strong>Refresh Workbook</strong> for the workbook's Arco requests.</li>
+        <li>Wait for refresh to finish and inspect any reported failure.</li>
+        <li>Compare a few origin values with the same dataset and period settings in Arco.</li>
+        <li>Save the workbook so its current Arco results travel with it.</li>
+      </ol>
+      <aside class="callout">
+        <strong>Recalculation and refresh are different</strong>
+        <p>Opening a workbook and ordinary recalculation use its saved Arco results. Entering a new request loads missing results; an explicit Refresh updates results already saved in the workbook.</p>
+      </aside>
     </section>
-    <section class="manual-section" id="formula-rules">
-      <div class="section-head"><p class="eyebrow">Formula rules</p><h2>Useful formula behavior</h2></div>
-      <div class="task-grid">
-        <article class="task-card"><h3>Triangle options</h3><ul><li>Cumulative TRUE returns cumulative triangle.</li><li>Transposed TRUE flips display orientation.</li><li>Calendar TRUE requests calendar view.</li><li>Origin and Development Length choose period aggregation.</li><li>Manual and generated datasets support compatible coarser periods from their published values, such as monthly exposure rolled up to annual exposure.</li><li>A generated dataset asked for at a finer period or another mode than its publication, such as quarterly exposure when the frontend shows it annually, is calculated by the Arco Engine from the source table. The published values are never changed.</li><li>Manual, calculated, and method outputs can only be read at their published shape or a compatible coarser one.</li></ul></article>
-        <article class="task-card"><h3>Saved workbook results</h3><ul><li>Opening and ordinary recalculation read the last saved Arco snapshot without contacting the server.</li><li>Typing, editing, or pasting a formula loads missing results immediately after entry, including when you change its explicit project name. A request already saved in the workbook reuses those values.</li><li>Explicit refresh fetches each distinct request once. A failed or cancelled refresh preserves the previous snapshot.</li><li>Save after adding formulas or refreshing to share the results. Older workbooks need one refresh and save for their existing formulas.</li><li>Permanent datasets are read as published. Temporary generated results are reused while their source and processing settings remain unchanged.</li></ul></article>
-        <article class="task-card"><h3>Pickers</h3><ul><li>Load Reserving Classes writes path parts into active cells.</li><li>Select Datasets filters by category and format.</li><li>Settings stores paths used by the add-in.</li></ul></article>
-      </div>
+    <section class="guide-section" id="repair">
+      <h2>Repair an Older Workbook</h2>
+      <p>Use <strong>Reset Add-in References</strong> when a workbook points to an old add-in location or older supported function names. Check the target add-in and choose <strong>Update workbook</strong>, then read the repair result.</p>
+      <p>Reference repair does not fetch new project data or save the workbook. Refresh if needed, inspect the values, and save afterwards.</p>
     </section>
   </main>
-  <script src="../manual.js"></script>
 </body>
 </html>

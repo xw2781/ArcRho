@@ -1420,6 +1420,19 @@ ipcMain.handle("show-item-in-folder", async (_event, payload) => {
   }
 });
 
+ipcMain.handle("open-external-url", async (_event, payload) => {
+  try {
+    const url = new URL(String(payload?.url || ""));
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
+      return { ok: false, error: "Only HTTP and HTTPS web addresses can be opened." };
+    }
+    await shell.openExternal(url.href);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+});
+
 ipcMain.handle("open-terminal", async (_event, payload) => {
   const folderPath = String(payload?.cwd || payload?.path || "").trim();
   if (!folderPath) return { ok: false, error: "Empty terminal folder." };

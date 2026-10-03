@@ -83,6 +83,7 @@ Detected `arcrho:*` message types in key JS files:
 
 ## External Interfaces
 <!-- MANUAL:BEGIN -->
+- Help → User Guide is available on every page. `user_guide.js` reads `/server_profiles.current.gateway_url` at the time of the click and opens that Gateway's `/user-guide/` in the default browser through the HTTP/HTTPS-only `open-external-url` host action. Browser mode opens a separate tab. Missing connection settings, blocked popups and host failures appear in the status bar; there is no file/share or bundled-page fallback. The Gateway serves deployed documentation from its own Server root, so later guide updates require no desktop release.
 - Communicates with child iframes via `arcrho:*` postMessage events.
 - The main docked tab strip keeps a stable row height and connects the active tab to the shell body through border and stacking-layer styling rather than resolution-sensitive transform offsets.
 - Every docked tab draws a 14px type icon at its left edge. `tab_strip.js` emits only a `tabTypeIcon` element carrying the tab type; the drawing for that type is chosen entirely in [`ui/shell/tab-type-icons/tab_type_icons.css`](../../ui/shell/tab-type-icons/tab_type_icons.css), which masks one monochrome SVG per type over the tab's own text color so every theme is covered without a recolored copy. A tab type with no icon of its own falls back to a generic page glyph. The set can be reviewed at [`docs/ui/tab_type_icon_preview.html`](tab_type_icon_preview.html).

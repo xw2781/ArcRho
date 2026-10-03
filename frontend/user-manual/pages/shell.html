@@ -3,73 +3,47 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Arco Manual - App Shell</title>
-  <link rel="stylesheet" href="../manual.css">
+  <title>App Navigation · Arco User Guide</title>
+  <link rel="stylesheet" href="../guide.css">
+  <script src="../guide.js" defer></script>
 </head>
 <body data-page="shell">
-  <main class="manual-page" data-page-title="App Shell" data-page-intro="Use the shell to move between feature tabs, floating windows, menus, restore history, zoom, macros, and ArcBot.">
-    <section class="manual-section" id="overview">
-      <div class="section-head"><p class="eyebrow">Shell</p><h2>Main window layout</h2></div>
-      <div class="ar-app-window">
-        <div class="ar-titlebar"><div class="ar-logo">A</div><strong>Arco</strong><span class="status-pill ok">Connected</span><span class="window-controls">Min Max Close</span></div>
-        <div class="ar-menubar">
-          <span class="hotspot" data-tip="File dispatches Save to the active Dataset, DFM, or nested window.">File</span>
-          <span>Edit</span><span>View</span><span>Settings</span>
-          <span class="hotspot" data-tip="Macro opens the floating Python macro panel.">Macro</span>
-          <span class="hotspot" data-tip="Help changes based on the active page.">Help</span>
-        </div>
-        <div class="ar-tabs">
-          <span class="active hotspot" data-tip="The active tab controls menu routing and keyboard shortcuts.">Project Instance</span>
-          <span>DFM - Paid Ultimate *</span>
-          <span>Arcode</span>
-          <span class="hotspot" data-tip="Open another tab or feature from the plus menu.">+</span>
-        </div>
-        <div class="atlas-body short">
-          <div class="atlas-rail"><button class="active">H</button><button>P</button><button>D</button><button>A</button></div>
-          <div class="atlas-tree">
-            <div class="tree-title">Restore pages</div>
-            <div class="tree-row active">Project Instance - NJ Annual</div>
-            <div class="tree-row">Dataset - Paid Loss</div>
-            <div class="tree-row">DFM - Paid Ultimate</div>
-          </div>
-          <div class="atlas-board">
-            <div class="command-strip"><input value="Search command or recent page"><button>Open</button><button>Clear Cache</button></div>
-            <div class="shell-window-stack">
-              <div class="floating-window active"><b>Paid Loss Dataset</b><span>Data tab dirty</span></div>
-              <div class="floating-window"><b>Paid Ultimate DFM</b><span>Ratios tab</span></div>
-            </div>
-            <div class="manual-cursor"></div>
-          </div>
-        </div>
-        <div class="ar-statusbar">Ready | Active tab: Project Instance | Ctrl+S saves active window</div>
-      </div>
-      <button class="replay-btn" data-replay>Replay highlighted interactions</button>
-    </section>
+  <main class="guide-content">
+    <header class="guide-header">
+      <p class="eyebrow">App Navigation</p>
+      <h1>Find your way around Arco</h1>
+      <p class="lede">Open a project, keep related work together, and return to the pages you use most often.</p>
+      <div class="guide-meta"><span>Demo project: <strong>Monthly_Insurance_Dataset</strong></span></div>
+    </header>
 
-    <section class="manual-section" id="daily-use">
-      <div class="section-head"><p class="eyebrow">Daily use</p><h2>What users do here</h2></div>
-      <div class="task-grid">
-        <article class="task-card"><h3>Open and switch work</h3><ul><li>Use top tabs for Project Settings, Project Instance, Dataset, DFM, Workflow, Agent Guide, and Arcode.</li><li>Floating windows stay inside the shell and keep their live state.</li><li>Right-click tab surfaces in Dataset or DFM to pop a tab into a floating window.</li></ul></article>
-        <article class="task-card"><h3>Save and close safely</h3><ul><li>Ctrl+S saves the active Dataset or DFM, including nested windows inside Project Instance.</li><li>Dirty Dataset, DFM, Workflow, and scripting tabs show dirty state.</li><li>Close actions ask for confirmation before discarding unsaved work.</li></ul></article>
-        <article class="task-card"><h3>Recover state</h3><ul><li>Browsing History records restore-capable pages.</li><li>Clear Cache and Reload preserves one-shot restore state through the Electron host.</li><li>Project Instance restore includes selected path and nested Dataset, DFM, and Result Selection windows.</li></ul></article>
-        <article class="task-card"><h3>Use context menus</h3><ul><li>Help menu changes when a DFM or Project Instance window is active.</li><li>Open DFM JSON and sidecar commands launch Arcode.</li><li>Reveal in File Explorer opens the selected reserving-class data folder.</li></ul></article>
-      </div>
+    <section class="guide-section" id="home">
+      <h2>Start from Home</h2>
+      <ol class="step-list">
+        <li>Choose the <strong>Home</strong> tab. The welcome area identifies the current user; this guide uses the fictional analyst <strong>Jordan Lee</strong>.</li>
+        <li>Choose <strong>Project Explorer</strong> to browse projects, <strong>Server Connections</strong> to check your connection, or <strong>Arcode</strong> to open the scripting app.</li>
+        <li>For the demo, expand <strong>Test/Demos</strong> in Project Explorer and double-click <strong>Monthly_Insurance_Dataset</strong>.</li>
+        <li>On its <strong>Project Page</strong>, select <strong>Commercial Auto → All States → CH02 → Comprehensive</strong>.</li>
+      </ol>
+      <figure class="screenshot">
+        <img src="../assets/monthly-insurance/shell-overview.png" alt="Arco main window with its Home launch cards, menus, and open tabs">
+        <figcaption><strong>Use Home to open a workspace.</strong> Project Explorer leads to the project and its datasets; Arcode opens the separate scripting workspace. Click the screenshot for a closer view.</figcaption>
+      </figure>
     </section>
-
-    <section class="manual-section" id="shortcuts">
-      <div class="section-head"><p class="eyebrow">Shortcuts</p><h2>Keyboard and menu reference</h2></div>
-      <table class="manual-table">
-        <thead><tr><th>Action</th><th>How</th><th>Notes</th></tr></thead>
-        <tbody>
-          <tr><td>Save active work</td><td>Ctrl+S or File &gt; Save</td><td>Routes to active Dataset, DFM, or nested Project Instance window.</td></tr>
-          <tr><td>Close active work</td><td>Ctrl+W</td><td>Nested Project Instance windows close before the top-level tab.</td></tr>
-          <tr><td>Clear cache and reload</td><td>Alt+Q or Settings menu</td><td>Restores open pages after clearing cache/storage.</td></tr>
-          <tr><td>Cycle DFM tabs</td><td>Ctrl+PageUp / Ctrl+PageDown</td><td>Works for standalone and nested DFM windows.</td></tr>
-          <tr><td>Open dev panel</td><td>Ctrl+Shift+I</td><td>Use for troubleshooting with developers.</td></tr>
-        </tbody>
-      </table>
+    <section class="guide-section" id="tabs">
+      <h2>Move Between Open Work</h2>
+      <ol class="step-list">
+        <li>Click a top-level tab to bring that page forward. Dataset and method windows opened from a Project Page remain within that project workspace.</li>
+        <li>Click the title bar of a dataset or method window before using a menu command, so the intended window is active.</li>
+        <li>Use <kbd>Ctrl</kbd> + <kbd>Page Up</kbd> or <kbd>Page Down</kbd> to move between the active dataset or method's inner tabs, such as Details, Data, and Notes.</li>
+        <li>Use a window's minimize control to make room for the project table, or close it when finished. Read any unsaved-changes prompt before discarding work.</li>
+      </ol>
+      <p><strong>File → Save</strong> or <kbd>Ctrl</kbd> + <kbd>S</kbd> saves the active work. Check the visible completion or error message before moving on.</p>
+    </section>
+    <section class="guide-section" id="return">
+      <h2>Return to a Useful Page</h2>
+      <p>Choose <strong>Browsing History</strong> from Home to reopen a recent project or dataset view. For a page you use regularly, keep it open, create a custom group on Home with <strong>+ New group</strong>, and use the group's menu to add a shortcut card for the open page.</p>
+      <p>Use <strong>Help → User Guide</strong> to open this guide in your browser. For a focused next step, continue to <a href="project-instance.html">the Project Page walkthrough</a>.</p>
     </section>
   </main>
-  <script src="../manual.js"></script>
 </body>
 </html>

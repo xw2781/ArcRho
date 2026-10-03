@@ -3,65 +3,55 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Arco Manual - Arcode</title>
-  <link rel="stylesheet" href="../manual.css">
+  <title>Arcode · Arco User Guide</title>
+  <link rel="stylesheet" href="../guide.css">
+  <script src="../guide.js" defer></script>
 </head>
 <body data-page="arcode">
-  <main class="manual-page" data-page-title="Arcode" data-page-intro="Arcode is the code, notebook, JSON, text, and SQL workspace launched from Arco or packaged standalone.">
-    <section class="manual-section" id="workspace">
-      <div class="section-head"><p class="eyebrow">Workspace</p><h2>Explorer, tabs, editors, and output</h2></div>
-      <div class="arcode-demo">
-        <div class="arcode-tabs"><span class="active">Home</span><span>DFM@Paid Ultimate.json</span><span>review_notebook.ipynb *</span><span>snowflake_loss.sf.sql</span></div>
-        <div class="arcode-body">
-          <aside>
-            <div class="tree-title">Explorer</div>
-            <div class="tree-row active">workspace</div>
-            <div class="tree-row nested">DFM@Paid Ultimate.json</div>
-            <div class="tree-row nested">review_notebook.ipynb</div>
-            <div class="tree-row nested">snowflake_loss.sf.sql</div>
-          </aside>
-          <section>
-            <div class="editor-toolbar"><button>Save</button><button>Format JSON</button><button class="hotspot" data-tip="Run Arco macros in the open Arco app; run other Python files in Arcode.">Run</button></div>
-            <pre class="editor-surface">{
-  "json format": "arcrho-dfm-method-by-tab-v1",
-  "details tab": {
-    "name": "Paid Ultimate"
-  }
-}</pre>
-            <div class="output-panel">Output: ready</div>
-          </section>
-        </div>
-        <div class="manual-cursor"></div>
-      </div>
+  <main class="guide-content">
+    <header class="guide-header">
+      <p class="eyebrow">Arcode</p>
+      <h1>Run and save a small review script</h1>
+      <p class="lede">Use Arcode for Python files, notebooks, and SQL work. Start with a short local calculation before connecting it to project data.</p>
+      <div class="guide-meta"><span>Demo project: <strong>Monthly_Insurance_Dataset</strong></span></div>
+    </header>
+
+    <section class="guide-section" id="open">
+      <h2>Open the Scripting Workspace</h2>
+      <ol class="step-list">
+        <li>Choose <strong>Arcode</strong> from Arco's Home page.</li>
+        <li>Open a Python file with <strong>File → Open File...</strong>, or choose a new Python editor from Arcode's Home page.</li>
+        <li>Use <strong>File → Select Workspace Folder...</strong> to show your working folder in the sidebar.</li>
+      </ol>
+      <figure class="screenshot">
+        <img src="../assets/monthly-insurance/arcode-overview.png" alt="Arcode scripting workspace with options for opening or creating an editor">
+        <figcaption><strong>Start with Python File or Notebook.</strong> Open a working file or create a new editor, then use the steps below to run a small calculation and save it.</figcaption>
+      </figure>
     </section>
-    <section class="manual-section" id="notebook-help">
-      <div class="section-head"><p class="eyebrow">Notebooks</p><h2>Search and Python help</h2></div>
-      <p>Use Find / Replace, Ctrl+F to find, or Ctrl+H to replace. While editing a cell, search stays in that cell. Press Escape to leave edit mode, then open search to work across the whole notebook. Whole-notebook search includes code and Markdown source, with Match case, Previous, Next, Replace, and Replace All.</p>
-      <p>Run <code>?function_name</code> or <code>function_name?</code> in a cell to display its documentation. Built-in, imported, and notebook-defined functions are supported; execute imports and definitions first. Typing a call shows available argument hints, and completion offers live names, module members, and keyword arguments. Hover a name for its documentation. Popups extend beyond cell boundaries and Escape dismisses them before leaving edit mode.</p>
+    <section class="guide-section" id="run">
+      <h2>Run a Small Calculation</h2>
+      <p>Enter this independent example in a Python editor. Its small illustrative amounts are not a copy of the project's results.</p>
+      <pre class="code-sample"><code>paid = 12500
+ultimate = 16000
+print("Jordan Lee — illustrative reserve:", ultimate - paid)</code></pre>
+      <ol class="step-list">
+        <li>Choose <strong>Run</strong> or press <kbd>Ctrl</kbd> + <kbd>Enter</kbd>.</li>
+        <li>Check the Output panel for <strong>3500</strong> and any error message.</li>
+        <li>Use <strong>Stop</strong> for work still running. Restart the session when you need to clear its Python state.</li>
+        <li>Choose <strong>File → Save As...</strong> and save the example as a Python file.</li>
+      </ol>
     </section>
-    <section class="manual-section" id="file-types">
-      <div class="section-head"><p class="eyebrow">File types</p><h2>What opens where</h2></div>
-      <table class="manual-table">
-        <thead><tr><th>File type</th><th>Editor</th><th>Typical use</th></tr></thead>
-        <tbody>
-          <tr><td><code>.ipynb</code>, <code>.arcnb</code></td><td>Notebook editor</td><td>Review notebooks and saved outputs.</td></tr>
-          <tr><td><code>.py</code>, <code>.r</code>, <code>.json</code>, <code>.md</code>, <code>.txt</code></td><td>Code editor</td><td>Macros, scripts, JSON, docs, text.</td></tr>
-          <tr><td><code>.sql</code>, <code>.sf.sql</code></td><td>SQL or Snowflake SQL console</td><td>Query work and Snowflake connections.</td></tr>
-          <tr><td><code>sql_server*.sql</code>, <code>.ms.sql</code></td><td>SQL Server console</td><td>T-SQL queries against a saved SQL Server connection.</td></tr>
-          <tr><td>DFM JSON and sidecars</td><td>Code editor</td><td>Open from Arco Help menu actions.</td></tr>
-        </tbody>
-      </table>
+    <section class="guide-section" id="notebooks">
+      <h2>Use a Notebook for a Review</h2>
+      <p>Open a notebook to keep explanatory text and code cells together. Use Markdown cells for the project, segment, assumptions, and review rationale; use code cells for calculations. Inspect each cell's output before running the next part.</p>
+      <p>For the demo, record <strong>Monthly_Insurance_Dataset</strong> and <strong>Commercial Auto → All States → CH02 → Comprehensive</strong>. Use the <a href="python-api.html">Python API example</a> when you are ready to read the project's actual saved values.</p>
     </section>
-    <section class="manual-section" id="workflow">
-      <div class="section-head"><p class="eyebrow">Typical work</p><h2>Common Arcode tasks</h2></div>
-      <div class="task-grid">
-        <article class="task-card"><h3>Review JSON</h3><ul><li>Open DFM JSON or sidecars from Arco Help menu.</li><li>Use JSON syntax highlighting.</li><li>Use Format for valid JSON.</li></ul></article>
-        <article class="task-card"><h3>Edit macros</h3><ul><li>Open macros from the Macro panel Edit action.</li><li>Save changes in Arcode.</li><li>Refresh the Macro panel before running changed scripts.</li></ul></article>
-        <article class="task-card"><h3>Run code</h3><ul><li>Use Run or Ctrl+Enter for the complete Python file.</li><li>Arcode automatically sends files with Arco macro metadata or a <code>run_macro(...)</code> entry point to the open Arco app; the file does not need to be in the Macro list.</li><li>Other Python and Run Selection stay local. Activate a DFM when the macro needs one, then review status and output in Arcode.</li></ul></article>
-        <article class="task-card"><h3>SQL work</h3><ul><li>Use Format for a parser-checked T-SQL or Snowflake preview; unsafe or stale results leave the editor unchanged.</li><li>Snowflake-style files open in the Snowflake SQL console, and connection profiles live under Arcode app data.</li><li>Files named for SQL Server open in the SQL Server console: pick a connection, Test it, and Run. Use Connections to add, edit, or remove a connection; queries run as your Windows account, so no password is stored.</li><li>ArcBot SQL Format Validation opens the deterministic diff immediately and adds optional structured review findings in chat.</li></ul></article>
-      </div>
+    <section class="guide-section" id="save">
+      <h2>Keep Execution and Saving Separate</h2>
+      <p><strong>Run</strong> executes code; <strong>File → Save</strong> or <kbd>Ctrl</kbd> + <kbd>S</kbd> writes your file. Arcode does not automatically save every editor change.</p>
+      <p>A complete Python macro with a macro entry point runs against the open Arco app and its active context. An ordinary Python script, or a selected fragment, runs in Arcode's local session. Keep the intended Arco method active before running a macro.</p>
+      <p>For SQL work, use <strong>Settings → Database Connections...</strong> to manage a connection, then choose that connection in the SQL editor before running a query.</p>
     </section>
   </main>
-  <script src="../manual.js"></script>
 </body>
 </html>

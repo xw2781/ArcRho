@@ -3,42 +3,63 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Arco Manual - Troubleshooting</title>
-  <link rel="stylesheet" href="../manual.css">
+  <title>Troubleshooting · Arco User Guide</title>
+  <link rel="stylesheet" href="../guide.css">
+  <script src="../guide.js" defer></script>
 </head>
 <body data-page="troubleshooting">
-  <main class="manual-page" data-page-title="Troubleshooting" data-page-intro="Use this page when a project, dataset, method, macro, assistant request, Python script, or Excel formula does not behave as expected.">
-    <section class="manual-section" id="common">
-      <div class="section-head"><p class="eyebrow">Common issues</p><h2>Fast checks first</h2></div>
-      <div class="accordion" data-accordion>
-        <button class="accordion-trigger">Projects are missing</button>
-        <div class="accordion-panel"><p>Check Settings &gt; Server Connection. Confirm the root contains the expected <code>projects</code> folder. Then use Clear Cache and Reload.</p></div>
-        <button class="accordion-trigger">Dataset values look stale</button>
-        <div class="accordion-panel"><p>Refresh the selected path index in Project Instance, rerun the Dataset, and check the sidecar Audit Log. If labels changed, clear cache first.</p></div>
-        <button class="accordion-trigger">A DFM or Result Selection row shows warning status</button>
-        <div class="accordion-panel"><p>A recorded precedent may be newer than the method output. Open the method, review inputs, then save to regenerate the output and reset status.</p></div>
-        <button class="accordion-trigger">Dirty tab will not close</button>
-        <div class="accordion-panel"><p>Save, Cancel, or confirm discard. Nested Project Instance windows protect their own dirty state before the top-level tab can close.</p></div>
-        <button class="accordion-trigger">Excel formulas show update messages</button>
-        <div class="accordion-panel"><p>Use Calculate Worksheet or Calculate Workbook. Confirm project, path, dataset name, and period length match Arco cached data.</p></div>
-        <button class="accordion-trigger">Python UI automation cannot find the app</button>
-        <div class="accordion-panel"><p>Confirm Arco is running locally. For a non-default URL, set <code>ARCRHO_APP_URL</code> or pass <code>ArcRhoUI(app_url="http://127.0.0.1:28765")</code>.</p></div>
-      </div>
+  <main class="guide-content">
+    <header class="guide-header">
+      <p class="eyebrow">Troubleshooting</p>
+      <h1>Find the cause before repeating an action</h1>
+      <p class="lede">Start with the selected project, segment, and visible message. Then check the connection, inputs, or save result that the task depends on.</p>
+      <div class="guide-meta"><span>Demo project: <strong>Monthly_Insurance_Dataset</strong></span></div>
+    </header>
+
+    <section class="guide-section" id="missing">
+      <h2>A Dataset Is Missing</h2>
+      <ol class="step-list">
+        <li>Confirm the project is <strong>Monthly_Insurance_Dataset</strong> and the Project Page path is <strong>Commercial Auto → All States → CH02 → Comprehensive</strong>.</li>
+        <li>Clear active table filters. For the <strong>Name</strong> filter, choose <strong>All</strong>.</li>
+        <li>Choose <strong>Refresh Table</strong> after data was created or changed elsewhere.</li>
+        <li>Check the expected data format and Method Type. A method output is usually a vector row that opens its method when double-clicked.</li>
+      </ol>
+      <figure class="screenshot">
+        <img src="../assets/monthly-insurance/server-connection-overview.png" alt="Server tab showing the configured servers and the active connection">
+        <figcaption><strong>Check which server is active.</strong> The server determines the available projects. If access has expired, use Sign in again on the active row and read its result.</figcaption>
+      </figure>
     </section>
-    <section class="manual-section" id="diagnostics">
-      <div class="section-head"><p class="eyebrow">Diagnostics</p><h2>Useful places to inspect</h2></div>
-      <table class="manual-table">
-        <thead><tr><th>Area</th><th>Where to look</th><th>What it tells you</th></tr></thead>
-        <tbody>
-          <tr><td>Dataset</td><td>Sidecar Audit Log tab</td><td>Last saves, value patches, generated sidecar creation, calculated refresh.</td></tr>
-          <tr><td>Project Instance</td><td>Status column and selected path index</td><td>Method type, stale method status, cached dataset metadata.</td></tr>
-          <tr><td>DFM</td><td>Help &gt; Open DFM JSON</td><td>Saved method payload and last modified metadata.</td></tr>
-          <tr><td>ArcBot</td><td>Debug drawer and request logs</td><td>Prompt context, timing, stdout, stderr, apply flow state.</td></tr>
-          <tr><td>Arcode</td><td>Output panel</td><td>Script run output, errors, and save status.</td></tr>
-        </tbody>
-      </table>
+    <section class="guide-section" id="connection">
+      <h2>Data Will Not Load</h2>
+      <ol class="step-list">
+        <li>Open <strong>Server Connections</strong> from Home and confirm which server is in use.</li>
+        <li>Choose <strong>Refresh</strong>. If asked to sign in again, use <strong>Sign in again</strong> and read its result.</li>
+        <li>Check the Components panel and preserve any connection message.</li>
+        <li>After access is restored, reopen the affected dataset or use the page's refresh action.</li>
+      </ol>
+      <p>See <a href="server-connection.html">Server Connection</a> for setup and switching. If the server remains unavailable, share the visible error and active server name with the administrator.</p>
+    </section>
+    <section class="guide-section" id="values">
+      <h2>The Values or Periods Look Wrong</h2>
+      <ul>
+        <li>Compare the same dataset name, segment, Origin Length, Development Length, and cumulative/calendar mode.</li>
+        <li>For the annual demo, check 12/12 lengths and the May 2026 valuation. A latest age of 5 months for the newest origin is expected.</li>
+        <li>If the grid is read-only, inspect the generating source, formula, or owning method. Derived values are not edited directly in Dataset Viewer.</li>
+        <li>For an Excel comparison, use an explicit add-in Refresh; ordinary recalculation may still show the workbook's saved snapshot.</li>
+      </ul>
+    </section>
+    <section class="guide-section" id="save">
+      <h2>A Save or Review Needs Attention</h2>
+      <p>Wait for the save result and read the complete message. A source can save successfully while a dependent recalculation reports a failure; inspect the named dependent before treating the whole chain as complete.</p>
+      <p>For a method marked <strong>Review Needed</strong>, reopen it, inspect the inputs and selections, and save the reviewed method. Refreshing the table alone does not acknowledge that review.</p>
+      <p>If another operation is still processing the same project or segment, wait for its outcome before retrying. Keep the method open while resolving a save problem so you can inspect its unsaved work.</p>
+    </section>
+    <section class="guide-section" id="report">
+      <h2>Send a Useful Problem Report</h2>
+      <p>Record the page or method name, project and segment, the exact action, the full message, and whether the issue happens again after reopening the view. Include a screenshot with the relevant controls and result visible.</p>
+      <p>For presentation issues, save open work before using <strong>Settings → Clear Cache &amp; Reload</strong>. A reload does not correct a failed server calculation or an incorrect source definition.</p>
+      <p>Return to <a href="../index.html">Guide Home</a> to choose a focused walkthrough.</p>
     </section>
   </main>
-  <script src="../manual.js"></script>
 </body>
 </html>

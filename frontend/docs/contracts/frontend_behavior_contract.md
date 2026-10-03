@@ -51,6 +51,11 @@ undo and normal dirty/save tracking. Python completion and signature help use
 the notebook's own session; overflow popups must remain accessible outside cell
 bounds. See [Arcode](../ui/arcode.md).
 
+Help → User Guide opens the guide served by the current server's Gateway in the
+system browser (a new tab in browser mode). The server profile owns its address;
+the app never substitutes bundled documentation or opens the Server share.
+Connection lookup and browser launch failures appear in the shell status bar.
+
 ## Before Finishing
 1. State which behavior area changed, or state "no frontend behavior impact."
 2. Update relevant MANUAL sections in `docs/ui/*.md` when behavior changes.

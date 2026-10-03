@@ -3,71 +3,62 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Arco Manual - ResQ Migration</title>
-  <link rel="stylesheet" href="../manual.css">
+  <title>ResQ Import and Review · Arco User Guide</title>
+  <link rel="stylesheet" href="../guide.css">
+  <script src="../guide.js" defer></script>
 </head>
 <body data-page="resq-migration">
-  <main class="manual-page" data-page-title="ResQ Migration" data-page-intro="Use the migration helpers to export ResQ reserving-class content into Arco dataset, sidecar, method, and index files.">
-    <section class="manual-section" id="what-exports">
-      <div class="section-head"><p class="eyebrow">Exports</p><h2>What the migration writes</h2></div>
-      <div class="task-grid">
-        <article class="task-card"><h3>Triangles</h3><ul><li>Writes length and mode scoped CSV files.</li><li>Writes sidecars with source metadata.</li><li>Uses shared filename escaping.</li></ul></article>
-        <article class="task-card"><h3>Vectors</h3><ul><li>Writes vector CSV files.</li><li>Writes sidecars.</li><li>Preserves origin labels when available.</li></ul></article>
-        <article class="task-card"><h3>DFM methods</h3><ul><li>Writes grouped Arco DFM JSON.</li><li>Exports output vector data.</li><li>Imports ratio selections, formulas, notes, and cell notes where available.</li></ul></article>
-        <article class="task-card"><h3>Result Selection</h3><ul><li>Writes canonical v2 <code>RS@Name.json</code>.</li><li>Writes selected ultimate vector CSV.</li><li>Stores source values, weights, origin labels, and named Ratio Basis values so the method can reopen without rescanning inputs.</li></ul></article>
-      </div>
-    </section>
-    <section class="manual-section" id="commands">
-      <div class="section-head"><p class="eyebrow">Commands</p><h2>Run migration from command line</h2></div>
-      <pre class="code-sample"><code class="language-powershell">python python-api\migration\resq_data_migration.py --export configured
-python python-api\migration\resq_data_migration.py --export all
-python python-api\migration\resq_data_migration.py --export triangles
-python python-api\migration\resq_data_migration.py --export vectors
-python python-api\migration\resq_data_migration.py --export dfms --no-cleanup-target</code></pre>
-    </section>
-    <section class="manual-section" id="api">
-      <div class="section-head"><p class="eyebrow">Python entrypoint</p><h2>Import one reserving class</h2></div>
-      <pre class="code-sample"><code class="language-python">import sys
-from pathlib import Path
+  <main class="guide-content">
+    <header class="guide-header">
+      <p class="eyebrow">ResQ Import and Review</p>
+      <h1>Review a ResQ transfer before applying it</h1>
+      <p class="lede">Choose the right macro for a read-only comparison, an import, or synchronization, and verify the project and segment before starting.</p>
+      <div class="guide-meta"><span>Demo project: <strong>Monthly_Insurance_Dataset</strong></span></div>
+    </header>
 
-sys.path.insert(0, str(Path(r"E:\XWSpace\Repos\ArcRho\python-api\migration")))
-from resq_data_migration import import_reserving_class_from_resq
-
-result = import_reserving_class_from_resq(
-    project_name="NJ Annual Production 2026",
-    rc_path=r"PA\Direct Group\Collision",
-    server_root=r"E:\ArcRho Server",
-    export_mode="all",
-    cleanup_target=True,
-)
-print(result)</code></pre>
-    </section>
-    <section class="manual-section" id="macro">
-      <div class="section-head"><p class="eyebrow">Macro entrypoint</p><h2>Primary user workflow</h2></div>
-      <p class="compact-copy">The current user-facing runnable import workflow is the macro at <code>Documents\ArcRho\macros\import_from_resq.py</code>. Keep it aligned with <code>python-api\migration\resq_data_migration.py</code> whenever migration behavior changes.</p>
-      <table class="manual-table">
-        <thead><tr><th>Option</th><th>Meaning</th></tr></thead>
-        <tbody>
-          <tr><td><code>--export configured</code></td><td>Uses the configured export flags.</td></tr>
-          <tr><td><code>--export all</code></td><td>Exports triangles, vectors, and DFMs.</td></tr>
-          <tr><td><code>--cleanup-target</code></td><td>Cleans the target reserving-class folder first.</td></tr>
-          <tr><td><code>--no-cleanup-target</code></td><td>Preserves existing files before export.</td></tr>
-        </tbody>
-      </table>
-    </section>
-    <section class="manual-section" id="checks">
-      <div class="section-head"><p class="eyebrow">After import</p><h2>What to check in Arco</h2></div>
+    <section class="guide-section" id="context">
+      <h2>Start from the Intended Segment</h2>
       <ol class="step-list">
-        <li>Open Project Instance for the imported project.</li>
-        <li>Select the imported reserving-class path.</li>
-        <li>Refresh the cached dataset table.</li>
-        <li>Open imported triangles and vectors in Dataset Viewer.</li>
-        <li>Open imported DFM outputs as DFM methods.</li>
-        <li>Review imported Result Selection methods from vector rows.</li>
-        <li>Check sidecar status and method notes before using outputs.</li>
+        <li>Open the <strong>Project Page</strong> for the project you intend to compare or transfer.</li>
+        <li>Select its segment. The training guide uses <strong>Monthly_Insurance_Dataset</strong> and <strong>Commercial Auto → All States → CH02 → Comprehensive</strong>.</li>
+        <li>Open <strong>Macro</strong> and read the selected ResQ macro's description.</li>
+        <li>Confirm that the corresponding ResQ project and segment are available through your organization's configured ResQ service before starting a transfer.</li>
       </ol>
+      <figure class="screenshot">
+        <img src="../assets/monthly-insurance/resq-migration-overview.png" alt="Arco workspace for selecting a project segment and a ResQ macro">
+        <figcaption><strong>The selected Project Page segment is the transfer context.</strong> Check it before choosing a ResQ macro. The screenshot demonstrates the Arco entry point, not a completed external ResQ import.</figcaption>
+      </figure>
+    </section>
+    <section class="guide-section" id="review">
+      <h2>Compare Before Writing</h2>
+      <ol class="step-list">
+        <li>Select <strong>Review Reserving Class against ResQ</strong> and choose <strong>Run</strong>.</li>
+        <li>Wait for the comparison to finish and open its Excel workbook.</li>
+        <li>Use the workbook's Summary links to inspect differences between Arco and ResQ values, Result Selections, and DFM notes.</li>
+        <li>Resolve unexpected differences before choosing a write action.</li>
+      </ol>
+      <p>This review macro reads both sides and produces a comparison workbook. It does not write changes back to Arco or ResQ.</p>
+    </section>
+    <section class="guide-section" id="import">
+      <h2>Import Selected ResQ Items</h2>
+      <ol class="step-list">
+        <li>Select <strong>Import ResQ Reserving Class</strong> and choose <strong>Run</strong>.</li>
+        <li>In the transfer review, tick only the datasets and methods you intend to import.</li>
+        <li>Inspect any warning that an Arco copy is newer. Follow the item links to review it before accepting an overwrite.</li>
+        <li>Confirm the overwrite only when the selected ResQ copies should replace those Arco items, then wait for the final result.</li>
+      </ol>
+      <aside class="callout"><strong>An import changes Arco data</strong><p>The import takes a dated backup of the existing class before replacing selected items. The confirmation still matters: importing is a write operation, while the comparison macro above is read-only.</p></aside>
+    </section>
+    <section class="guide-section" id="after">
+      <h2>Check the Imported Result</h2>
+      <ol class="step-list">
+        <li>Return to the Project Page and choose <strong>Refresh Table</strong>.</li>
+        <li>Open imported triangles and vectors, and compare their origin labels, period lengths, and values.</li>
+        <li>Open imported DFM or Result Selection methods to inspect selections and Notes.</li>
+        <li>Read the import result for warnings or failed items before relying on the output.</li>
+      </ol>
+      <p><strong>Sync Reserving Class with ResQ</strong> is a separate workflow that previews the comparison and proposed direction before applying changes. Read that direction carefully; use the read-only review macro when you only need a comparison.</p>
     </section>
   </main>
-  <script src="../manual.js"></script>
 </body>
 </html>

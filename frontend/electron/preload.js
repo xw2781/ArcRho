@@ -96,6 +96,7 @@ contextBridge.exposeInMainWorld("ADAHost", {
     return () => ipcRenderer.removeListener("arcode-folder-changed", listener);
   },
   openPath: (payload) => invoke("open-path", payload),
+  openExternalUrl: (payload) => invoke("open-external-url", payload),
   showItemInFolder: (payload) => invoke("show-item-in-folder", payload),
   openTerminal: (payload) => invoke("open-terminal", payload),
   codexAssistantStatus: () => invoke("codex-assistant-status"),

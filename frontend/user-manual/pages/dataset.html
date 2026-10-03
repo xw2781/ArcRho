@@ -3,92 +3,64 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Arco Manual - Dataset Viewer</title>
-  <link rel="stylesheet" href="../manual.css">
+  <title>Dataset Viewer · Arco User Guide</title>
+  <link rel="stylesheet" href="../guide.css">
+  <script src="../guide.js" defer></script>
 </head>
 <body data-page="dataset">
-  <main class="manual-page" data-page-title="Dataset Viewer" data-page-intro="Dataset Viewer loads, displays, edits, charts, annotates, audits, and saves dataset instances.">
-    <section class="manual-section" id="data-tab">
-      <div class="section-head"><p class="eyebrow">Data tab</p><h2>Controls and grid interactions</h2></div>
-      <div class="ds-demo">
-        <div class="ds-tabs"><button>Details</button><button class="active">Data</button><button>Chart</button><button>Notes</button><button>Links</button><button>Audit Log</button></div>
-        <div class="ds-topbar">
-          <label>Cumulative <input type="checkbox" checked></label>
-          <label>Transposed <input type="checkbox"></label>
-          <div class="seg-control"><button class="active">Development</button><button>Calendar</button></div>
-          <label>Origin Length <button class="select-like hotspot" data-tip="Origin Length and Development Length must stay valid.">12</button></label>
-          <label>Development Length <button class="select-like">12</button></label>
-          <label>Number Format <input value="0,000"></label>
-          <label>Decimal Places <input value="1"></label>
-        </div>
-        <div class="grid-wrap">
-          <table class="manual-table dense triangle-grid">
-            <thead><tr><th>Origin</th><th>12m</th><th>24m</th><th>36m</th><th>48m</th><th>Total</th></tr></thead>
-            <tbody>
-              <tr><th>2021</th><td>1,240</td><td>1,860</td><td>2,030</td><td>2,115</td><td>7,245</td></tr>
-              <tr><th>2022</th><td class="selected-cell hotspot" data-tip="Click selects cells. Drag creates rectangular selections.">1,310</td><td class="selected-cell">1,925</td><td>2,102</td><td></td><td>5,337</td></tr>
-              <tr><th>2023</th><td class="selected-cell">1,408</td><td class="selected-cell">2,012</td><td></td><td></td><td>3,420</td></tr>
-              <tr><th>2024</th><td>1,502</td><td></td><td></td><td></td><td>1,502</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="save-row"><span>Unsaved manual values</span><button>Cancel</button><button class="primary hotspot" data-tip="Save writes sidecar settings and manual CSV values when editable.">Save</button></div>
-        <div class="manual-cursor"></div>
-      </div>
-      <button class="replay-btn" data-replay>Replay highlighted interactions</button>
+  <main class="guide-content">
+    <header class="guide-header">
+      <p class="eyebrow">Dataset Viewer</p>
+      <h1>Inspect a triangle or vector</h1>
+      <p class="lede">Read the data, check its identity and period lengths, and record the observations that support your review.</p>
+      <div class="guide-meta"><span>Demo project: <strong>Monthly_Insurance_Dataset</strong></span></div>
+    </header>
+
+    <section class="guide-section" id="open">
+      <h2>Open Gross Paid Loss</h2>
+      <ol class="step-list">
+        <li>Open the demo <a href="project-instance.html">Project Page</a> and select <strong>Commercial Auto → All States → CH02 → Comprehensive</strong>.</li>
+        <li>Find <strong>Gross Paid Loss</strong> in the dataset table and double-click its row.</li>
+        <li>On <strong>Data</strong>, confirm the dataset name, cumulative view, and 12-month origin and development lengths.</li>
+        <li>Read the latest available cell in each origin row. Blanks beyond the triangle boundary represent unavailable future development.</li>
+      </ol>
+      <figure class="screenshot">
+        <img src="../assets/monthly-insurance/dataset-data.png" alt="Gross Paid Loss in Dataset Viewer with its Data tab and triangle">
+        <figcaption><strong>Read one origin across the row.</strong> The demo's May 2026 valuation gives latest ages of 5, 17, …, 113 months for annual origins. The period length is the spacing between development columns.</figcaption>
+      </figure>
     </section>
-
-    <section class="manual-section" id="tabs">
-      <div class="section-head"><p class="eyebrow">Tabs</p><h2>What each tab is for</h2></div>
-      <div class="task-grid">
-        <article class="task-card"><h3>Details</h3><ul><li>Choose Project, Reserving Class, Name, and Dataset Type.</li><li>Formula shows clickable source chips.</li><li>Dependents show downstream calculated datasets.</li></ul></article>
-        <article class="task-card"><h3>Data</h3><ul><li>Run or load cached dataset values.</li><li>Copy, paste, type, and delete editable manual cells.</li><li>Enter a full Excel workbook, worksheet, and cell or range reference directly in an editable cell.</li><li>Hover a linked cell to view or edit its reference in the compact formula bar above the cell.</li><li>Set cumulative, transposed, time mode, lengths, and number format.</li></ul></article>
-        <article class="task-card"><h3>Chart</h3><ul><li>Review curves by row or column.</li><li>Legend controls visibility.</li><li>Chart redraws after pop-out, dock, and resize.</li></ul></article>
-        <article class="task-card"><h3>Notes</h3><ul><li>Add review notes.</li><li>Use formatting toolbar.</li><li>File paths become clickable links after editing.</li></ul></article>
-        <article class="task-card"><h3>Links</h3><ul><li>Appears immediately after Notes.</li><li>Lists workbook, worksheet, cell address, current Values, and destination in separate columns; ranges show the first value followed by <code>...</code>.</li><li>Right-click a row and use Open workbook or Open workbook as Read-Only; both commands target the clicked row.</li><li>Use Refresh all or Break all with no selection, or click rows first to act only on selected links.</li><li>Ctrl-click selects separate rows and Shift-click selects a contiguous range.</li><li>Breaking keeps the related current cells as hard-coded values.</li></ul></article>
-        <article class="task-card"><h3>Audit Log</h3><ul><li>Shows newest events first.</li><li>Records insert, metadata update, values update, and calculated refresh.</li><li>Sidecar log is capped.</li></ul></article>
-        <article class="task-card"><h3>Pop-out tabs</h3><ul><li>Right-click a Dataset tab to float it inside the Dataset page.</li><li>The live DOM moves, so state is preserved.</li><li>Close or right-click titlebar docks it again.</li></ul></article>
-      </div>
+    <section class="guide-section" id="details">
+      <h2>Check the Dataset's Identity</h2>
+      <ol class="step-list">
+        <li>Open <strong>Details</strong> and inspect <strong>Name</strong> and <strong>Dataset Type</strong>.</li>
+        <li>Check <strong>Precedents</strong> to see what feeds the dataset and <strong>Dependents</strong> to see which outputs use it. Click a listed dataset or method to inspect it.</li>
+        <li>When a formula is shown, read it as the definition of the calculated dataset. Its definition is maintained in Project Explorer's Dataset Types.</li>
+      </ol>
+      <p>To inspect a method's output as data, return to the Project Page, right-click its vector row, and choose <strong>Show as vector</strong>.</p>
     </section>
-
-    <section class="manual-section" id="save-files">
-      <div class="section-head"><p class="eyebrow">Files</p><h2>What Dataset Save writes</h2></div>
-      <pre class="code-sample"><code>CSV:
-projects\NJ Annual Production 2026\data\PA_%5C_Direct Group_%5C_Collision\datasets\Paid Loss@12@12@cum@dev.csv
-
-Sidecar:
-projects\NJ Annual Production 2026\data\PA_%5C_Direct Group_%5C_Collision\sidecars\Paid Loss.json
-
-Sidecar examples:
-source_kind: engine | input | dfm | result_selection
-generated: true | false
-editable: true | false
-number_format: 0,000
-decimal_places: 1</code></pre>
-      <pre class="code-sample"><code>External-link sidecar mapping:
-"external_links": [
-  {
-    "reference": "='C:\\Folder\\[Book.xlsx]Sheet 1'!$A$1:$B$1",
-    "target_cells": [
-      { "row": 0, "column": 0, "source_cell": "A1" },
-      { "row": 0, "column": 1, "source_cell": "B1" }
-    ]
-  }
-]
-
-The CSV stores the current value snapshot, not the Excel reference.</code></pre>
+    <section class="guide-section" id="view">
+      <h2>Change the View and Copy Values</h2>
+      <ol class="step-list">
+        <li>On <strong>Data</strong>, use the available view controls to inspect cumulative/incremental values, development/calendar layout, or a transposed view.</li>
+        <li>Choose <strong>Number Format</strong> and <strong>Decimal Places</strong> to make the amounts easy to read.</li>
+        <li>Select a cell or drag a rectangular range, then press <kbd>Ctrl</kbd> + <kbd>C</kbd> to copy values. Use row or column headers to select larger ranges.</li>
+        <li>Open <strong>Chart</strong> to compare series. Use its legend checkboxes to show the lines you need; right-click a legend item to isolate it.</li>
+      </ol>
+      <aside class="callout">
+        <strong>Some controls are intentionally read-only</strong>
+        <p>Manual input datasets can have editable values. Generated, calculated, and method output values come from their sources or owning method. Change those sources instead of trying to type over the output grid.</p>
+      </aside>
     </section>
-    <section class="manual-section" id="edge-cases">
-      <div class="section-head"><p class="eyebrow">Rules</p><h2>Important dataset rules</h2></div>
-      <div class="task-grid">
-        <article class="task-card"><h3>Generated datasets</h3><ul><li>ArcoTri can create missing generated caches when source inputs resolve.</li><li>Generated and calculated outputs are read-only in the grid.</li><li>Refresh can trigger dependent calculated datasets.</li></ul></article>
-        <article class="task-card"><h3>Manual input datasets</h3><ul><li>Drafts open on Details with zero-filled placeholder data.</li><li>Triangle drafts use a triangular mask.</li><li>Vector drafts use one value column.</li><li>Duplicate names are blocked in the selected path.</li></ul></article>
-        <article class="task-card"><h3>Excel ranges</h3><ul><li>A rectangular reference spills from the edited anchor into editable cells.</li><li>If a pasted range is larger than the Triangle or Vector UI, values outside the grid or in masked triangle cells are ignored.</li><li>Every affected in-area source cell is validated and loaded atomically, so an error does not partially replace values.</li><li>Transposed display maps the spill back to the same logical Dataset cells.</li><li>Linked cells use the normal dark value text; multi-cell ranges also have a thin blue outer contour with a light glow and no interior borders.</li><li>Choosing Refresh from Excel for a newer workbook marks the Dataset unsaved even when the refreshed values match, so Save records the completed refresh and prevents the same alert from returning.</li><li>Unsaved entry does not refresh the Project Instance disk inventory; Save persists the values and link mapping.</li></ul></article>
-        <article class="task-card"><h3>Period lengths</h3><ul><li>Development Length cannot exceed Origin Length.</li><li>Origin Length must be a valid multiple of Development Length.</li><li>Saved sidecar lengths load before the triangle renders.</li></ul></article>
-        <article class="task-card"><h3>Notes links</h3><ul><li>Path text is plain while editing.</li><li>After edit, known file paths become underlined links.</li><li>Right-click links to open, copy, or open Excel read-only.</li></ul></article>
-      </div>
+    <section class="guide-section" id="notes-save">
+      <h2>Record and Save Your Review</h2>
+      <ol class="step-list">
+        <li>Open <strong>Notes</strong> and record the reason for your review, for example: “Jordan Lee: checked the latest Gross Paid Loss diagonal.”</li>
+        <li>If editable cells use Excel references, open <strong>Links</strong> to inspect or refresh their sources before saving.</li>
+        <li>Choose <strong>Save</strong> or press <kbd>Ctrl</kbd> + <kbd>S</kbd>. Wait for the save and any dependent-update report.</li>
+        <li>Open <strong>Audit Log</strong> to inspect saved changes, then return to the Project Page.</li>
+      </ol>
+      <p>Continue to <a href="dfm.html">Development Factor Method</a> to use the triangle in a method.</p>
     </section>
   </main>
-  <script src="../manual.js"></script>
 </body>
 </html>

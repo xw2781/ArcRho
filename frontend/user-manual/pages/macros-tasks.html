@@ -3,63 +3,57 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Arco Manual - Macros And Tasks</title>
-  <link rel="stylesheet" href="../manual.css">
+  <title>Macros and Tasks · Arco User Guide</title>
+  <link rel="stylesheet" href="../guide.css">
+  <script src="../guide.js" defer></script>
 </head>
 <body data-page="macros-tasks">
-  <main class="manual-page" data-page-title="Macros And Task Designer" data-page-intro="Run Python macros from the shell, edit them in Arcode, and show live task progress in Task Designer.">
-    <section class="manual-section" id="macro-panel">
-      <div class="section-head"><p class="eyebrow">Macro window</p><h2>Shell-owned floating macro panel</h2></div>
-      <div class="macro-demo">
-        <div class="macro-header">
-          <strong>Macros</strong>
-          <button>Refresh</button><button>Pin</button><button>Edit</button><button>Close</button>
-        </div>
-        <div class="macro-body">
-          <div class="macro-list">
-            <div class="macro-row active hotspot" data-tip="Select a macro to review scope, description, and run options.">Import From ResQ <span>Reserving Class</span></div>
-            <div class="macro-row">Refresh DFM Notes <span>DFM</span></div>
-            <div class="macro-row">Open Dataset Review <span>Project Instance</span></div>
-          </div>
-          <div class="macro-desc">
-            <b>Import From ResQ</b>
-            <p>Imports triangles, vectors, Result Selections, and DFM methods for the active reserving-class path.</p>
-          </div>
-        </div>
-        <div class="macro-footer"><span>Ready</span><button class="primary hotspot" data-tip="Run passes active context to the selected macro.">Run</button></div>
-        <div class="manual-cursor"></div>
-      </div>
-    </section>
-    <section class="manual-section" id="task-designer">
-      <div class="section-head"><p class="eyebrow">Task Designer</p><h2>Progress-only task table</h2></div>
-      <table class="manual-table dense">
-        <thead><tr><th>Task</th><th>Description</th><th>Duration</th><th>Status</th><th>Comments</th></tr></thead>
-        <tbody>
-          <tr><td>Connect to ResQ</td><td>Open COM session</td><td>00:04</td><td><span class="status-pill ok">Done</span></td><td>Connected to production model.</td></tr>
-          <tr><td>Export triangles</td><td>Write CSV and sidecars</td><td><span class="spinner"></span></td><td><span class="status-pill warn">Running</span></td><td>7 of 12 written.</td></tr>
-          <tr><td>Rebuild index</td><td>Refresh selected path cache</td><td></td><td>Pending</td><td></td></tr>
-        </tbody>
-      </table>
-    </section>
-    <section class="manual-section" id="python-example">
-      <div class="section-head"><p class="eyebrow">Example</p><h2>Send progress from Python</h2></div>
-      <pre class="code-sample"><code class="language-python">from arcrho_api import ArcRhoUI
+  <main class="guide-content">
+    <header class="guide-header">
+      <p class="eyebrow">Macros and Tasks</p>
+      <h1>Run a focused action and inspect its result</h1>
+      <p class="lede">Use a macro's description and scope to choose the right action for the active project, segment, or method.</p>
+      <div class="guide-meta"><span>Demo project: <strong>Monthly_Insurance_Dataset</strong></span></div>
+    </header>
 
-ui = ArcRhoUI()
-ui.wait_for_app(timeout_sec=10)
-
-tasks = ui.task_designer()
-tasks.open(title="Import from ResQ")
-tasks.set_tasks([
-    {"name": "Connect", "description": "Open ResQ COM session"},
-    {"name": "Export", "description": "Write Arco files"},
-])
-tasks.start_task("Connect")
-tasks.complete_task("Connect", comments="Connected.")
-tasks.start_task("Export")
-tasks.update_task("Export", comments="Writing DFM methods...")</code></pre>
+    <section class="guide-section" id="choose">
+      <h2>Select a Macro</h2>
+      <ol class="step-list">
+        <li>Open the demo <a href="project-instance.html">Project Page</a> and select <strong>Commercial Auto → All States → CH02 → Comprehensive</strong>.</li>
+        <li>If the macro works on a DFM, open the intended method and click its window to make it active.</li>
+        <li>Choose <strong>Macro</strong> in the main menu to open the Macros panel.</li>
+        <li>Select a macro and read its description and scope before choosing <strong>Run</strong>.</li>
+      </ol>
+      <figure class="screenshot">
+        <img src="../assets/monthly-insurance/macros-tasks-overview.png" alt="Arco Macros panel with the macro list, selected description, and Run control">
+        <figcaption><strong>Read the selected macro's description first.</strong> A reserving-class macro uses the selected Project Page segment; a DFM macro uses the active method. The panel's Run action starts the selected macro.</figcaption>
+      </figure>
+    </section>
+    <section class="guide-section" id="run">
+      <h2>Follow the Run to Completion</h2>
+      <ol class="step-list">
+        <li>Choose <strong>Run</strong> once and read any selection, review, or confirmation window the macro opens.</li>
+        <li>Follow the progress and final message. A completed run can still report individual items that need attention.</li>
+        <li>For a method-editing macro, inspect the changed method and its Notes, then save the intended result.</li>
+        <li>For a macro that publishes datasets, return to the Project Page and use <strong>Refresh Table</strong> if the inventory has not yet updated.</li>
+      </ol>
+      <p>The description determines whether a macro reviews data, edits the active method, or writes project data directly. Do not assume every macro waits for a later manual save.</p>
+    </section>
+    <section class="guide-section" id="library">
+      <h2>Find or Inspect a Macro</h2>
+      <p>Use <strong>Open shared macro library</strong> in the panel header to browse available macros. Use <strong>Refresh macros</strong> after the local list changes. <strong>Edit macro</strong> opens the selected source in <a href="arcode.html">Arcode</a>.</p>
+      <p>Use the pin control to keep the Macros panel above the work area while you compare the description with the active method.</p>
+    </section>
+    <section class="guide-section" id="tasks">
+      <h2>Read Task Designer Progress</h2>
+      <p>Task-based macros can open <strong>Task Designer</strong> to show their steps. Read <strong>Task Name</strong>, <strong>Duration</strong>, <strong>Result</strong>, and the output message for each row.</p>
+      <ol class="step-list">
+        <li>Wait for running rows to reach a final result.</li>
+        <li>Click a row, or focus it and press <kbd>Enter</kbd>, to open its details and read the full message.</li>
+        <li>Resolve failed or skipped items before treating the entire task as complete.</li>
+      </ol>
+      <p>For ResQ-specific actions, continue to <a href="resq-migration.html">ResQ Import and Review</a>.</p>
     </section>
   </main>
-  <script src="../manual.js"></script>
 </body>
 </html>

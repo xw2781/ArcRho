@@ -3,40 +3,58 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Arco Manual - Server Connection</title>
-  <link rel="stylesheet" href="../manual.css">
+  <title>Server Connection · Arco User Guide</title>
+  <link rel="stylesheet" href="../guide.css">
+  <script src="../guide.js" defer></script>
 </head>
 <body data-page="server-connection">
-  <main class="manual-page" data-page-title="Server Connection" data-page-intro="Point Arco to the shared Arco Server root that contains project data, team prompts, packages, and optional release feeds.">
-    <section class="manual-section" id="connect">
-      <div class="section-head"><p class="eyebrow">Setup</p><h2>Choose the data root</h2></div>
-      <div class="dialog-demo">
-        <div class="dialog-title">Server Connection</div>
-        <label>Arco Server Root<input value="E:\ArcRho Server"></label>
-        <div class="dialog-actions"><button class="hotspot" data-tip="Browse to the shared root folder.">Browse...</button><button class="primary hotspot" data-tip="Save broadcasts the new root to open feature pages.">Save</button></div>
-        <div class="manual-cursor"></div>
-      </div>
-      <ol class="step-list">
-        <li>Open Settings &gt; Server Connection.</li>
-        <li>Browse to a root such as <code>E:\ArcRho Server</code>.</li>
-        <li>Save the setting.</li>
-        <li>Use Clear Cache and Reload if an already-open page still shows stale paths.</li>
-      </ol>
-    </section>
+  <main class="guide-content">
+    <header class="guide-header">
+      <p class="eyebrow">Server Connection</p>
+      <h1>Check which server Arco is using</h1>
+      <p class="lede">Confirm the active server, renew sign-in when needed, and switch only after saving your open work.</p>
+      <div class="guide-meta"><span>Demo project: <strong>Monthly_Insurance_Dataset</strong></span></div>
+    </header>
 
-    <section class="manual-section" id="folders">
-      <div class="section-head"><p class="eyebrow">Folders</p><h2>What should be under the root</h2></div>
-      <table class="manual-table">
-        <thead><tr><th>Folder</th><th>Used for</th><th>User impact</th></tr></thead>
-        <tbody>
-          <tr><td><code>projects</code></td><td>Project settings, data folders, datasets, sidecars, DFM methods, Result Selection methods, and user preferences.</td><td>Required for normal app work.</td></tr>
-          <tr><td><code>config\arcbot</code></td><td>ArcBot prompt and team instruction files.</td><td>Controls shared assistant guidance.</td></tr>
-          <tr><td><code>packages</code></td><td>Optional shared Python API wheels.</td><td>Helps install scripting tools.</td></tr>
-          <tr><td><code>releases\installers</code></td><td>Manual/backup copy of published installers.</td><td>Not used by packaged app update checks, which use GitHub Releases instead.</td></tr>
-        </tbody>
-      </table>
+    <section class="guide-section" id="check">
+      <h2>Inspect the Current Connection</h2>
+      <ol class="step-list">
+        <li>On Home, choose <strong>Server Connections</strong> to open the Server tab.</li>
+        <li>Find the server marked as in use and check its name and address.</li>
+        <li>Choose <strong>Refresh</strong> to update the displayed server information.</li>
+        <li>If Arco asks you to sign in again, choose <strong>Sign in again</strong> on the active server row and read the result.</li>
+      </ol>
+      <figure class="screenshot">
+        <img src="../assets/monthly-insurance/server-connection-overview.png" alt="Arco Server connection workspace showing the current server and connection controls">
+        <figcaption><strong>Check the active server before opening a project.</strong> The connection determines which projects Arco can show. Sign in again renews access to that server.</figcaption>
+      </figure>
+    </section>
+    <section class="guide-section" id="setup">
+      <h2>Enter Connection Details</h2>
+      <ol class="step-list">
+        <li>Open <strong>Settings → Server Connection</strong>.</li>
+        <li>Enter the administrator-provided <strong>Root Path</strong>, or choose it with <strong>Browse...</strong>.</li>
+        <li>Enter the corresponding <strong>Server Address</strong>, then choose <strong>Save</strong>.</li>
+        <li>Read any sign-in or connection message before continuing. Use <strong>Open Server Tab</strong> to inspect the configured server.</li>
+      </ol>
+      <p>Use the address supplied for your environment. The project name <strong>Monthly_Insurance_Dataset</strong> is not a server address or root folder.</p>
+    </section>
+    <section class="guide-section" id="switch">
+      <h2>Switch to Another Configured Server</h2>
+      <ol class="step-list">
+        <li>Save any open dataset, method, workflow, or editor changes.</li>
+        <li>On the Server tab, choose the other server's <strong>Switch</strong> action.</li>
+        <li>Check the destination in the confirmation, then choose <strong>Switch and Restart</strong>.</li>
+        <li>After the restart, confirm the active server and reopen the intended project.</li>
+      </ol>
+      <p><strong>Add Server</strong> lets you register another administrator-provided Folder, Name, and Address. A window marked <strong>Set at launch</strong> has its server fixed for that session, so switching and adding are unavailable.</p>
+    </section>
+    <section class="guide-section" id="status">
+      <h2>Use Status to Diagnose a Problem</h2>
+      <p>The <strong>Components</strong> panel shows whether the active server's services are reporting. If the server cannot be reached, preserve the displayed error and ask the server administrator to check the connection and service state.</p>
+      <p>Use <strong>Help → User Guide</strong> to open the guide from the active server. If Arco asks for a server address first, return to Settings → Server Connection.</p>
+      <p>Once connected, continue with <a href="project-instance.html">the Project Page walkthrough</a>.</p>
     </section>
   </main>
-  <script src="../manual.js"></script>
 </body>
 </html>

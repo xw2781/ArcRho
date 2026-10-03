@@ -1,0 +1,11 @@
+{
+  "type": "improvement",
+  "scope": "user guide",
+  "audience": "user",
+  "summary": "Added Help → User Guide with a Gateway-hosted screenshot guide covering the app's workspaces and integrations.",
+  "details": [
+    "The refreshed guide uses Project Page terminology and a smaller Commercial Auto demo with a fictional reviewer.",
+    "Screenshots enlarge for closer inspection and walkthroughs let readers compare each interaction.",
+    "The guide supports narrow screens, printing, and an offline folder copy."
+  ]
+}

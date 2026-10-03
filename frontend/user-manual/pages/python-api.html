@@ -3,80 +3,63 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Arco Manual - Python API</title>
-  <link rel="stylesheet" href="../manual.css">
+  <title>Python API · Arco User Guide</title>
+  <link rel="stylesheet" href="../guide.css">
+  <script src="../guide.js" defer></script>
 </head>
 <body data-page="python-api">
-  <main class="manual-page" data-page-title="Python API" data-page-intro="Use arcrho_api to script project access, DFM review, dataset reads, UI automation, and compact agent helper commands.">
-    <section class="manual-section" id="install">
-      <div class="section-head"><p class="eyebrow">Install</p><h2>Install the first-party package</h2></div>
-      <pre class="code-sample"><code class="language-powershell">python -m pip install "&lt;Arco install folder&gt;\resources\python_packages\arcrho_api-0.1.0-py3-none-any.whl"
+  <main class="guide-content">
+    <header class="guide-header">
+      <p class="eyebrow">Python API</p>
+      <h1>Open project data from a script</h1>
+      <p class="lede">Use Arcode's bundled Python API to interact with the running Arco app and inspect the resulting dataset window.</p>
+      <div class="guide-meta"><span>Demo project: <strong>Monthly_Insurance_Dataset</strong></span></div>
+    </header>
 
-# Development build from this repo
-python python-api\tools\build_wheel.py --out-dir python-api\dist
-python -m pip install python-api\dist\arcrho_api-0.1.0-py3-none-any.whl</code></pre>
+    <section class="guide-section" id="prepare">
+      <h2>Prepare the App and Editor</h2>
+      <ol class="step-list">
+        <li>In Arco, open <strong>Monthly_Insurance_Dataset</strong>.</li>
+        <li>On its <strong>Project Page</strong>, select <strong>Commercial Auto → All States → CH02 → Comprehensive</strong> and keep that page active.</li>
+        <li>Open <strong>Arcode</strong> and choose <strong>Python File</strong>. Arcode includes the API and a compatible Python runtime.</li>
+      </ol>
+      <figure class="screenshot">
+        <img src="../assets/monthly-insurance/arcode-overview.png" alt="Arcode workspace where a Python file can be opened for the API example">
+        <figcaption><strong>Open a Python File in Arcode.</strong> Keep the intended Project Page active in Arco while running the example; that page's selected project and segment determine the dataset it opens.</figcaption>
+      </figure>
     </section>
-    <section class="manual-section" id="client">
-      <div class="section-head"><p class="eyebrow">Client</p><h2>Open a project and reserving class</h2></div>
-      <pre class="code-sample"><code class="language-python">from arcrho_api import ArcRhoClient, get_server_root, set_server_root
-
-set_server_root(r"E:\ArcRho Server")
-print(get_server_root())
-
-client = ArcRhoClient()
-project = client.project("NJ Annual Production 2026")
-rc = project.reserving_class(r"PA\Direct Group\Collision")
-
-print(rc.list_datasets())
-print(rc.list_dfm_methods(refresh=True))</code></pre>
-    </section>
-    <section class="manual-section" id="dfm">
-      <div class="section-head"><p class="eyebrow">DFM scripting</p><h2>Review and edit a method</h2></div>
-      <pre class="code-sample"><code class="language-python">dfm = rc.dfm("Paid Ultimate")
-
-dfm.clear()
-dfm.exclude_covid_years(years=[2020, 2021])
-dfm.exclude_high(dev_period=1, count=1, reason="High ratio reviewed.")
-dfm.set_selected_average("Simple - 3")
-dfm.set_selected_average_cell_note(1, "Selected after review.", clear_column=True)
-dfm.add_notes("Updated by Python API review script.")
-dfm.save()</code></pre>
-      <div class="task-grid">
-        <article class="task-card"><h3>Common DFM helpers</h3><ul><li><code>clear()</code></li><li><code>exclude_ratio()</code></li><li><code>include_ratio()</code></li><li><code>exclude_high()</code></li><li><code>exclude_low()</code></li><li><code>set_selected_average()</code></li></ul></article>
-        <article class="task-card"><h3>Read helpers</h3><ul><li><code>agent_summary()</code></li><li><code>agent_inspect()</code></li><li><code>ratio_row()</code></li><li><code>ultimate_vector()</code></li><li><code>results_dataframe()</code></li></ul></article>
-      </div>
-    </section>
-    <section class="manual-section" id="ui">
-      <div class="section-head"><p class="eyebrow">UI automation</p><h2>Drive active app windows</h2></div>
-      <pre class="code-sample"><code class="language-python">from arcrho_api import ArcRhoUI
+    <section class="guide-section" id="example">
+      <h2>Open the Demo Dataset</h2>
+      <pre class="code-sample"><code>from arcrho_api import ArcRhoUI
 
 ui = ArcRhoUI()
 ui.wait_for_app(timeout_sec=10)
 
-ui.message_box("Starting review.", title="Arco Automation")
-window = ui.project_instance.open_dataset("Paid Loss")
+window = ui.project_instance.open_dataset("Gross Paid Loss")
 window.maximize()
-print(window.properties.as_dict())
-window.restore()</code></pre>
+print(window.properties.as_dict())</code></pre>
+      <ol class="step-list">
+        <li>Paste the example into the Python editor and choose <strong>Run</strong>, or press <kbd>Ctrl</kbd> + <kbd>Enter</kbd>.</li>
+        <li>Return to Arco and confirm the opened dataset is Gross Paid Loss in the selected demo segment.</li>
+        <li>Inspect the printed window properties in Arcode's Output panel.</li>
+        <li>Run <code>window.restore()</code> to return the dataset window to its previous size.</li>
+      </ol>
+      <p>This example opens a view and prints its properties. It does not change dataset values or save a method.</p>
     </section>
-    <section class="manual-section" id="agent-helper">
-      <div class="section-head"><p class="eyebrow">Agent helper</p><h2>Compact command-line DFM inspection</h2></div>
-      <pre class="code-sample"><code class="language-powershell">python -m arcrho_api.agent --file active-method.json inspect --include summary,average-formulas,ratio-triangle --origin 2020
-python -m arcrho_api.agent --file active-method.json exclude-ratio --origin 2020 --development 12 --reason "Reviewed outlier"
-python -m arcrho_api.agent --file active-method.json select-average --label "Simple - 3" --development all
-python -m arcrho_api.agent --file active-method.json validate</code></pre>
+    <section class="guide-section" id="refresh">
+      <h2>Refresh the Project Table After Scripted Work</h2>
+      <p>When a separate script has saved new project data, use the normal Project Page refresh or call:</p>
+      <pre class="code-sample"><code>ui.project_instance.reload_dataset_table()</code></pre>
+      <p>Then reopen the affected dataset or method and check its latest values and review status. A script's successful execution is separate from your review of the result.</p>
+      <p>Save your script through <strong>File → Save</strong>. Running it does not automatically save the editor file.</p>
     </section>
-    <section class="manual-section" id="read-only">
-      <div class="section-head"><p class="eyebrow">Safety</p><h2>Read-only and explicit writes</h2></div>
-      <div class="task-grid">
-        <article class="task-card"><h3>Read-only mode</h3><pre class="code-sample"><code class="language-python">client = ArcRhoClient(read_only=True)
-dfm = client.project("NJ Annual Production 2026").reserving_class(r"PA\Direct Group\Collision").dfm("Paid Ultimate")
-dfm.add_notes("In memory only")
-dfm.save()  # raises ReadOnlyError</code></pre></article>
-        <article class="task-card"><h3>Explicit writes</h3><ul><li>DFM mutations stay in memory until <code>save()</code>.</li><li>Dataset generation writes through the app/data-engine file contract.</li><li>UI automation targets the active running app state.</li></ul></article>
-      </div>
+    <section class="guide-section" id="external">
+      <h2>Use an External Python Environment</h2>
+      <p>External IDEs need the first-party <code>arcrho_api</code> wheel distributed with your Arco release. Install the supplied wheel into the environment that will run your script:</p>
+      <pre class="code-sample"><code>python -m pip install "path-to-the-supplied-wheel.whl"</code></pre>
+      <p>Keep Arco running for the UI example and use the same Windows user session. If more than one Arco window is running, select the intended app connection before automating it.</p>
+      <p>For active-method macros, see <a href="macros-tasks.html">Macros and Tasks</a>. For ordinary Python files and notebooks, see <a href="arcode.html">Arcode</a>.</p>
     </section>
   </main>
-  <script src="../manual.js"></script>
 </body>
 </html>

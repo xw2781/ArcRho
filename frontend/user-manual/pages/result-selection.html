@@ -3,71 +3,61 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Arco Manual - Result Selection</title>
-  <link rel="stylesheet" href="../manual.css">
+  <title>Result Selection · Arco User Guide</title>
+  <link rel="stylesheet" href="../guide.css">
+  <script src="../guide.js" defer></script>
 </head>
 <body data-page="result-selection">
-  <main class="manual-page" data-page-title="Result Selection" data-page-intro="Result Selection combines source estimates into a weighted selected ultimate vector for one reserving-class path.">
-    <section class="manual-section" id="method-tab">
-      <div class="section-head"><p class="eyebrow">Method tab</p><h2>Weighted source selection</h2></div>
-      <div class="rs-demo">
-        <div class="rs-tabs"><button>Details</button><button class="active">Method</button><button>Chart</button><button>Results</button><button>Validation</button><button>Notes</button></div>
-        <div class="rs-toolbar">
-          <div><span>Formatting</span><button>Show Weights</button><button>Toggle Weights Display</button></div>
-          <div><span>Sources</span><button>Add Source</button><button>Delete Source</button></div>
-          <div><span>ResQ</span><button class="hotspot" data-tip="Sync opens a local-vs-ResQ comparison dialog.">Sync</button></div>
-        </div>
-        <table class="manual-table dense rs-grid">
-          <thead><tr><th>Origin</th><th>Paid Ultimate</th><th>Weight</th><th>Incurred Ultimate</th><th>Weight</th><th>Selected Ultimate</th><th>Ultimate Ratio</th></tr></thead>
-          <tbody>
-            <tr><th>2021</th><td class="source-on">2,420</td><td class="weight-on hotspot" data-tip="Positive weights select the paired source value.">1.0</td><td class="source-on">2,510</td><td class="weight-on">1.0</td><td class="ultimate">2,465</td><td>71.4%</td></tr>
-            <tr><th>2022</th><td class="source-on">2,610</td><td class="weight-on">1.0</td><td>2,700</td><td class="weight-off hotspot" data-tip="Zero weight clears the paired source-cell selection.">0.0</td><td class="ultimate">2,610</td><td>69.2%</td></tr>
-            <tr><th>Total</th><td>5,030</td><td></td><td>5,210</td><td></td><td class="ultimate">5,075</td><td>70.2%</td></tr>
-          </tbody>
-        </table>
-        <div class="manual-cursor"></div>
-      </div>
-      <button class="replay-btn" data-replay>Replay highlighted interactions</button>
+  <main class="guide-content">
+    <header class="guide-header">
+      <p class="eyebrow">Result Selection</p>
+      <h1>Choose a final ultimate across methods</h1>
+      <p class="lede">Compare source estimates by origin, apply weights, and review the selected output and its supporting ratios.</p>
+      <div class="guide-meta"><span>Demo project: <strong>Monthly_Insurance_Dataset</strong></span></div>
+    </header>
+
+    <section class="guide-section" id="open">
+      <h2>Open or Create a Selection</h2>
+      <ol class="step-list">
+        <li>On the demo <a href="project-instance.html">Project Page</a>, select <strong>Commercial Auto → All States → CH02 → Comprehensive</strong>.</li>
+        <li>Find the finished <strong>Guide Selected Ultimate</strong> vector and double-click its row. Its <strong>Method Type</strong> is <strong>Result Selection</strong>.</li>
+        <li>To start a new one, right-click a suitable vector row whose Method Type is <strong>None</strong>, then choose <strong>Add → Result Selection</strong>.</li>
+        <li>On <strong>Details</strong>, use a distinct practice <strong>Name</strong>, such as <strong>My Selected Ultimate</strong>, choose the intended <strong>Output Type</strong>, and check <strong>Origin Length</strong>. Use 12 for this annual review.</li>
+      </ol>
+      <figure class="screenshot">
+        <img src="../assets/monthly-insurance/result-selection-overview.png" alt="Result Selection workspace showing the source estimates, weights, and selected ultimate">
+        <figcaption><strong>Compare sources on the Method tab.</strong> Each source has a Weight column. Selected Ultimate shows the weighted result, or a custom value you have entered for that origin.</figcaption>
+      </figure>
     </section>
-
-    <section class="manual-section" id="chart-tab">
-      <div class="section-head"><p class="eyebrow">Chart tab</p><h2>Compare dataset vectors</h2></div>
-      <div class="task-grid">
-        <article class="task-card"><h3>Plotted columns</h3><ul><li>Every loaded source dataset vector is plotted.</li><li>The selected output vector is plotted as the emphasized series.</li><li>Origin, Weight, Reserve, and ratio columns are not dataset vectors and are excluded.</li></ul></article>
-        <article class="task-card"><h3>Column visibility</h3><ul><li>Use the Columns panel on the right to hide or show any vector; the final visible line cannot be hidden by clicking it.</li><li>Right-click anywhere on an item to isolate it; right-click that sole visible item again to restore all lines.</li><li>The selected output is explicitly labeled Selected Ultimate, and display choices do not mark the Result Selection dirty or change saved JSON.</li></ul></article>
-        <article class="task-card"><h3>Point details</h3><ul><li>Hover a point to see its dataset name.</li><li>The tooltip also shows the origin period and formatted value.</li><li>Live Method edits and source previews refresh the chart automatically.</li></ul></article>
-      </div>
+    <section class="guide-section" id="sources">
+      <h2>Choose Sources and a Ratio Basis</h2>
+      <ol class="step-list">
+        <li>Open <strong>Method</strong> and inspect the source columns. The saved example uses <strong>Guide Paid Ultimate</strong> and <strong>Guide Reported Ultimate</strong>, with weights of 1 and 1 for each origin.</li>
+        <li>Right-click a source header to use <strong>View/Edit</strong>, <strong>Add</strong>, or <strong>Delete</strong>. Added sources must belong to the same segment and match the output category.</li>
+        <li>On <strong>Details</strong>, use <strong>+ Add datasets</strong> under <strong>Ratio Basis</strong> and select <strong>Earned Premium</strong>.</li>
+        <li>Return to Method and select Earned Premium in the active <strong>Ratio Basis</strong> control to review the ultimate-to-premium ratio.</li>
+      </ol>
     </section>
-
-    <section class="manual-section" id="how-it-calculates">
-      <div class="section-head"><p class="eyebrow">Calculation</p><h2>How selected ultimate is calculated</h2></div>
-      <div class="task-grid">
-        <article class="task-card"><h3>Source values</h3><ul><li>Vector sources use vector row values.</li><li>Triangle sources use latest available diagonal values.</li><li>Default sources are DFM outputs in the same category.</li></ul></article>
-        <article class="task-card"><h3>Weights</h3><ul><li>Positive weight means selected.</li><li>Zero weight means not selected.</li><li>Double-click source cells or weight cells to toggle.</li></ul></article>
-        <article class="task-card"><h3>Selected Ultimate</h3><ul><li>Uses weighted average by row.</li><li>Blank when no positive weighted numeric source exists.</li><li>Custom overrides can replace calculated values.</li></ul></article>
-        <article class="task-card"><h3>Ratio Basis</h3><ul><li>Optional basis dataset adds a ratio column.</li><li>Percent and decimal settings control display.</li><li>Total ratio is Total Ultimate divided by Total Basis.</li></ul></article>
-      </div>
+    <section class="guide-section" id="weights">
+      <h2>Adjust Weights by Origin</h2>
+      <ol class="step-list">
+        <li>Keep <strong>Show Weights</strong> enabled and choose <strong>Index</strong> as the weight format.</li>
+        <li>Enter a positive weight to include a source or <strong>0</strong> to exclude it for that origin. Double-clicking a source-value cell toggles its paired weight between 0 and 1.</li>
+        <li>Check <strong>Selected Ultimate</strong> after each change. It is the weighted mean of available source values with positive weights; a row with no positive source weights remains blank.</li>
+        <li>Choose <strong>Effective %</strong> to inspect each source's share of the total weight. These percentages are a view of the index weights.</li>
+      </ol>
+      <p>If you enter a custom Selected Ultimate, its red text distinguishes the override. Select that override and press <kbd>Delete</kbd> to return the row to the weighted calculation.</p>
     </section>
-
-    <section class="manual-section" id="save">
-      <div class="section-head"><p class="eyebrow">Save</p><h2>What saving writes</h2></div>
-      <div class="task-grid">
-        <article class="task-card"><h3>Fast reopen</h3><ul><li>The saved method contains every source value, weight, override, and configured Ratio Basis vector used by the grids.</li><li>A current Result Selection reopens from its own method JSON and output sidecar without reopening each input dataset.</li></ul></article>
-        <article class="task-card"><h3>Automatic freshness</h3><ul><li>Saving an input dataset refreshes registered dependent Result Selections and their output vectors.</li><li>If an input cannot be read or a calculated branch fails, the prior published result is preserved and only that branch remains in review; independent branches continue.</li><li>Affected open Result Selection windows reload their own saved snapshot automatically; matching clear/update notifications share one reload, while unrelated project/path windows do not. Unsaved local weights and overrides are retained, and Save waits for any live-preview restore before it can persist.</li></ul></article>
-      </div>
-      <pre class="code-sample"><code>Method JSON:
-methods\RS@Selected Ultimate.json
-
-Output vector CSV:
-datasets\Selected Ultimate@12.csv
-
-Sidecar:
-sidecars\Selected Ultimate.json
-
-JSON format marker:
-arcrho-result-selection-method-by-tab-v2</code></pre>
+    <section class="guide-section" id="save">
+      <h2>Review and Save the Output</h2>
+      <ol class="step-list">
+        <li>Open <strong>Chart</strong> to compare the sources with the Selected Ultimate line, then inspect the read-only <strong>Results</strong> table.</li>
+        <li>Write the selection rationale in <strong>Notes</strong>, including any origin-specific override.</li>
+        <li>Choose <strong>Save</strong> and read the completion message and any warnings about inputs that still need review.</li>
+        <li>Return to the Project Page to reopen the method or choose <strong>Show as vector</strong> for its output.</li>
+      </ol>
+      <aside class="callout"><strong>Review the numbers directly</strong><p>The <strong>Validation</strong> tab is currently a placeholder. Use Method, Chart, Results, Notes, and the save messages for your review.</p></aside>
     </section>
   </main>
-  <script src="../manual.js"></script>
 </body>
 </html>

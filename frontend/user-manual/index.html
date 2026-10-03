@@ -3,158 +3,89 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Arco User Manual</title>
-  <link rel="stylesheet" href="manual.css">
+  <title>Arco User Guide</title>
+  <link rel="stylesheet" href="guide.css">
+  <script src="guide.js" defer></script>
 </head>
 <body data-page="home">
-  <main class="manual-page" data-page-title="Arco User Manual" data-page-intro="Learn the Arco app from the main workflows first, then drill into each feature page.">
-    <section class="home-hero manual-panel">
-      <div>
-        <p class="eyebrow">Standalone user guide</p>
-        <h1>Learn Arco by workflow, not by wall of text.</h1>
-        <p class="lead">
-          Start with the app map, then open the focused pages for Project Settings,
-          Project Instance, Dataset, DFM, Result Selection, Workflow, automation,
-          Python, Excel, and ResQ migration.
-        </p>
+  <main class="guide-content">
+    <header class="guide-header">
+      <p class="eyebrow">Arco User Guide</p>
+      <h1>Work through Arco with a real demo project</h1>
+      <p class="lede">Follow the app screens to find data, review methods, organize your work, and use Arco's scripting and integration tools.</p>
+      <div class="guide-meta">
+        <span>Demo: <strong>Monthly_Insurance_Dataset</strong></span>
+        <span>15 chapters · Real app screenshots</span>
       </div>
-      <div class="home-status">
-        <div><span>Sample project</span><strong>NJ Annual Production 2026</strong></div>
-        <div><span>Sample path</span><strong>PA / Direct Group / Collision</strong></div>
-        <div class="metric-row">
-          <strong>42 datasets</strong>
-          <strong>8 DFMs</strong>
-          <strong>3 review items</strong>
-        </div>
+    </header>
+
+    <section class="guide-section" id="start">
+      <h2>Choose Your Task</h2>
+      <div class="chapter-links">
+        <article class="callout">
+          <h3>Start Working</h3>
+          <p>Find your workspace and check access.</p>
+          <p><a href="pages/shell.html">App Navigation</a> · <a href="pages/server-connection.html">Server Connection</a> · <a href="pages/troubleshooting.html">Troubleshooting</a></p>
+        </article>
+        <article class="callout">
+          <h3>Open and Manage a Project</h3>
+          <p>Inspect project definitions and find a segment's data.</p>
+          <p><a href="pages/project-settings.html">Project Explorer and Settings</a> · <a href="pages/project-instance.html">Project Page</a></p>
+        </article>
+        <article class="callout">
+          <h3>Review Data and Methods</h3>
+          <p>Inspect a triangle, select factors, and compare ultimates.</p>
+          <p><a href="pages/dataset.html">Dataset Viewer</a> · <a href="pages/dfm.html">Development Factor Method</a> · <a href="pages/result-selection.html">Result Selection</a></p>
+        </article>
+        <article class="callout">
+          <h3>Repeat a Review</h3>
+          <p>Group related steps and run focused actions.</p>
+          <p><a href="pages/workflow.html">Workflow</a> · <a href="pages/macros-tasks.html">Macros and Tasks</a></p>
+        </article>
+        <article class="callout">
+          <h3>Use Code and Assistance</h3>
+          <p>Write a script or ask about the work you have open.</p>
+          <p><a href="pages/arcode.html">Arcode</a> · <a href="pages/python-api.html">Python API</a> · <a href="pages/arcbot.html">ArcBot</a></p>
+        </article>
+        <article class="callout">
+          <h3>Work with Excel and ResQ</h3>
+          <p>Read values in a workbook or review a data transfer.</p>
+          <p><a href="pages/excel-addin.html">Excel Add-In</a> · <a href="pages/resq-migration.html">ResQ Import and Review</a></p>
+        </article>
       </div>
     </section>
 
-    <section class="manual-section" id="navigation">
-      <div class="section-head">
-        <p class="eyebrow">Navigation</p>
-        <h2>Choose what you want to do</h2>
-      </div>
-      <div class="home-grid">
-        <a class="nav-card" href="pages/project-settings.html">
-          <span>01</span>
-          <strong>Set up a project</strong>
-          <p>Create project folders, map source fields, and define dataset and reserving-class types.</p>
-        </a>
-        <a class="nav-card" href="pages/project-instance.html">
-          <span>02</span>
-          <strong>Open a project workspace</strong>
-          <p>Select a reserving class, review cached datasets, and open nested work windows.</p>
-        </a>
-        <a class="nav-card" href="pages/dataset.html">
-          <span>03</span>
-          <strong>Review or edit data</strong>
-          <p>Run triangles, inspect charts, add notes, save manual inputs, and check audit logs.</p>
-        </a>
-        <a class="nav-card" href="pages/dfm.html">
-          <span>04</span>
-          <strong>Build a DFM</strong>
-          <p>Review ratios, select averages, save ultimate vectors, sync with ResQ, and add support notes.</p>
-        </a>
-        <a class="nav-card" href="pages/result-selection.html">
-          <span>05</span>
-          <strong>Select final results</strong>
-          <p>Blend vectors and triangle latest diagonals into a weighted selected ultimate vector.</p>
-        </a>
-        <a class="nav-card" href="pages/python-api.html">
-          <span>06</span>
-          <strong>Automate with Python</strong>
-          <p>Use the API for scripted DFM review, dataset access, UI automation, and task progress.</p>
-        </a>
-      </div>
+    <section class="guide-section" id="demo">
+      <h2>Meet the Demo Project</h2>
+      <p>In Arco's Project Explorer, expand <strong>Test/Demos</strong> and double-click <strong>Monthly_Insurance_Dataset</strong>. On the Project Page, select <strong>Commercial Auto → All States → CH02 → Comprehensive</strong>.</p>
+      <figure class="screenshot">
+        <img src="assets/monthly-insurance/pi-overview.png" alt="Monthly_Insurance_Dataset Project Page showing its selected segment and dataset table">
+        <figcaption><strong>Start with the selected segment.</strong> Use its dataset table to find Gross Paid Loss and the saved tutorial methods. Click the screenshot to enlarge it.</figcaption>
+      </figure>
+      <ul>
+        <li><strong>Input:</strong> Gross Paid Loss, displayed cumulatively.</li>
+        <li><strong>DFM examples:</strong> Guide Paid Ultimate and Guide Reported Ultimate, using the corresponding paid and reported loss triangles.</li>
+        <li><strong>Result Selection example:</strong> Guide Selected Ultimate, combining the two DFM outputs with equal weights.</li>
+        <li><strong>Ratio basis:</strong> Earned Premium.</li>
+        <li><strong>Periods:</strong> 12-month origins and development intervals, with origin years 2016–2025.</li>
+        <li><strong>Valuation:</strong> May 2026. The development ages run from 5 to 113 months in 12-month steps.</li>
+      </ul>
+      <aside class="callout">
+        <strong>Practice with illustrative data</strong>
+        <p>All amounts are illustrative training values, and Jordan Lee is a fictional reviewer. Use a distinct method Name, such as <strong>My Paid DFM</strong>, to compare your own selections with the finished examples.</p>
+      </aside>
     </section>
 
-    <section class="manual-section" id="app-map">
-      <div class="section-head">
-        <p class="eyebrow">App map</p>
-        <h2>How the pieces fit together</h2>
-      </div>
-      <div class="ar-app-window home-map-demo">
-        <div class="ar-titlebar">
-          <div class="ar-logo">A</div>
-          <strong>Arco</strong>
-          <span class="status-pill ok">Connected</span>
-          <span class="window-controls">Min Max Close</span>
-        </div>
-        <div class="ar-menubar">
-          <span>File</span><span>Edit</span><span>View</span><span>Settings</span><span>Macro</span><span>Help</span>
-        </div>
-        <div class="ar-tabs">
-          <span class="active">Project Instance</span>
-          <span>DFM - Paid Ultimate</span>
-          <span>Arcode</span>
-          <span>+</span>
-        </div>
-        <div class="atlas-body">
-          <div class="atlas-rail">
-            <button>H</button><button class="active">P</button><button>D</button><button>A</button>
-          </div>
-          <div class="atlas-tree">
-            <div class="tree-title">Projects</div>
-            <div class="tree-row active">NJ Annual Production 2026</div>
-            <div class="tree-row">NY Quarterly Review</div>
-            <div class="tree-title">Recent</div>
-            <div class="tree-row">Paid Ultimate DFM</div>
-          </div>
-          <div class="atlas-board">
-            <div class="command-strip">
-              <input value="Search project, dataset, DFM, command">
-              <button>Open</button>
-              <button>Refresh</button>
-            </div>
-            <div class="mini-workflow">
-              <div class="flow-box hotspot" data-tip="Project Settings defines the data contract.">Project Settings</div>
-              <div class="flow-box hotspot" data-tip="Project Instance is the daily workspace.">Project Instance</div>
-              <div class="flow-box hotspot" data-tip="Dataset, DFM, and Result Selection windows open from the selected path.">Dataset / DFM / RS</div>
-              <div class="flow-box hotspot" data-tip="Python, Excel, macros, ArcBot, and ResQ migration use the same project files.">Automation</div>
-            </div>
-            <div class="manual-cursor"></div>
-          </div>
-        </div>
-        <div class="ar-statusbar">Ready | Zoom 100% | Active path: PA / Direct Group / Collision</div>
-      </div>
-    </section>
-
-    <section class="manual-section" id="learning-paths">
-      <div class="section-head">
-        <p class="eyebrow">Learning paths</p>
-        <h2>Pick a path and move through it</h2>
-      </div>
-      <div class="path-grid">
-        <article class="task-card">
-          <h3>New user path</h3>
-          <ol>
-            <li><a href="pages/shell.html">Learn the shell and tabs</a></li>
-            <li><a href="pages/server-connection.html">Set Server Connection</a></li>
-            <li><a href="pages/project-instance.html">Open a Project Instance</a></li>
-            <li><a href="pages/dataset.html">Open and review a dataset</a></li>
-          </ol>
-        </article>
-        <article class="task-card">
-          <h3>Actuarial review path</h3>
-          <ol>
-            <li><a href="pages/project-instance.html">Choose a reserving-class path</a></li>
-            <li><a href="pages/dfm.html">Review DFM ratios and notes</a></li>
-            <li><a href="pages/result-selection.html">Select final ultimate values</a></li>
-            <li><a href="pages/excel-addin.html">Pull results into Excel</a></li>
-          </ol>
-        </article>
-        <article class="task-card">
-          <h3>Automation path</h3>
-          <ol>
-            <li><a href="pages/macros-tasks.html">Run macros and Task Designer</a></li>
-            <li><a href="pages/python-api.html">Use Python API objects</a></li>
-            <li><a href="pages/arcbot.html">Use ArcBot with app context</a></li>
-            <li><a href="pages/resq-migration.html">Import from ResQ</a></li>
-          </ol>
-        </article>
-      </div>
+    <section class="guide-section" id="using-guide">
+      <h2>Use This Guide Beside Arco</h2>
+      <ol class="step-list">
+        <li>In Arco, choose <strong>Help → User Guide</strong>. The guide opens in your browser from the server connected to the app.</li>
+        <li>Keep the guide beside Arco and follow one task at a time. Use the chapter navigation and <strong>On This Page</strong> links to return to a step.</li>
+        <li>Click a screenshot to enlarge it. Press <kbd>Esc</kbd> or choose <strong>Close image</strong> to return.</li>
+        <li>Use <strong>Next step</strong> and <strong>Previous step</strong> to move through a screenshot sequence. Printing includes every step.</li>
+      </ol>
+      <p>For a first review, follow <a href="pages/project-instance.html">Project Page</a> → <a href="pages/dfm.html">Development Factor Method</a> → <a href="pages/result-selection.html">Result Selection</a>.</p>
     </section>
   </main>
-  <script src="manual.js"></script>
 </body>
 </html>
