@@ -32,6 +32,34 @@ payload without invoking NSIS.
 
 ## Deployed build identity
 
+### User Guide source
+
+`frontend/user-manual` owns the HTML guide, its styles, scripts, and screenshots.
+Gateway serves `GET` and `HEAD /user-guide/` from `<Server root>/user-guide`,
+outside its frozen executable. `/user-guide` redirects to the trailing-slash
+address so relative links work. This documentation route is public to anyone
+who can reach Gateway, carries no user credential, and permits only guide web
+assets. It does not list directories or serve JSON, project data, parent paths,
+Windows drive paths, or links resolving outside the guide directory. Responses
+use `no-cache` so a newly published guide appears without a Gateway restart.
+
+A Gateway build publishes the source through the shared staged deployment
+rotation before swapping the executable. The working-tree build request includes
+`frontend/user-manual`, while guide edits alone do not mark the executable stale.
+To publish documentation only, without freezing or restarting Gateway, run:
+
+```powershell
+py -3.10 server-components/publish_user_guide.py
+```
+
+The publisher uses the configured Server root and honors `ARCRHO_DEPLOY_ROOT`
+with the same workspace-root consistency check as component builds. It mirrors
+the source through the deployment tooling's standby slot and rollback mechanism;
+the browser never reads the share. Deploy Gateway before releasing the Help →
+User Guide menu action; the additive route is compatible with released clients.
+
+### Component builds
+
 Components are also deployed straight from the repository by their own
 `build_exe.py`, which is how Gateway reaches a workspace at all: the offline
 installer ships only the five receipted components. Either path stamps the

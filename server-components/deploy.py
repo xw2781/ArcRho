@@ -58,6 +58,7 @@ from arcrho_build_request_contract import (  # noqa: E402
     require_live_listener,
     write_json_atomic,
 )
+from arcrho_gateway.user_guide import GUIDE_SOURCE  # noqa: E402
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PATCH_MEMBER_NAME = "changes.patch"
@@ -119,6 +120,10 @@ def _repository_relative_roots(components: Sequence[Component]) -> list[str]:
     """
 
     paths: set[Path] = set()
+    if any(component.key == "gateway" for component in components):
+        # Published beside the executable; documentation edits alone do not
+        # make the frozen Gateway stale.
+        paths.add(GUIDE_SOURCE.relative_to(REPOSITORY_ROOT))
     for component in components:
         for root in (component.source_dir, *component.freshness_source_dirs):
             try:

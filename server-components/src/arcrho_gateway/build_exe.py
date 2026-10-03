@@ -21,6 +21,7 @@ for path in (PROJECT_ROOT, SOURCE_ROOT):
         sys.path.insert(0, str(path))
 
 from arcrho_engine.bundled_sources import ENGINE_BUNDLED_SOURCES
+from arcrho_gateway.publish_guide import publish_guide
 from build_runtime import (
     align_workspace_root_env,
     ensure_python_310_venv,
@@ -283,6 +284,7 @@ def main() -> int:
         # Staging runs while the Gateway is still serving; only the rename
         # rotation below needs the stopped window, and that takes seconds.
         stage_deploy(STAGED_APP_DIR, APPS_DIR, APP_NAME)
+        publish_guide(DEPLOY_ROOT)
         with gateway_stopped():
             swap_deploy(APPS_DIR, APP_NAME)
     output = STAGED_APP_DIR if STAGE_ONLY else DEPLOY_APP_DIR

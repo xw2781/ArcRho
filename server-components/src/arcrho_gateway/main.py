@@ -103,6 +103,7 @@ from arcrho_gateway.receipts import (  # noqa: E402
     write_json_atomic as _write_json_atomic,
 )
 from arcrho_gateway.workspace_mutations import WorkspaceMutationExecutor  # noqa: E402
+from arcrho_gateway.user_guide import GUIDE_PATH, guide_asset  # noqa: E402
 from arcrho_gateway.workspace_reads import (  # noqa: E402
     WorkspaceReadExecutor,
     WorkspaceReadHttpError,
@@ -484,6 +485,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
+        if self._serve_user_guide(path):
+            return
         if path == HEALTH_PATH:
             self._send_json(200, {"ok": True})
             return
@@ -494,6 +497,37 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 self._send_json(503, {"detail": str(exc)})
             return
         self._send_json(404, {"detail": "Not found."})
+
+    def do_HEAD(self) -> None:  # noqa: N802
+        if not self._serve_user_guide(urlparse(self.path).path, head_only=True):
+            self.send_response(404)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    def _serve_user_guide(self, path: str, *, head_only: bool = False) -> bool:
+        if path == GUIDE_PATH.rstrip("/"):
+            self.send_response(308)
+            self.send_header("Location", GUIDE_PATH)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return True
+        if not path.startswith(GUIDE_PATH):
+            return False
+        asset = guide_asset(self.server.gateway.root, path)
+        try:
+            body = asset[0].read_bytes() if asset else None
+        except OSError:
+            body = None
+        self.send_response(200 if body is not None else 404)
+        self.send_header("Content-Type", asset[1] if body is not None else "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)) if body is not None else "0")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.end_headers()
+        if not head_only and body is not None:
+            self.wfile.write(body)
+        return True
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
