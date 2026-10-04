@@ -56,6 +56,15 @@ system browser (a new tab in browser mode). The server profile owns its address;
 the app never substitutes bundled documentation or opens the Server share.
 Connection lookup and browser launch failures appear in the shell status bar.
 
+DFM's in-window question-mark guide is presentation-only state, retained across
+its internal tab changes and cleared when the window reloads. Guide controls
+must not mutate method data, dirty state, save payloads, or audit history. See
+[DFM](../ui/dfm.md) for in-page markers and single-tooltip hover behavior.
+
+Shared Table Appearance fonts and colors are local-user preferences, never
+method data. Specific section font properties override broader table settings;
+resetting a section's font preserves its colors. See [shell](../ui/shell.md).
+
 ## Before Finishing
 1. State which behavior area changed, or state "no frontend behavior impact."
 2. Update relevant MANUAL sections in `docs/ui/*.md` when behavior changes.

@@ -19,14 +19,16 @@
   <link rel="stylesheet" href="/ui/shared/tabs/data/data_tab.css?v=20260927a"/>
   <link rel="stylesheet" href="/ui/shared/components/formula_bar/formula_bar.css?v=20260919a"/>
   <link rel="stylesheet" href="/ui/shared/components/floating_window/window_resize.css?v=20260913a"/>
-  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20260927smb21"/>
-  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/table_colors_window.css?v=20260927b"/>
+  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm.css?v=20261003a"/>
+  <link rel="stylesheet" href="/ui/method_pages/dfm/dfm_guide.css?v=20261003f"/>
+  <link rel="stylesheet" href="/ui/shared/components/spreadsheet/table_colors_window.css?v=20261003a"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/light.css?v=20260923c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/dark.css?v=20260923c"/>
   <link rel="stylesheet" href="/ui/shared/styles/themes/revolutionary.css?v=20260923c"/>
 </head>
 
 <body data-arcrho-page-hold="1">
+  <button id="dfmGuideToggle" class="dfmGuideToggle" type="button" aria-label="DFM guide mode" aria-pressed="false" aria-controls="dfmGuide"><span class="dfmGuideIcon" aria-hidden="true"></span></button>
   <div class="dfmTabBar tabbedPageTabBar">
     <button class="dfmTab tabbedPageTab active" data-page="details" type="button">Details</button>
     <button class="dfmTab tabbedPageTab" data-page="data" type="button">Data</button>
@@ -310,7 +312,7 @@
     <div class="dfmCtxSep" data-label-only="1"></div>
     <button class="dfmCtxItem" data-action="custom-average" data-label-only="1">Custom Average</button>
     <div class="dfmCtxSep"></div>
-    <button class="dfmCtxItem" data-action="custom-colors" data-table-colors>Custom Colors</button>
+    <button class="dfmCtxItem" data-action="custom-colors" data-table-colors></button>
   </div>
   <div id="dfmRatioMenu" class="dfmCtxMenu">
     <button class="dfmCtxItem dfmCtxModeItem" data-action="toggle-ratio-mode" data-target-mode="edit">
@@ -328,12 +330,10 @@
     <button class="dfmCtxItem" data-action="copy-ratio-value">Copy value</button>
     <button class="dfmCtxItem" data-action="add-ratio-cell-note">Add Cell Notes</button>
     <div class="dfmCtxSep"></div>
-    <button class="dfmCtxItem" data-action="toggle-na-borders">Hide N/A Borders</button>
-    <div class="dfmCtxSep"></div>
     <button class="dfmCtxItem" data-action="copy-ratio-patterns">Copy Ratio Patterns</button>
     <button class="dfmCtxItem" data-action="apply-ratio-patterns">Apply Ratio Patterns</button>
     <div class="dfmCtxSep"></div>
-    <button class="dfmCtxItem" data-action="custom-colors" data-table-colors>Custom Colors</button>
+    <button class="dfmCtxItem" data-action="custom-colors" data-table-colors></button>
   </div>
   <div id="dfmAvgModal" class="dfmModal">
     <div class="dfmModalBackdrop"></div>
@@ -451,7 +451,7 @@
       <div class="ctx-sep"></div>
       <button class="ctx-item" data-action="export_data">Export data</button>
       <div class="ctx-sep"></div>
-      <button class="ctx-item" data-action="table_colors" data-table-colors>Custom Colors</button>
+      <button class="ctx-item" data-action="table_colors" data-table-colors></button>
     </div>
   </div>
 
@@ -470,6 +470,7 @@
           console.error("Dataset boot failed before DFM initialization:", err);
         }
         await import("/ui/method_pages/dfm/dfm_main.js?v=20260927smb19");
+        (await import("/ui/method_pages/dfm/dfm_guide.js?v=20261003e")).initDfmGuide();
       } finally {
         window.arcrhoRevealPage?.();
       }

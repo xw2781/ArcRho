@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "dfm",
+  "audience": "user",
+  "summary": "Added an interactive DFM guide with in-page component markers and concise contextual help across all tabs.",
+  "details": [
+    "Use the compact circular help button to toggle component outlines; hover components or focus numbered markers for one short tooltip at a time.",
+    "Hints explain double-click ratio charts, component-specific right-click menus, curve editing, chart interactions and keyboard shortcuts.",
+    "The guide keeps the full working page width, with no side panel, and does not change the method or its save state."
+  ]
+}

@@ -1,0 +1,69 @@
+.dfmTabBar.tabbedPageTabBar {
+  padding-right: 40px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.dfmGuideToggle {
+  position: fixed;
+  top: 7px;
+  right: 8px;
+  z-index: 45;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ar-color-border, #cbd5e1);
+  border-radius: 50%;
+  background: var(--ar-color-surface, #fbfcfe);
+  color: var(--ar-color-text, #334155);
+  cursor: pointer;
+}
+.dfmGuideToggle:hover,
+.dfmGuideToggle[aria-pressed="true"] {
+  color: var(--ar-color-accent, #2b6df6);
+  border-color: currentColor;
+  background: var(--ar-color-surface-selected, #dbeafe);
+}
+.dfmGuideIcon {
+  width: 12px;
+  height: 12px;
+  background-color: currentColor;
+  mask: url("./dfm_guide.svg?v=20261003c") center / contain no-repeat;
+}
+.dfmGuideToggle:focus-visible,
+.dfmGuideMarker:focus-visible {
+  outline: 2px solid var(--ar-color-accent, #2b6df6);
+  outline-offset: 2px;
+}
+.dfmGuideTarget {
+  outline: 1px dashed var(--ar-color-accent, #2b6df6);
+  outline-offset: -1px;
+}
+.dfmGuideLayer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 41;
+}
+.dfmGuideMarker {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--ar-color-accent, #2b6df6);
+  border-radius: 50%;
+  background: var(--ar-color-surface, #fff);
+  color: var(--ar-color-accent, #2b6df6);
+  font: bold 10px/16px Arial, "Segoe UI", sans-serif;
+  cursor: help;
+  pointer-events: auto;
+}
+.dfmGuideTooltip.arcrho-tooltip {
+  width: 280px;
+}
+.dfmGuideTooltip[hidden], .dfmGuideLayer[hidden], .dfmGuideMarker[hidden] { display: none; }
+.dfmGuideBrief { margin: 4px 0 0; }
+.dfmGuideDetail { margin: 6px 0 0; padding-left: 14px; }
+.dfmGuideDetail li + li { margin-top: 3px; }
