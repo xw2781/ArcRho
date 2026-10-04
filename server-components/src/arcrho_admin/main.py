@@ -51,7 +51,7 @@ try:
         with_server_id,
         write_server_config,
     )
-    from src.utils import get_config_value, get_project_root, resolve_app_exe
+    from src.utils import get_config_value, get_project_root, resolve_app_exe, resolve_app_path
 except ModuleNotFoundError:
     from server_config import (
         default_server_config,
@@ -61,7 +61,7 @@ except ModuleNotFoundError:
         with_server_id,
         write_server_config,
     )
-    from utils import get_config_value, get_project_root, resolve_app_exe
+    from utils import get_config_value, get_project_root, resolve_app_exe, resolve_app_path
 
 from arcrho_log_retention_contract import apply_log_retention
 from arcrho_server_component_status import (
