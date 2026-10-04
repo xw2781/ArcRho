@@ -111,6 +111,43 @@
   color: var(--ar-color-text-strong, #111827);
 }
 
+.arTableFontControls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px 28px 28px 42px;
+  align-items: end;
+  gap: 5px;
+  margin: 6px 0 8px;
+}
+.arTableFontControls label { min-width: 0; }
+.arTableFontControls label span {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--ar-color-text-muted, #64748b);
+  font-size: 10px;
+}
+.arTableFontControls input,
+.arTableFontControls button {
+  width: 100%;
+  height: 28px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 4px;
+  border: 1px solid var(--ar-color-border-strong, #cbd5e1);
+  border-radius: 4px;
+  background: var(--ar-color-input, #fff);
+  color: inherit;
+  font: inherit;
+}
+.arTableFontControls button { cursor: pointer; }
+.arTableFontControls .arTableFontStyle-bold { font-weight: 700; }
+.arTableFontControls .arTableFontStyle-italic { font-style: italic; }
+.arTableFontControls [aria-pressed="true"] {
+  background: var(--ar-color-surface-selected, #dbeafe);
+  color: var(--ar-color-accent, #2b6df6);
+}
+.arTableFontControls .isCustom { border-color: var(--ar-color-accent, #2b6df6); }
+.arTableFontControls button:disabled { opacity: .45; cursor: default; }
+
 .arTableColorsRow + .arTableColorsGroupLabel {
   margin-top: 8px;
   padding-top: 8px;
@@ -130,13 +167,13 @@
 /* The preview is one table cell: its font, fill and strike as the tables
    draw them now. */
 .arTableColorsPreview {
-  height: 20px;
+  min-height: 20px;
   padding: 0 6px;
   box-sizing: border-box;
   overflow: hidden;
   border: 1px solid var(--ar-color-border, #d8dde3);
   font-family: var(--ar-spreadsheet-font, Arial, sans-serif);
-  line-height: 18px;
+  line-height: 1.35;
   text-align: right;
   white-space: nowrap;
 }

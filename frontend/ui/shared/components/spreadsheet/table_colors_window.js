@@ -1,10 +1,10 @@
 /*
 ===============================================================================
-Table Custom Colors window - a non-modal floating window inside a method page,
+Table Appearance window - a non-modal floating window inside a method page,
 opened from the page's table context menus.
 
 One row per recolourable part of the tables: the page's own parts, then the
-parts every table shares. Each row has a preview cell, a Font and a Fill
+parts every table shares. Section controls set typography; each color row has a preview cell, a Text and a Fill
 swatch, and a reset for that row; the Cell Border row has a border colour
 swatch and a width choice in their place. A swatch opens a picker inside the window
 with the named colours, Default, the system colour dialog and a hex box. Every
@@ -24,8 +24,11 @@ import {
   resetTableColorComponent,
   resetTableColorsFor,
   setTableColor,
+  setTableFont,
+  resetTableFont,
   tableColorGroupsFor,
-} from "/ui/shared/components/spreadsheet/table_colors_model.js?v=20260927b";
+  TABLE_APPEARANCE_TITLE,
+} from "/ui/shared/components/spreadsheet/table_colors_model.js?v=20261003a";
 import {
   getTableColors,
   getTableColorsPage,
@@ -33,10 +36,11 @@ import {
   subscribeTableColors,
 } from "/ui/shared/components/spreadsheet/table_colors.js?v=20260927b";
 import { attachArcrhoTooltip } from "/ui/shared/components/tooltip/tooltip.js?v=20260925a";
+import { createTableFontControls } from "./table_font_controls.js?v=20261003b";
 
 const SAMPLE_VALUE = "1.052";
 const PRESET_COLUMNS = 12;
-const PROPERTY_LABELS = { font: "Font", fill: "Fill", border: "Border", width: "Width" };
+const PROPERTY_LABELS = { font: "Text", fill: "Fill", border: "Border", width: "Width" };
 const CLOSE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
 const RESET_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.5 8a4.5 4.5 0 1 0 1.4-3.3"/><path d="M3.2 2.6v2.6h2.6"/></svg>';
 
@@ -143,6 +147,8 @@ function measureComponentLooks(components) {
       surface: effectiveSurface(host) || bodySurface,
       fontStyle: style.fontStyle,
       fontWeight: style.fontWeight,
+      fontFamily: style.fontFamily,
+      fontSize: style.fontSize,
       decoration: style.textDecorationLine,
       decorationColor: style.textDecorationColor,
     });
@@ -219,18 +225,18 @@ function buildRow(component) {
   return row;
 }
 
-function buildWindow(groups) {
+function buildWindow(groups, fontControls) {
   const win = element("div", "arTableColorsWindow");
   win.setAttribute("role", "dialog");
-  win.setAttribute("aria-label", "Custom Colors");
+  win.setAttribute("aria-label", TABLE_APPEARANCE_TITLE);
   win.innerHTML = `
     <div class="arTableColorsHeader">
-      <span class="arTableColorsTitle">Custom Colors</span>
+      <span class="arTableColorsTitle">${TABLE_APPEARANCE_TITLE}</span>
       <button type="button" class="arTableColorsClose" aria-label="Close">${CLOSE_ICON}</button>
     </div>
     <div class="arTableColorsBody">
       <div class="arTableColorsColumnLabels" aria-hidden="true">
-        <span></span><span>Preview</span><span>Font</span><span>Fill</span><span></span>
+        <span></span><span>Preview</span><span>Text</span><span>Fill</span><span></span>
       </div>
     </div>
     <div class="arTableColorsFooter">
@@ -252,6 +258,13 @@ function buildWindow(groups) {
     const components = TABLE_COLOR_COMPONENTS.filter((component) => component.group === group.id);
     if (!components.length) continue;
     body.appendChild(element("div", "arTableColorsGroupLabel", group.label));
+    const controls = createTableFontControls(group, {
+      get: getTableColors,
+      set: (id, key, value) => setTableColors(setTableFont(getTableColors(), id, key, value)),
+      reset: id => setTableColors(resetTableFont(getTableColors(), id)),
+    });
+    fontControls.push(controls);
+    body.append(controls.element);
     for (const component of components) body.appendChild(buildRow(component));
   }
   const grid = win.querySelector(".arTableColorsPresetGrid");
@@ -336,7 +349,8 @@ export function openTableColorsWindow() {
   const groups = tableColorGroupsFor(page);
   const groupIds = new Set(groups.map((group) => group.id));
   const components = TABLE_COLOR_COMPONENTS.filter((component) => groupIds.has(component.group));
-  const win = buildWindow(groups);
+  const fontControls = [];
+  const win = buildWindow(groups, fontControls);
   document.body.appendChild(win);
   placeWindow(win);
   const stopDrag = makeHeaderDraggable(win.querySelector(".arTableColorsHeader"), win);
@@ -367,6 +381,8 @@ export function openTableColorsWindow() {
         preview.style.color = look.font;
         preview.style.fontStyle = look.fontStyle;
         preview.style.fontWeight = look.fontWeight;
+        preview.style.fontFamily = look.fontFamily || "";
+        preview.style.fontSize = look.fontSize || "";
         preview.style.textDecorationLine = look.decoration;
         preview.style.textDecorationColor = look.decorationColor;
         paintFill(preview, look);
@@ -388,11 +404,14 @@ export function openTableColorsWindow() {
         button.classList.toggle("isCustom", !!prefs.components[id]?.[button.dataset.property]);
       });
     });
-    win.querySelector('[data-action="reset-all"]').disabled = !components.some((component) => prefs.components[component.id]);
+    fontControls.forEach(controls => controls.render());
+    win.querySelector('[data-action="reset-all"]').disabled = !components.some((component) => prefs.components[component.id])
+      && !groups.some(group => prefs.fonts?.[group.id]);
     if (target) renderPicker();
   }
 
   function renderPicker() {
+    if (!target) return;
     const hex = currentHex(target.id, target.property);
     const selected = findTableColorPreset(hex);
     presets.forEach((swatch) => {

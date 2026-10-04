@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "table appearance",
+  "audience": "user",
+  "summary": "Customize font family, size, bold and italic by table section alongside text, fill and border colors.",
+  "details": [
+    "The table context menu now opens Table Appearance, with independent font controls and resets for each section.",
+    "Font and size fields show the values currently in use, including inherited settings, instead of Default or Auto placeholders.",
+    "Appearance preferences update immediately and remain separate from method data."
+  ]
+}

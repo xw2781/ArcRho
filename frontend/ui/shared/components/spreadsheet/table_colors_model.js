@@ -1,14 +1,16 @@
 /*
 ===============================================================================
-Table Custom Colors - the parts of the spreadsheet tables a user can recolour,
+Table Appearance - table colours and section typography,
 the named colours offered for them, and how a stored preference becomes the
 CSS that paints them.
 
 The preference is one local-user object shared by every method page:
 
-  { version: 1, components: { "<component id>": { font?, fill?, border?: "#rrggbb", width?: 1-3 } } }
+  { version: 1, components: { "<component id>": { font?, fill?, border?: "#rrggbb", width?: 1-3 } },
+    fonts?: { "<group id>": { family?: string, size?: number, bold?: boolean, italic?: boolean } } }
 
-`width` is the only value that is not a colour: the grid line width in pixels.
+`font` remains the text colour. `fonts` holds optional section typography;
+absent properties keep the stylesheet defaults. Size and border width use pixels.
 
 A component with no entry keeps the look the theme and table style give it.
 For each value that is set, the root carries the token `<id>-<property>` in
@@ -26,6 +28,8 @@ No DOM and no imports, so the node tests can load it directly.
 */
 
 export const TABLE_COLORS_VERSION = 1;
+export const TABLE_APPEARANCE_TITLE = "Table Appearance";
+export const TABLE_APPEARANCE_MENU_LABEL = `${TABLE_APPEARANCE_TITLE}…`;
 export const TABLE_COLORS_ATTRIBUTE = "data-ar-table-colors";
 export const TABLE_COLOR_PROPERTIES = ["font", "fill", "border", "width"];
 export const TABLE_BORDER_WIDTHS = [1, 2, 3];
@@ -33,12 +37,60 @@ export const TABLE_BORDER_WIDTHS = [1, 2, 3];
 // A group with a `page` is shown only on that page; the rest are on every page.
 // Page groups come first, so the parts every table shares close the list.
 export const TABLE_COLOR_GROUPS = [
-  { id: "dfm-triangle", label: "Ratio Triangle", page: "dfm" },
-  { id: "dfm-averages", label: "Average Formulas", page: "dfm" },
-  { id: "dfm-selected", label: "Selected Table", page: "dfm" },
-  { id: "dfm-ratios", label: "All Ratios Tables", page: "dfm" },
-  { id: "tables", label: "All Tables" },
+  { id: "dfm-triangle", label: "Ratio Triangle", page: "dfm", fontSelector: "#ratioWrap .ratioMainTable" },
+  { id: "dfm-averages", label: "Average Formulas", page: "dfm", fontSelector: "#ratioWrap .ratioSummaryTable" },
+  { id: "dfm-selected", label: "Selected Table", page: "dfm", fontSelector: "#ratioWrap .ratioSelectedTable" },
+  { id: "dfm-ratios", label: "All Ratios Tables", page: "dfm", fontSelector: "#ratioWrap table" },
+  { id: "tables", label: "All Tables", fontSelector: "table.arSpreadsheetTable" },
 ];
+
+export const TABLE_FONT_SIZE_MIN = 8;
+export const TABLE_FONT_SIZE_MAX = 32;
+
+/** Optional typography per section; omitted fields keep the existing style. */
+function normalizeTableFonts(raw) {
+  const fonts = {};
+  for (const group of TABLE_COLOR_GROUPS) {
+    const source = raw?.[group.id];
+    if (!source || typeof source !== "object") continue;
+    const font = {};
+    const family = String(source.family || "").trim();
+    if (/^[\p{L}\p{N}][\p{L}\p{N} _-]{0,79}$/u.test(family)) font.family = family;
+    const size = Number(source.size);
+    if (Number.isInteger(size) && size >= TABLE_FONT_SIZE_MIN && size <= TABLE_FONT_SIZE_MAX) font.size = size;
+    for (const key of ["bold", "italic"]) if (typeof source[key] === "boolean") font[key] = source[key];
+    if (Object.keys(font).length) fonts[group.id] = font;
+  }
+  return fonts;
+}
+
+export function setTableFont(prefs, group, property, value) {
+  const next = normalizeTableColors(prefs);
+  const font = { ...next.fonts?.[group], [property]: value };
+  return normalizeTableColors({ ...next, fonts: { ...next.fonts, [group]: font } });
+}
+
+export function resetTableFont(prefs, group) {
+  const next = normalizeTableColors(prefs);
+  if (next.fonts) delete next.fonts[group];
+  return normalizeTableColors(next);
+}
+
+/** Broad sections first; individual table settings override them per property. */
+export function tableFontCss(prefs) {
+  const fonts = normalizeTableFonts(prefs?.fonts);
+  return [...TABLE_COLOR_GROUPS].reverse().map(group => {
+    const font = fonts[group.id];
+    if (!font) return "";
+    const rules = [];
+    if (font.family) rules.push(`font-family: "${font.family}" !important`);
+    if (font.size) rules.push(`font-size: ${font.size}px !important`,
+      `--ar-spreadsheet-cell-height: calc(${font.size}px * 1.35)`, "line-height: var(--ar-spreadsheet-cell-height) !important");
+    if (typeof font.bold === "boolean") rules.push(`font-weight: ${font.bold ? 700 : 400} !important`);
+    if (typeof font.italic === "boolean") rules.push(`font-style: ${font.italic ? "italic" : "normal"} !important`);
+    return `:root[data-ar-table-colors~="table-font-${group.id}"] :where(${group.fontSelector}, ${group.fontSelector} *) { ${rules.join("; ")}; }`;
+  }).filter(Boolean).join("\n");
+}
 
 // `probe` describes a stand-in cell the window builds to read the colours a
 // component shows before the user changes them: inside the element whose id is
@@ -277,7 +329,8 @@ export function normalizeTableColors(raw) {
     }
     if (Object.keys(colors).length) components[component.id] = colors;
   }
-  return { version: TABLE_COLORS_VERSION, components };
+  const fonts = normalizeTableFonts(raw?.fonts);
+  return { version: TABLE_COLORS_VERSION, components, ...(Object.keys(fonts).length ? { fonts } : {}) };
 }
 
 /** The preference with one value set, or cleared when `value` is empty. */
@@ -306,6 +359,7 @@ export function resetTableColorsFor(prefs, page) {
   for (const component of TABLE_COLOR_COMPONENTS) {
     if (shown.has(component.group)) next = resetTableColorComponent(next, component.id);
   }
+  for (const group of shown) next = resetTableFont(next, group);
   return next;
 }
 
@@ -333,5 +387,6 @@ export function tableColorCssState(prefs) {
       properties[tableColorPropertyName(component.id, property)] = property === "width" ? `${value}px` : value;
     }
   }
+  for (const group of Object.keys(normalized.fonts || {})) tokens.push(`table-font-${group}`);
   return { tokens, properties };
 }

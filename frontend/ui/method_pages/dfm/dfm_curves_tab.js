@@ -41,6 +41,7 @@ import {
 } from "/ui/method_pages/dfm/dfm_results_tab.js?v=20260914c";
 import { openContextMenu } from "/ui/shared/components/context_menu/context_menu.js?v=20260811b";
 import { openTableColorsWindow } from "/ui/shared/components/spreadsheet/table_colors.js?v=20260927b";
+import { TABLE_APPEARANCE_MENU_LABEL } from "/ui/shared/components/spreadsheet/table_colors_model.js?v=20261003a";
 
 const FIT_LABELS = Object.freeze({
   [FIT_OK]: "OK",
@@ -543,7 +544,7 @@ function openCurvesContextMenu(event, td) {
     items.push({ label: "Rename User Column", onSelect: () => renameUserColumn(columnNumber) });
     items.push({ label: "Remove User Column", onSelect: () => removeUserColumn(columnNumber) });
   }
-  items.push({ separator: true }, { label: "Custom Colors", onSelect: openTableColorsWindow });
+  items.push({ separator: true }, { label: TABLE_APPEARANCE_MENU_LABEL, onSelect: openTableColorsWindow });
   // The same menu surface the Ratios tab uses, built for this click and
   // dropped once it closes.
   const menu = document.createElement("div");

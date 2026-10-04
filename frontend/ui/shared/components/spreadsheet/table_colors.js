@@ -14,7 +14,9 @@ import {
   TABLE_COLORS_ATTRIBUTE,
   normalizeTableColors,
   tableColorCssState,
-} from "/ui/shared/components/spreadsheet/table_colors_model.js?v=20260927b";
+  tableFontCss,
+  TABLE_APPEARANCE_MENU_LABEL,
+} from "/ui/shared/components/spreadsheet/table_colors_model.js?v=20261003a";
 
 const STORAGE_KEY = "arcrho_table_colors";
 const CHANNEL_NAME = "arcrho:table-colors";
@@ -68,6 +70,13 @@ function applyToDocument(prefs) {
   appliedProperties = Object.keys(properties);
   if (tokens.length) root.setAttribute(TABLE_COLORS_ATTRIBUTE, tokens.join(" "));
   else root.removeAttribute(TABLE_COLORS_ATTRIBUTE);
+  let fonts = document.getElementById("ar-table-font-overrides");
+  if (!fonts) {
+    fonts = document.createElement("style");
+    fonts.id = "ar-table-font-overrides";
+    document.head.appendChild(fonts);
+  }
+  fonts.textContent = tableFontCss(prefs);
 }
 
 /** Paints `prefs` and tells the listeners; false when nothing changed. */
@@ -114,7 +123,7 @@ export function setTableColors(prefs) {
 
 /** Opens the Custom Colors window, or brings the open one forward. */
 export function openTableColorsWindow() {
-  void import("/ui/shared/components/spreadsheet/table_colors_window.js?v=20260927b")
+  void import("/ui/shared/components/spreadsheet/table_colors_window.js?v=20261003b")
     .then((module) => module.openTableColorsWindow());
 }
 
@@ -132,6 +141,7 @@ export function bootTableColors({ page = "" } = {}) {
   if (booted) return;
   booted = true;
   currentPage = String(page || "");
+  document.querySelectorAll(MENU_ITEM_SELECTOR).forEach(item => { item.textContent = TABLE_APPEARANCE_MENU_LABEL; });
   adopt(readCachedColors());
   if (typeof BroadcastChannel === "function") {
     channel = new BroadcastChannel(CHANNEL_NAME);

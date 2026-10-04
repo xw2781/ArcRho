@@ -16,11 +16,46 @@ import {
   tableColorGroupsFor,
   tableColorPropertyName,
   tableColorToken,
+  setTableFont,
+  resetTableFont,
+  tableFontCss,
 } from "../ui/shared/components/spreadsheet/table_colors_model.js";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 const groupById = new Map(TABLE_COLOR_GROUPS.map((group) => [group.id, group]));
 const pageOf = (component) => groupById.get(component.group)?.page || "";
+
+test("section fonts preserve colours, explicit normal styles and scoped resets", () => {
+  let prefs = setTableColor(null, "cell-border", "border", "#123456");
+  prefs = setTableFont(prefs, "tables", "bold", true);
+  prefs = setTableFont(prefs, "dfm-averages", "bold", false);
+  prefs = setTableFont(prefs, "dfm-averages", "family", "Consolas");
+  prefs = setTableFont(prefs, "dfm-averages", "size", 18);
+  prefs = setTableFont(prefs, "dfm-averages", "italic", true);
+  assert.deepEqual(prefs.fonts["dfm-averages"], { family: "Consolas", size: 18, bold: false, italic: true });
+  assert.equal(prefs.components["cell-border"].border, "#123456");
+  const css = tableFontCss(prefs);
+  assert.ok(css.indexOf("table-font-tables") < css.indexOf("table-font-dfm-averages"));
+  assert.match(css, /font-weight: 400 !important/);
+  assert.match(css, /font-size: 18px !important/);
+  assert.match(css, /font-family: "Consolas" !important/);
+  assert.ok(tableColorCssState(prefs).tokens.includes("table-font-dfm-averages"));
+  const reset = resetTableFont(prefs, "dfm-averages");
+  assert.deepEqual(reset.fonts, { tables: { bold: true } });
+  assert.deepEqual(reset.components, prefs.components);
+  assert.deepEqual(resetTableColorsFor(prefs, "").fonts, { "dfm-averages": prefs.fonts["dfm-averages"] });
+  assert.deepEqual(resetTableColorsFor(prefs, "dfm"), { version: 1, components: {} });
+});
+
+test("font preferences reject unknown sections and unsafe or out-of-range values", () => {
+  const prefs = normalizeTableColors({ fonts: {
+    unknown: { bold: true },
+    tables: { family: 'Arial"; color:red', size: 200, bold: "yes", italic: true },
+    "dfm-averages": { family: "Calibri", size: 8.5, bold: false },
+  }});
+  assert.deepEqual(prefs.fonts, { "dfm-averages": { family: "Calibri", bold: false }, tables: { italic: true } });
+  assert.deepEqual(setTableFont(null, "tables", "size", ""), { version: 1, components: {} });
+});
 
 // Every method page built on the shared spreadsheet tables, with the file that
 // starts its colours and the menu markup that offers the window.
@@ -261,22 +296,22 @@ test("the named colours are unique, valid and found by value", () => {
   assert.equal(findTableColorPreset("#123456"), null);
 });
 
-test("every method page starts the colours, links the window and offers Custom Colors on its tables", async () => {
+test("every method page starts appearance preferences and wires the shared menu label", async () => {
   for (const { html: htmlPath, boot: bootPath, page } of METHOD_PAGES) {
     const [html, boot] = await Promise.all([read(htmlPath), read(bootPath)]);
     const call = page ? `bootTableColors({ page: "${page}" })` : "bootTableColors()";
     assert.ok(boot.includes("/ui/shared/components/spreadsheet/table_colors.js?v="), `${bootPath} loads the colours`);
     assert.ok(boot.includes(call), `${bootPath} calls ${call}`);
     assert.match(html, /\/ui\/shared\/components\/spreadsheet\/table_colors_window\.css\?v=/u, htmlPath);
-    assert.match(html, /<button[^>]*\sdata-table-colors[\s>][^<]*Custom Colors<\/button>/u, htmlPath);
+    assert.match(html, /<button[^>]*\sdata-table-colors><\/button>/u, htmlPath);
   }
   const dfm = await read("../ui/method_pages/dfm/dfm.html");
   for (const menuId of ["dfmAvgMenu", "dfmRatioMenu", "ctxMenu"]) {
     const menu = dfm.match(new RegExp(`<div id="${menuId}"[^>]*>([\\s\\S]*?)\\n  </div>`, "u"))?.[1] || "";
-    assert.match(menu, /data-table-colors>Custom Colors<\/button>/u, menuId);
+    assert.match(menu, /data-table-colors><\/button>/u, menuId);
   }
   const curves = await read("../ui/method_pages/dfm/dfm_curves_tab.js");
-  assert.match(curves, /\{ label: "Custom Colors", onSelect: openTableColorsWindow \}/u);
+  assert.match(curves, /\{ label: TABLE_APPEARANCE_MENU_LABEL, onSelect: openTableColorsWindow \}/u);
 });
 
 test("the host keeps the preference in its own file", async () => {
