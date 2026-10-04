@@ -16,7 +16,7 @@ import {
 const {
   state, calcRatio, averageRowReferenceValue, formatRatio, computeAverageForColumn,
   ratioStrikeSet, selectedSummaryByCol, summaryRowConfigs, summaryRowMap, BASE_SUMMARY_ROWS,
-  getShowNaBorders, getRatioSummaryRaf, setRatioSummaryRaf,
+  getRatioSummaryRaf, setRatioSummaryRaf,
   getLastSummaryCtxRowId, setLastSummaryCtxRowId,
   getEffectiveDevLabelsForModel, getRatioHeaderLabels, buildSummaryRows,
   buildExcludedSetForColumn, parsePeriodsValue, parseExcludeValue,

@@ -3,7 +3,6 @@
  * Handles all localStorage operations for DFM state persistence.
  */
 
-const NA_BORDER_KEY = "arcrho_dfm_ratio_na_borders";
 const RATIO_INTERACTION_MODE_KEY = "arcrho_dfm_ratio_interaction_mode";
 const RATIO_COLUMN_WIDTHS_KEY = "arcrho_dfm_ratio_column_widths";
 let _storageInstanceId = "";
@@ -55,10 +54,6 @@ export function getSavedMethodKey() {
   return base ? `arcrho_dfm_has_saved_method::${base}` : null;
 }
 
-export function getNaBorderKey() {
-  return NA_BORDER_KEY;
-}
-
 // --- Load functions ---
 
 export function loadCustomSummaryRows(key) {
@@ -70,16 +65,6 @@ export function loadCustomSummaryRows(key) {
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
-  }
-}
-
-export function loadNaBorders() {
-  try {
-    const raw = localStorage.getItem(NA_BORDER_KEY);
-    if (raw === null) return true;
-    return raw === "1";
-  } catch {
-    return true;
   }
 }
 
@@ -109,12 +94,6 @@ export function saveCustomSummaryRows(key, rows) {
   if (!key || !Array.isArray(rows)) return;
   try {
     localStorage.setItem(key, JSON.stringify(rows));
-  } catch {}
-}
-
-export function saveNaBorders(value) {
-  try {
-    localStorage.setItem(NA_BORDER_KEY, value ? "1" : "0");
   } catch {}
 }
 

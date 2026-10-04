@@ -905,16 +905,13 @@ body {
 }
 #ratioWrap td.na {
   border: none !important;
-  background: transparent !important;
-}
-#ratioWrap.showNaBorders td.na {
   border-right: var(--ar-spreadsheet-grid-border-width) solid var(--ar-spreadsheet-grid-border) !important;
   border-bottom: var(--ar-spreadsheet-grid-border-width) solid var(--ar-spreadsheet-grid-border) !important;
   background: transparent !important;
 }
 /* The table's bottom edge is drawn by the shared rule in spreadsheet_table.css,
    so a blank cell in the last row adds no line of its own under it. */
-#ratioWrap.showNaBorders table.ratioMainTable tbody tr:last-child > td.na {
+#ratioWrap table.ratioMainTable tbody tr:last-child > td.na {
   border-bottom-width: 0 !important;
 }
 /* The frame around the tables is their outer edge. The header row, the label

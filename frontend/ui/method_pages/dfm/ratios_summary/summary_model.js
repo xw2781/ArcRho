@@ -14,7 +14,7 @@ import { openContextMenu } from "/ui/shared/components/context_menu/context_menu
 const {
   state, calcRatio, roundRatio, roundHalfUp, formatRatio, computeAverageForColumn,
   ratioStrikeSet, selectedSummaryByCol, summaryRowConfigs, summaryRowMap, BASE_SUMMARY_ROWS,
-  getShowNaBorders, getRatioSummaryRaf, setRatioSummaryRaf,
+  getRatioSummaryRaf, setRatioSummaryRaf,
   getLastSummaryCtxRowId, setLastSummaryCtxRowId,
   getEffectiveDevLabelsForModel, getRatioHeaderLabels, buildSummaryRows,
   buildExcludedSetForColumn, parsePeriodsValue, parseExcludeValue, getDfmDecimalPlaces,
@@ -419,19 +419,6 @@ function getRatioMenuEl() {
 
 function getResultsTabMenuEl() {
   return document.getElementById("dfmResultsTabMenu");
-}
-
-function updateRatioMenuLabel() {
-  const menu = getRatioMenuEl();
-  const btn = menu?.querySelector('[data-action="toggle-na-borders"]');
-  if (!btn) return;
-  btn.textContent = getShowNaBorders() ? "Hide Lower-Right Borders" : "Show Lower-Right Borders";
-}
-
-function applyNaBorderVisibility() {
-  const wrap = document.getElementById("ratioWrap");
-  if (!wrap) return;
-  wrap.classList.toggle("showNaBorders", getShowNaBorders());
 }
 
 function getAvgModalEl() {
@@ -990,8 +977,6 @@ registerSummaryFunctions({
   getAvgMenuEl,
   getRatioMenuEl,
   getResultsTabMenuEl,
-  updateRatioMenuLabel,
-  applyNaBorderVisibility,
   getAvgModalEl,
   hideAvgMenu,
   hideResultsTabMenu,

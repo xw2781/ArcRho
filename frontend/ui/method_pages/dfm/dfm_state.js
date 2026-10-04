@@ -74,7 +74,6 @@ let ratioColAllActive = false;
 let cachedRootPath = null;
 let cachedWorkspacePaths = null;
 let dfmIsDirty = false;
-let showNaBorders = false;
 let currentDfmTab = "details";
 let ratioSummaryRaf = null;
 let lastSummaryCtxRowId = null;
@@ -132,9 +131,6 @@ export function consumePendingDfmPropagationJobId() {
   pendingDfmPropagationJobId = "";
   return jobId;
 }
-
-export function getShowNaBorders() { return showNaBorders; }
-export function setShowNaBorders(v) { showNaBorders = v; }
 
 export function getCurrentDfmTab() { return currentDfmTab; }
 export function setCurrentDfmTab(v) { currentDfmTab = v; }

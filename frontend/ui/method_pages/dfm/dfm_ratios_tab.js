@@ -9,7 +9,6 @@ import {
   calcRatio, ratioNumberOrNull, persistedRatioOrNull, formatRatio,
   ratioStrikeSet, activeRatioCols, selectedSummaryByCol, summaryRowConfigs,
   getRatioColAllActive, setRatioColAllActive,
-  getShowNaBorders, setShowNaBorders,
   getEffectiveDevLabelsForModel, getRatioHeaderLabels,
   getOriginLabelTextForRatio, buildSummaryRows, getDfmDecimalPlaces,
   getRatioChartCol,
@@ -18,7 +17,6 @@ import {
 import {
   loadRatioInteractionMode,
   loadRatioColumnWidths,
-  saveNaBorders,
   saveRatioInteractionMode,
   saveRatioColumnWidths,
 } from "/ui/method_pages/dfm/dfm_storage.js";
@@ -594,14 +592,6 @@ function updateRatioMenuLabel() {
   }
   const showDataBtn = menu?.querySelector('[data-action="toggle-ratio-data"]');
   if (showDataBtn) showDataBtn.textContent = isRatioDataVisible() ? "Hide Data" : "Show Data";
-  const borderBtn = menu?.querySelector('[data-action="toggle-na-borders"]');
-  if (borderBtn) borderBtn.textContent = getShowNaBorders() ? "Hide N/A Borders" : "Show N/A Borders";
-}
-
-function applyNaBorderVisibility() {
-  const wrap = document.getElementById("ratioWrap");
-  if (!wrap) return;
-  wrap.classList.toggle("showNaBorders", !!getShowNaBorders());
 }
 
 export function wireRatioContextMenu() {
@@ -666,10 +656,6 @@ export function wireRatioContextMenu() {
       await ratioTableHighlight?.copySelection?.();
     } else if (btn.dataset.action === "add-ratio-cell-note") {
       showDfmCellNoteEditor(ratioContextCell, { focus: true });
-    } else if (btn.dataset.action === "toggle-na-borders") {
-      setShowNaBorders(!getShowNaBorders());
-      saveNaBorders(getShowNaBorders());
-      applyNaBorderVisibility();
     } else if (btn.dataset.action === "copy-ratio-patterns") {
       copyRatioPatterns();
     } else if (btn.dataset.action === "apply-ratio-patterns") {
@@ -1183,7 +1169,6 @@ export function renderRatioTable() {
   const labelWidth = Math.max(naturalLabelWidth, storedLabelWidth ?? 0);
   wrap.style.setProperty("--dfm-ratio-label-column-width", `${labelWidth}px`);
   wireRatioColumnResizeHandles(table, summaryTable, selectedTable, wrap, naturalLabelWidth);
-  applyNaBorderVisibility();
 
   wireSummaryRowDrag(summaryBody);
   wireSummaryContextMenu(summaryTable);

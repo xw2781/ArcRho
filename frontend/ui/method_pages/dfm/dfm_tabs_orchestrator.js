@@ -14,11 +14,10 @@ import { syncDetailsLabelWidth } from "/ui/shared/tabs/details/details_form_layo
 import { applyHostFixedDetailsFields } from "/ui/shared/tabs/details/details_host_fields.js?v=20260820b";
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260916b";
-import { setStorageInstance, loadNaBorders } from "/ui/method_pages/dfm/dfm_storage.js";
+import { setStorageInstance } from "/ui/method_pages/dfm/dfm_storage.js";
 import {
   state as dfmState,
   getDfmInst,
-  setShowNaBorders,
   setCachedRootPath,
   setCurrentDfmTab,
   getCurrentDfmTab,
@@ -583,7 +582,6 @@ function initDfmTabs() {
   wireDfmScrollbarActivity(document.getElementById("ratioWrapHost"));
   wireDfmScrollbarActivity(document.getElementById("dfmCurvesWrapHost"));
   wireDfmScrollbarActivity(document.getElementById("resultsWrap"));
-  setShowNaBorders(loadNaBorders());
 
   wireDfmSpinnerControls();
   wireMethodName();
