@@ -12,7 +12,9 @@ import {
   assistantModelSupportsReasoning,
   getAssistantModelOptions,
   getAssistantReasoningOptionsForModel,
+  getAssistantModelProvider,
   getDefaultAssistantModel,
+  getDefaultAssistantModelFor,
   getDefaultAssistantReasoningEffort,
   getAssistantModelLabelFor,
   getAssistantReasoningLabelFor,
@@ -55,6 +57,8 @@ import { installAssistantAccounts } from "./accounts.js";
 
 let assistantVoice = null;
 let assistantAccounts = null;
+// The one account every chat runs under; its provider decides which models a chat can use.
+let assistantAccount = null;
 let preparationGeneration = 0;
 async function prepareAssistantSession() {
   const host = getHostApi();
@@ -147,8 +151,6 @@ let assistantInstallJustSucceeded = false;
 let suppressLauncherClick = false;
 let assistantLauncherVisible = true;
 let assistantUserAvatarName = "Arcode";
-let assistantAuthStatus = "";
-let assistantLoginEmail = "";
 const assistantActivityTypingStates = new Map();
 let assistantActivityTypingTimer = null;
 let assistantSkillMenuOpen = false;
@@ -199,7 +201,6 @@ export function configureAiAssistant(config = {}) {
   ASSISTANT_PANEL_OPENED_SESSION_KEY = `${storagePrefix}_ai_assistant_panel_opened_session`;
   assistantLauncherVisible = readAssistantLauncherVisibleFallback();
   assistantUserAvatarName = String(assistantConfig.appName || "Arcode").trim() || "Arcode";
-  assistantLoginEmail = "";
 }
 
 function assistantMessageType(name) {
@@ -211,14 +212,21 @@ function setText(el, text) {
   if (el) el.textContent = text || "";
 }
 
+let assistantStatusDetail = "";
+
 function setAssistantConnectionStatus(online, detail = "") {
   const el = $("aiAssistantConnectionStatus");
   if (!el) return;
+  assistantStatusDetail = detail;
   el.classList.toggle("online", !!online);
   el.classList.toggle("offline", !online);
   el.textContent = online ? "Online" : "Offline";
   el.setAttribute("aria-label", online ? "ArcBot online" : "ArcBot offline");
-  el.title = detail || (online ? "ArcBot is online" : "ArcBot is offline");
+  el.title = [
+    online ? "ArcBot is online" : "ArcBot is offline",
+    detail,
+    `Account: ${formatAssistantAccount()}`,
+  ].filter(Boolean).join("\n");
   updateAssistantSettingsPanel();
 }
 
@@ -246,11 +254,84 @@ function shouldShowAssistantTokenAlert() {
   return shouldShowTokenAlertFor(assistantModel, assistantReasoningEffort);
 }
 
+function getAssistantAccountProvider() {
+  if (!assistantAccount) return "";
+  return assistantAccount.provider === "claude" ? "anthropic" : "openai";
+}
+
+// A chat runs on the selected account, so a model from the other provider falls back to that provider's default.
+function accountModel(model) {
+  const normalized = normalizeAssistantModel(model);
+  const provider = getAssistantAccountProvider();
+  if (!provider || getAssistantModelProvider(normalized) === provider) return normalized;
+  return getDefaultAssistantModelFor(provider) || normalized;
+}
+
+function formatAssistantAccount() {
+  if (!assistantAccount) return "Loading…";
+  const provider = assistantAccount.provider === "claude" ? "Anthropic" : "OpenAI";
+  const state = assistantAccount.pending
+    ? "signing in"
+    : assistantAccount.signedIn ? (assistantAccount.email || assistantAccount.plan) : "not signed in";
+  return `${assistantAccount.label} (${[provider, state].filter(Boolean).join(", ")})`;
+}
+
+// Both providers keep a conversation's saved prompt cache for about an hour.
+const ASSISTANT_CACHE_WARM_MS = 60 * 60 * 1000;
+
+function isAssistantCacheWarm() {
+  const last = [...assistantMessages].reverse().find((message) => message.role === "assistant");
+  const age = last ? Date.now() - Date.parse(last.timestamp) : Infinity;
+  return age >= 0 && age < ASSISTANT_CACHE_WARM_MS;
+}
+
+// A quiet line at the end of the chat; it goes away once the conversation continues.
+function showAssistantChatNotice(text) {
+  const container = $("aiAssistantMessages");
+  if (!container) return;
+  container.querySelectorAll(".aiAssistantChatNotice").forEach((node) => node.remove());
+  const notice = document.createElement("div");
+  notice.className = "aiAssistantChatNotice";
+  notice.setAttribute("role", "status");
+  notice.textContent = text;
+  container.appendChild(notice);
+  container.scrollTop = container.scrollHeight;
+}
+
+const ASSISTANT_SLOWER_REPLY_NOTE = "The first reply may be slower.";
+
+function noticeAssistantModelSwitch() {
+  if (!assistantMessages.length) return;
+  showAssistantChatNotice([`Switched to ${getAssistantModelLabel()}.`, isAssistantCacheWarm() ? ASSISTANT_SLOWER_REPLY_NOTE : ""].filter(Boolean).join(" "));
+}
+
+function handleAssistantAccountActive(account) {
+  const previousAccount = assistantAccount;
+  const previousModel = assistantModel;
+  const providerChanged = (account?.provider || "") !== (assistantAccount?.provider || "");
+  assistantAccount = account;
+  if (providerChanged) {
+    if (accountModel(assistantModel) !== assistantModel) setAssistantModel(assistantModel, { save: !!currentSessionId });
+    else renderAssistantModelOptions();
+  }
+  if (previousAccount && account && account.id !== previousAccount.id && assistantMessages.length) {
+    if (assistantModel !== previousModel) {
+      showAssistantChatNotice(`Continuing this chat on ${getAssistantModelLabel()} with ${account.label}.`);
+    } else {
+      showAssistantChatNotice([`Account changed to ${account.label}.`, isAssistantCacheWarm() ? ASSISTANT_SLOWER_REPLY_NOTE : ""].filter(Boolean).join(" "));
+    }
+  }
+  updateContextPanel();
+  setAssistantConnectionStatus(assistantReady, assistantStatusDetail);
+}
+
 function renderAssistantModelOptions() {
   const select = $("aiAssistantSettingsModelSelect");
   if (!select) return;
   const defaultModel = getDefaultAssistantModel();
-  const options = getAssistantModelOptions(assistantModel);
+  const accountProvider = getAssistantAccountProvider();
+  const options = getAssistantModelOptions(assistantModel)
+    .filter((option) => !accountProvider || option.provider === accountProvider);
   const providerGroups = [
     ["openai", "OpenAI"],
     ["anthropic", "Anthropic"],
@@ -290,22 +371,6 @@ function renderAssistantReasoningOptions() {
   }
   select.value = assistantReasoningEffort;
   syncAssistantSelectMenu(select);
-}
-
-function extractAssistantLoginEmail(value) {
-  const match = String(value || "").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu);
-  return match ? match[0] : "";
-}
-
-function formatAssistantLoginDetail() {
-  const appName = String(assistantConfig.appName || "Arcode").trim() || "Arcode";
-  const user = assistantUserAvatarName && assistantUserAvatarName !== appName ? assistantUserAvatarName : "Unknown";
-  const email = extractAssistantLoginEmail(assistantLoginEmail);
-  const auth = String(assistantAuthStatus || "").replace(/\s+/g, " ").trim();
-  const userWithEmail = email && user !== "Unknown" ? `${user} (${email})` : user;
-  if (!auth) return email && user === "Unknown" ? email : userWithEmail;
-  if (user === "Unknown") return email ? `${email} - ${auth}` : auth;
-  return `${userWithEmail} - ${auth}`;
 }
 
 function setSetup({ open = false, text = "", install = false, installLabel = "Install", login = false } = {}) {
@@ -976,6 +1041,7 @@ function updateContextPanel() {
   const usage = currentUsage || {};
   const rows = [
     ["Session", currentSessionTitle || currentSessionId || "New ArcBot Chat"],
+    ["Account", formatAssistantAccount()],
     ["Tab", context.title || context.tabType || "No active tab context"],
     ["Type", context.tabType || "home"],
     ["File", context.targetPath || context.path || "No active JSON-backed file"],
@@ -1059,7 +1125,7 @@ async function refreshAssistantModels(options = {}) {
 
 function setAssistantModel(model, options = {}) {
   const prevClaude = isClaudeModel();
-  assistantModel = normalizeAssistantModel(model);
+  assistantModel = accountModel(model);
   void prepareAssistantSession();
   // A promoted default or a switch between OpenAI and Claude starts at the default effort.
   assistantReasoningEffort = options.defaultEffort === true || prevClaude !== isClaudeModel()
@@ -1252,7 +1318,7 @@ function updateAssistantSettingsPanel() {
     ["folders", assistantReadableRoots.length ? `${assistantReadableRoots.length} extra` : "None"],
     ["tokens", formatContextWindowUsage(currentUsage || {})],
     ["status", assistantReady ? "Online" : "Offline"],
-    ["login", formatAssistantLoginDetail()],
+    ["login", formatAssistantAccount()],
   ];
   for (const [key, value] of rows) {
     const node = panel.querySelector(`[data-ai-settings-detail="${key}"]`);
@@ -1521,7 +1587,7 @@ async function loadAssistantSession(sessionId) {
   currentSessionId = session.id || "";
   currentSessionTitle = session.title || "ArcBot Chat";
   assistantMode = normalizeAssistantMode(session.mode);
-  assistantModel = normalizeAssistantModel(session.model);
+  assistantModel = accountModel(session.model);
   assistantReasoningEffort = reconcileAssistantReasoningEffort(
     assistantModel,
     normalizeAssistantReasoningEffort(session.reasoningEffort),
@@ -1551,7 +1617,7 @@ async function createAssistantSession() {
   const host = getHostApi();
   if (!host?.codexAssistantCreateSession) return false;
   // A new chat starts on the verified default model and effort; until discovery verifies one, it keeps the current pick.
-  const model = assistantModelDefaultVerified ? getDefaultAssistantModel() : assistantModel;
+  const model = accountModel(assistantModelDefaultVerified ? getDefaultAssistantModel() : assistantModel);
   const result = await host.codexAssistantCreateSession({
     mode: assistantMode,
     model,
@@ -1560,7 +1626,7 @@ async function createAssistantSession() {
   if (!result?.ok || !result.session) return false;
   currentSessionId = result.session.id;
   currentSessionTitle = result.session.title || "New ArcBot Chat";
-  assistantModel = normalizeAssistantModel(result.session.model);
+  assistantModel = accountModel(result.session.model);
   assistantReasoningEffort = reconcileAssistantReasoningEffort(
     assistantModel,
     normalizeAssistantReasoningEffort(result.session.reasoningEffort),
@@ -2914,6 +2980,7 @@ async function typeAssistantMessage(el, text) {
 function appendMessage(role, text) {
   const container = $("aiAssistantMessages");
   if (!container) return null;
+  container.querySelectorAll(".aiAssistantChatNotice").forEach((node) => node.remove());
   const normalizedRole = role === "assistant" ? "assistant" : "user";
   const el = document.createElement("div");
   el.className = `aiAssistantMessage ${normalizedRole}`;
@@ -2944,8 +3011,6 @@ function scrollMessagesToBottom() {
 
 function applyStatus(status) {
   const usingClaude = isClaudeModel();
-  assistantAuthStatus = String(status?.authStatus || status?.error || "").trim();
-  assistantLoginEmail = extractAssistantLoginEmail(status?.loginEmail || assistantAuthStatus);
   if (usingClaude) {
     assistantReady = !!status?.claudeAuthenticated;
     if (!assistantReady) {
@@ -3989,6 +4054,7 @@ export function initAiAssistant() {
     container: $("aiAssistantAccountFields"),
     getHost: getHostApi,
     onChanged: () => void handleAssistantAccountChange(),
+    onActive: handleAssistantAccountActive,
   });
   const host = getHostApi();
   if (!host) {
@@ -4113,7 +4179,9 @@ export function initAiAssistant() {
     openAssistantPromptGuide();
   });
   $("aiAssistantSettingsModelSelect")?.addEventListener("change", (event) => {
+    const previousModel = assistantModel;
     setAssistantModel(event.target?.value);
+    if (assistantModel !== previousModel) noticeAssistantModelSwitch();
   });
   $("aiAssistantSettingsReasoningSelect")?.addEventListener("change", (event) => {
     setAssistantReasoningEffort(event.target?.value);

@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "ArcBot",
+  "audience": "user",
+  "summary": "ArcBot now installs the Claude CLI by itself, so signing in to Claude works on a computer that does not have it.",
+  "details": [
+    "The install starts in the background when ArcBot's account list opens, and a sign-in waits for it before opening the sign-in window."
+  ]
+}

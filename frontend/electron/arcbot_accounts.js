@@ -76,7 +76,11 @@ function createArcBotAccounts({ getRootDir, homeDir = os.homedir() }) {
     const accounts = (Array.isArray(raw.accounts) ? raw.accounts : []).filter((account) => (
       account && PROVIDERS[account.provider] && account.id && account.configDir
     ));
-    return { accounts, active: raw.active && typeof raw.active === "object" ? raw.active : {} };
+    return {
+      accounts,
+      active: raw.active && typeof raw.active === "object" ? raw.active : {},
+      provider: raw.provider === "claude" ? "claude" : "codex",
+    };
   }
 
   function writeStore(store) {
@@ -104,11 +108,17 @@ function createArcBotAccounts({ getRootDir, homeDir = os.homedir() }) {
     return list().find((a) => a.provider === provider && a.id === id) || builtin(provider);
   }
 
+  // The one account ArcBot uses for every chat; its provider decides which models run.
+  function current() {
+    return active(readStore().provider);
+  }
+
   function setActive(provider, id) {
     const account = get(id);
     if (account.provider !== provider) throw new Error("That account belongs to another provider.");
     const store = readStore();
     store.active = { ...store.active, [provider]: account.id };
+    store.provider = provider;
     writeStore(store);
     return account;
   }
@@ -200,20 +210,20 @@ function createArcBotAccounts({ getRootDir, homeDir = os.homedir() }) {
   }
 
   function views(now = Date.now()) {
-    const activeIds = { codex: active("codex").id, claude: active("claude").id };
+    const currentId = current().id;
     return list().map((account) => ({
       id: account.id,
       provider: account.provider,
       label: account.label,
       builtin: account.builtin,
-      active: activeIds[account.provider] === account.id,
+      active: currentId === account.id,
       pending: isLoginPending(account, now),
       ...identity(account),
     }));
   }
 
   return {
-    list, get, active, setActive, create, remove, envFor, identity, authFilePath,
+    list, get, active, current, setActive, create, remove, envFor, identity, authFilePath,
     markLoginPending, isLoginPending, views,
   };
 }

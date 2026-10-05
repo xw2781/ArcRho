@@ -34,57 +34,58 @@ function accountDetail(account) {
   return account.email || account.plan || "Signed in";
 }
 
+function providerLabel(account) {
+  return PROVIDERS.find((provider) => provider.id === account.provider)?.label || "";
+}
+
 /**
- * Account pickers for the Settings panel: one row per provider showing the
- * account new requests use, with a menu to switch, add, sign in or out, and
- * remove accounts. The host owns the list; this only renders and asks.
+ * The Account picker for the Settings panel: one list of every OpenAI and
+ * Anthropic account with a check on the single account ArcBot uses for every
+ * chat. Its menu switches accounts, signs in or out, removes added accounts,
+ * and adds one under either provider. The host owns the list; this only
+ * renders and asks. `onActive` hears about the current account after every
+ * refresh so the chat can follow its provider.
  */
-export function installAssistantAccounts({ container, getHost, onChanged = () => {} }) {
+export function installAssistantAccounts({ container, getHost, onChanged = () => {}, onActive = () => {} }) {
   if (!container) return null;
   let accounts = [];
   let pollTimer = 0;
-  let openProvider = "";
+  let isOpen = false;
   let addingProvider = "";
   let confirmRemoveId = "";
   let error = "";
-  const pickers = new Map();
 
   const status = element("div", "aiAssistantAccountStatus");
   status.setAttribute("role", "status");
 
-  for (const provider of PROVIDERS) {
-    const field = element("div", "aiAssistantSettingsField");
-    const wrap = element("div", "aiAssistantMenuSelect aiAssistantAccountPicker");
-    const trigger = element("button", "aiAssistantMenuSelectTrigger aiAssistantAccountTrigger");
-    trigger.type = "button";
-    trigger.setAttribute("aria-haspopup", "menu");
-    trigger.setAttribute("aria-expanded", "false");
-    trigger.setAttribute("aria-label", `${provider.label} account`);
-    const list = element("div", "aiAssistantMenuSelectList aiAssistantAccountList");
-    list.setAttribute("role", "menu");
-    list.setAttribute("aria-label", `${provider.label} accounts`);
-    list.hidden = true;
-    wrap.append(trigger, list);
-    field.append(element("span", "", provider.label), wrap);
-    container.appendChild(field);
-    pickers.set(provider.id, { provider, wrap, trigger, list });
+  const field = element("div", "aiAssistantSettingsField");
+  const wrap = element("div", "aiAssistantMenuSelect aiAssistantAccountPicker");
+  const trigger = element("button", "aiAssistantMenuSelectTrigger aiAssistantAccountTrigger");
+  trigger.type = "button";
+  trigger.setAttribute("aria-haspopup", "menu");
+  trigger.setAttribute("aria-expanded", "false");
+  trigger.setAttribute("aria-label", "ArcBot account");
+  const list = element("div", "aiAssistantMenuSelectList aiAssistantAccountList");
+  list.setAttribute("role", "menu");
+  list.setAttribute("aria-label", "ArcBot accounts");
+  list.hidden = true;
+  wrap.append(trigger, list);
+  field.append(element("span", "", "Default"), wrap);
+  container.append(field, status);
 
-    trigger.addEventListener("click", () => (openProvider === provider.id ? close() : open(provider.id)));
-    trigger.addEventListener("keydown", (event) => {
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault();
-        open(provider.id);
-      }
-    });
-    list.addEventListener("keydown", (event) => onListKey(event, provider.id));
-    wrap.addEventListener("focusout", (event) => {
-      if (openProvider === provider.id && event.relatedTarget && !wrap.contains(event.relatedTarget)) close();
-    });
-  }
-  container.appendChild(status);
+  trigger.addEventListener("click", () => (isOpen ? close() : open()));
+  trigger.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      open();
+    }
+  });
+  list.addEventListener("keydown", onListKey);
+  wrap.addEventListener("focusout", (event) => {
+    if (isOpen && event.relatedTarget && !wrap.contains(event.relatedTarget)) close();
+  });
   document.addEventListener("mousedown", (event) => {
-    const picker = pickers.get(openProvider);
-    if (picker && !picker.wrap.contains(event.target)) close();
+    if (isOpen && !wrap.contains(event.target)) close();
   }, true);
 
   function avatar(account) {
@@ -95,18 +96,20 @@ export function installAssistantAccounts({ container, getHost, onChanged = () =>
     return node;
   }
 
-  function renderTrigger(providerId) {
-    const { trigger } = pickers.get(providerId);
-    const active = accounts.find((item) => item.provider === providerId && item.active);
+  function renderTrigger() {
+    const active = accounts.find((item) => item.active);
     trigger.replaceChildren();
     if (!active) {
       trigger.append(element("span", "aiAssistantMenuSelectValue", "Loading…"));
     } else {
       const value = element("span", "aiAssistantMenuSelectValue");
-      value.append(element("span", "aiAssistantAccountName", active.label), element("span", "aiAssistantAccountDetail", accountDetail(active)));
+      value.append(
+        element("span", "aiAssistantAccountName", active.label),
+        element("span", "aiAssistantAccountDetail", `${providerLabel(active)} · ${accountDetail(active)}`),
+      );
       trigger.append(avatar(active), value);
       trigger.classList.toggle("signed-out", !active.signedIn && !active.pending);
-      trigger.title = [active.label, active.email, active.plan].filter(Boolean).join(" · ");
+      trigger.title = [providerLabel(active), active.label, active.email, active.plan].filter(Boolean).join(" · ");
     }
     const caret = element("span", "aiAssistantMenuSelectCaret");
     caret.setAttribute("aria-hidden", "true");
@@ -140,7 +143,7 @@ export function installAssistantAccounts({ container, getHost, onChanged = () =>
         if (confirming) void removeAccount(account);
         else {
           confirmRemoveId = account.id;
-          render(account.provider, `[data-account-id="${account.id}"] .remove`);
+          render(`[data-account-id="${account.id}"] .remove`);
         }
       });
       row.appendChild(remove);
@@ -177,70 +180,69 @@ export function installAssistantAccounts({ container, getHost, onChanged = () =>
   }
 
   // A re-render keeps focus on the same control, and leaves a name being typed alone.
-  function render(providerId, focusSelector = "") {
-    renderTrigger(providerId);
-    const { list } = pickers.get(providerId);
+  function render(focusSelector = "") {
+    renderTrigger();
     if (list.hidden) return;
-    if (addingProvider === providerId && list.querySelector(".aiAssistantAccountForm") && !focusSelector) return;
+    if (addingProvider && list.querySelector(".aiAssistantAccountForm") && !focusSelector) return;
     const restore = focusSelector || (list.contains(document.activeElement) ? focusKey(document.activeElement) : "");
     list.replaceChildren();
-    for (const account of accounts.filter((item) => item.provider === providerId)) list.appendChild(renderRow(account));
-    list.appendChild(element("div", "aiAssistantAccountSeparator"));
-    if (addingProvider === providerId) {
-      list.appendChild(renderAddForm(providerId));
-    } else {
-      const add = element("button", "aiAssistantAccountChoose aiAssistantAccountAdd");
-      add.type = "button";
-      add.setAttribute("role", "menuitem");
-      const icon = element("span", "aiAssistantMenuSelectCheck");
-      icon.innerHTML = ICONS.add;
-      add.append(icon, element("span", "aiAssistantAccountName", "Add Account…"));
-      add.addEventListener("click", () => {
-        addingProvider = providerId;
-        render(providerId);
-        list.querySelector(".aiAssistantAccountInput")?.focus();
-      });
-      list.appendChild(add);
-    }
+    PROVIDERS.forEach((provider, index) => {
+      if (index) list.appendChild(element("div", "aiAssistantAccountSeparator"));
+      list.appendChild(element("div", "aiAssistantAccountGroup", provider.label));
+      for (const account of accounts.filter((item) => item.provider === provider.id)) list.appendChild(renderRow(account));
+      if (addingProvider === provider.id) {
+        list.appendChild(renderAddForm(provider.id));
+      } else {
+        const add = element("button", "aiAssistantAccountChoose aiAssistantAccountAdd");
+        add.type = "button";
+        add.dataset.provider = provider.id;
+        add.setAttribute("role", "menuitem");
+        const icon = element("span", "aiAssistantMenuSelectCheck");
+        icon.innerHTML = ICONS.add;
+        add.append(icon, element("span", "aiAssistantAccountName", "Add Account…"));
+        add.addEventListener("click", () => {
+          addingProvider = provider.id;
+          render();
+          list.querySelector(".aiAssistantAccountInput")?.focus();
+        });
+        list.appendChild(add);
+      }
+    });
     if (restore) (list.querySelector(restore) || list.querySelector('[aria-checked="true"]'))?.focus();
   }
 
   function renderAll() {
-    for (const providerId of pickers.keys()) render(providerId);
+    render();
     status.textContent = error;
     status.classList.toggle("error", !!error);
   }
 
-  function open(providerId) {
-    if (openProvider && openProvider !== providerId) close();
-    const picker = pickers.get(providerId);
-    openProvider = providerId;
-    picker.list.hidden = false;
-    picker.trigger.setAttribute("aria-expanded", "true");
-    render(providerId);
-    (picker.list.querySelector('[aria-checked="true"]') || picker.list.querySelector(".aiAssistantAccountChoose"))?.focus();
+  function open() {
+    isOpen = true;
+    list.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    render();
+    (list.querySelector('[aria-checked="true"]') || list.querySelector(".aiAssistantAccountChoose"))?.focus();
     void refresh();
   }
 
   function close({ focusTrigger = false } = {}) {
-    const picker = pickers.get(openProvider);
-    openProvider = "";
+    isOpen = false;
     addingProvider = "";
     confirmRemoveId = "";
-    if (!picker) return;
-    picker.list.hidden = true;
-    picker.trigger.setAttribute("aria-expanded", "false");
-    if (focusTrigger) picker.trigger.focus();
+    list.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+    if (focusTrigger) trigger.focus();
   }
 
-  function onListKey(event, providerId) {
-    const { list } = pickers.get(providerId);
+  function onListKey(event) {
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
       if (addingProvider) {
+        const providerId = addingProvider;
         addingProvider = "";
-        render(providerId, ".aiAssistantAccountAdd");
+        render(`.aiAssistantAccountAdd[data-provider="${providerId}"]`);
       } else {
         close({ focusTrigger: true });
       }
@@ -265,11 +267,12 @@ export function installAssistantAccounts({ container, getHost, onChanged = () =>
     const before = new Map(accounts.map((item) => [item.id, item]));
     accounts = result.accounts;
     error = "";
-    // A finished sign-in on an active account changes what ArcBot can do now.
+    // A finished sign-in on the active account changes what ArcBot can do now.
     const finished = accounts.some((item) => item.active && before.get(item.id)?.pending && !item.pending);
     renderAll();
     clearTimeout(pollTimer);
     if (accounts.some((item) => item.pending)) pollTimer = setTimeout(() => void refresh(), POLL_MS);
+    onActive(accounts.find((item) => item.active) || null);
     if (notify || finished) onChanged();
     return true;
   }
@@ -310,7 +313,7 @@ export function installAssistantAccounts({ container, getHost, onChanged = () =>
   async function removeAccount(account) {
     confirmRemoveId = "";
     apply(await call("codexAssistantRemoveAccount", account.id), { notify: account.active });
-    pickers.get(account.provider).list.querySelector(".aiAssistantAccountChoose")?.focus();
+    list.querySelector(".aiAssistantAccountChoose")?.focus();
   }
 
   async function createAccount(providerId, label, submit) {
@@ -321,7 +324,7 @@ export function installAssistantAccounts({ container, getHost, onChanged = () =>
     if (created) {
       addingProvider = "";
       apply({ ok: true, accounts: result.accounts }, { notify: true });
-      pickers.get(providerId).list.querySelector('[aria-checked="true"]')?.focus();
+      list.querySelector('[aria-checked="true"]')?.focus();
     }
     if (!result?.ok) {
       submit.disabled = false;
@@ -331,5 +334,6 @@ export function installAssistantAccounts({ container, getHost, onChanged = () =>
   }
 
   renderAll();
+  void refresh();
   return { refresh, close };
 }

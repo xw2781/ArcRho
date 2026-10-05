@@ -31,7 +31,7 @@ test("primary accounts are built in and active by default", (t) => {
   assert.equal(codex.builtin, true);
   assert.equal(codex.configDir, path.join(home, ".codex"));
   assert.equal(accounts.active("claude").configDir, path.join(home, ".claude"));
-  assert.deepEqual(accounts.views().map((a) => [a.provider, a.label, a.active]), [["codex", "Primary", true], ["claude", "Primary", true]]);
+  assert.deepEqual(accounts.views().map((a) => [a.provider, a.label, a.active]), [["codex", "Primary", true], ["claude", "Primary", false]]);
   assert.throws(() => accounts.remove(codex.id), /cannot be removed/);
 });
 
@@ -49,12 +49,16 @@ test("an added account gets its own folder, shared settings, and no credentials"
   assert.deepEqual(stored.accounts.map((a) => a.id), [work.id]);
 });
 
-test("switching and removing change only the provider's active account", (t) => {
+test("one account is current across both providers", (t) => {
   const { accounts } = setup(t);
   const work = accounts.create("claude", "Work");
   accounts.setActive("claude", work.id);
+  assert.equal(accounts.current().id, work.id);
+  assert.deepEqual(accounts.views().filter((a) => a.active).map((a) => a.id), [work.id]);
   assert.equal(accounts.active("claude").id, work.id);
   assert.equal(accounts.active("codex").builtin, true);
+  accounts.setActive("codex", accounts.active("codex").id);
+  assert.equal(accounts.current().provider, "codex");
   assert.throws(() => accounts.setActive("codex", work.id), /another provider/);
   accounts.remove(work.id);
   assert.ok(!fs.existsSync(work.configDir));
@@ -127,7 +131,7 @@ test("the host runs Codex and reads Claude credentials under the active account"
     ipcMain: { handle: (name, fn) => handlers.set(name, fn) },
     app: { isPackaged: false, getPath: () => prefs },
     APP_ROOT: path.join(repo, "frontend"), REPO_ROOT: repo,
-    getPrefsDir: () => prefs, getWorkspacePathsPath: () => "", homeDir: home,
+    getPrefsDir: () => prefs, getWorkspacePathsPath: () => "", homeDir: home, findExecutableOnPath: () => "",
   });
   t.after(() => host.stop());
   assert.equal(testHooks.getArcBotCodexEnv({ CODEX_HOME: "x" }).CODEX_HOME, undefined);
@@ -141,7 +145,7 @@ test("the host runs Codex and reads Claude credentials under the active account"
     assert.equal(testHooks.getArcBotCodexEnv({}).CODEX_HOME, codex.configDir);
     assert.equal(testHooks.getClaudeCredentialsPath(), path.join(claude.configDir, ".credentials.json"));
     const list = await handlers.get("codex-assistant-accounts-list")();
-    assert.deepEqual(list.accounts.filter((a) => a.active).map((a) => a.id), [codex.id, claude.id]);
+    assert.deepEqual(list.accounts.filter((a) => a.active).map((a) => a.id), [claude.id]);
     const removed = await handlers.get("codex-assistant-account-remove")(null, { accountId: claude.id });
     assert.equal(removed.ok, true);
     assert.equal(testHooks.getClaudeCredentialsPath(), path.join(home, ".claude", ".credentials.json"));

@@ -237,6 +237,17 @@ export function getDefaultAssistantModel() {
   return defaultAssistantModel;
 }
 
+// The model a chat falls back to when the selected account belongs to the other provider.
+export function getDefaultAssistantModelFor(provider) {
+  if (provider !== "anthropic") return defaultAssistantModel;
+  const available = CLAUDE_MODEL_OPTIONS.filter((option) => option.available);
+  return (available.find((option) => option.isDefault) || available[0])?.value || "";
+}
+
+export function getAssistantModelProvider(model) {
+  return isClaudeAssistantModel(model) ? "anthropic" : "openai";
+}
+
 export function normalizeAssistantModel(model) {
   const value = String(model || "").trim();
   if (!value || !isSafeAssistantModelSlug(value)) return getDefaultAssistantModel();

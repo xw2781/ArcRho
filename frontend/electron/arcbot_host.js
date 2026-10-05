@@ -305,7 +305,13 @@ function readCodexLoginEmail(authOutput = "") {
   return "";
 }
 
+function getUserClaudeInstallPrefix() {
+  return path.join(path.dirname(getUserCodexInstallPrefix()), "claude-cli");
+}
+
 function getClaudeCommand() {
+  const installed = path.join(getUserClaudeInstallPrefix(), process.platform === "win32" ? "claude.cmd" : path.join("bin", "claude"));
+  if (fs.existsSync(installed)) return installed;
   if (process.platform === "win32") {
     const candidates = [
       process.env.APPDATA ? path.join(process.env.APPDATA, "npm", "claude.cmd") : "",
@@ -2673,12 +2679,43 @@ ipcMain.handle("codex-assistant-install", async () => {
   };
 });
 
+// Sign-in needs the Claude CLI, so a machine without one gets a per-user copy first.
+let claudeCliInstall = null;
+
+// One install at a time; the list of accounts starts it in the background and a sign-in waits on it.
+function installClaudeCli() {
+  if (claudeCliInstall) return claudeCliInstall;
+  const args = ["install", "--global", "--prefix", getUserClaudeInstallPrefix(), "@anthropic-ai/claude-code"];
+  // The package's install script runs `node`, so the bundled Node folder goes on PATH.
+  const options = {
+    timeoutMs: 10 * 60 * 1000,
+    shell: false,
+    env: { ...process.env, PATH: `${getBundledNodePortableRoot()}${path.delimiter}${process.env.PATH || ""}` },
+  };
+  // Bundled Node runs npm directly: an install path with spaces breaks cmd.exe quoting.
+  const bundledNode = path.join(getBundledNodePortableRoot(), process.platform === "win32" ? "node.exe" : "bin/node");
+  const npmCli = path.join(getBundledNodePortableRoot(), "node_modules", "npm", "bin", "npm-cli.js");
+  const npm = getNpmCommand();
+  claudeCliInstall = (fs.existsSync(bundledNode) && fs.existsSync(npmCli)
+    ? runHostCommand(bundledNode, [npmCli, ...args], options)
+    : process.platform === "win32" && /\.(cmd|bat)$/iu.test(npm)
+      ? runWindowsCmdCommand(npm, args, options)
+      : runHostCommand(npm, args, options))
+    .then((result) => (result.ok ? "" : normalizeHostError(result, "Claude CLI installation failed.")))
+    .finally(() => { claudeCliInstall = null; });
+  return claudeCliInstall;
+}
+
 // Opens the vendor sign-in in its own window under the account's folder.
 async function launchArcBotAccountLogin(account) {
   let result;
   if (account.provider === "claude") {
-    const claudeCmd = getClaudeCommand();
-    if (!claudeCmd) return { ok: false, error: "Claude CLI (claude) was not found. Install it to sign in." };
+    let claudeCmd = getClaudeCommand();
+    if (!claudeCmd) {
+      const installError = await installClaudeCli();
+      claudeCmd = getClaudeCommand();
+      if (!claudeCmd) return { ok: false, error: installError || "Claude CLI (claude) could not be installed." };
+    }
     const env = arcBotAccounts.envFor(account, process.env);
     result = process.platform === "win32"
       ? await launchDetachedArcBotProcess("cmd.exe", ["/d", "/k", `${quoteWindowsCmdArg(claudeCmd)} auth login`], { env })
@@ -2738,7 +2775,10 @@ ipcMain.handle("codex-assistant-login", async (_event, payload) => handleArcBotA
     : arcBotAccounts.active(arcBotAccountProvider(payload?.provider)))
 )));
 
-ipcMain.handle("codex-assistant-accounts-list", async () => handleArcBotAccountChange(arcBotAccountsResult));
+ipcMain.handle("codex-assistant-accounts-list", async () => handleArcBotAccountChange(() => {
+  if (!getClaudeCommand()) void installClaudeCli();
+  return arcBotAccountsResult();
+}));
 
 ipcMain.handle("codex-assistant-account-create", async (_event, payload) => handleArcBotAccountChange(async () => {
   const busy = arcBotAccountBusyError();
@@ -2753,7 +2793,7 @@ ipcMain.handle("codex-assistant-account-create", async (_event, payload) => hand
 
 ipcMain.handle("codex-assistant-account-activate", async (_event, payload) => handleArcBotAccountChange(() => {
   const provider = arcBotAccountProvider(payload?.provider);
-  if (arcBotAccounts.active(provider).id === payload?.accountId) return arcBotAccountsResult();
+  if (arcBotAccounts.current().id === payload?.accountId) return arcBotAccountsResult();
   const busy = arcBotAccountBusyError();
   if (busy) return { ok: false, error: busy };
   arcBotAccounts.setActive(provider, String(payload?.accountId || ""));
