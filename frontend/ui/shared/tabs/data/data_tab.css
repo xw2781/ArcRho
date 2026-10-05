@@ -371,6 +371,24 @@
   border-bottom-color: var(--ar-spreadsheet-selection-border);
 }
 
+/* The label column has no left border of its own (the frame is that edge), so a
+   highlighted label there draws the selection's line (white in the default
+   table style) as a shadow, beside the grid line it already has on its right. */
+#tableWrap th:first-child.activeRow,
+#tableWrap th:first-child.activeCol,
+#tableWrap th:first-child.arSpreadsheetSelectedLabel,
+#tableWrap td:first-child.arSpreadsheetSelectedLabel {
+  box-shadow:
+    inset var(--ar-spreadsheet-grid-border-width) 0 0 var(--ar-spreadsheet-selection-border),
+    inset calc(-1 * var(--ar-spreadsheet-grid-border-width)) 0 0 var(--ar-spreadsheet-grid-border);
+}
+
+/* The first highlighted column label of a run has no highlighted neighbour on
+   its left to lend it the selection's line, so it draws that line itself. */
+#tableWrap thead th.activeCol:not(:first-child):not(.activeCol + .activeCol) {
+  box-shadow: inset var(--ar-spreadsheet-grid-border-width) 0 0 var(--ar-spreadsheet-selection-border);
+}
+
 /*
 Grid placeholder: loading skeleton, empty, and error surfaces.
 
