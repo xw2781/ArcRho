@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "ArcBot",
+  "audience": "user",
+  "summary": "ArcBot now reads the reserving class open in the window unless asked about another class or the whole project, and its project reads no longer fail when Python is installed under a folder with spaces."
+}

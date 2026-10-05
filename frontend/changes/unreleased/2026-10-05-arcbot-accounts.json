@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "ArcBot",
+  "audience": "user",
+  "summary": "ArcBot can now keep several OpenAI and Claude accounts and switch between them from Settings.",
+  "details": [
+    "The new Account section shows the account each provider uses, with its email or sign-in state; its menu switches accounts, signs in or out, and removes added accounts.",
+    "Add Account… takes a name and opens the sign-in window; each added account keeps its own sign-in, separate from your main one.",
+    "ArcBot notices when sign-in finishes, and switching applies to the next request."
+  ]
+}

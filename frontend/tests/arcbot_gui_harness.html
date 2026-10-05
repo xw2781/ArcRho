@@ -1,0 +1,23 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>ArcBot GUI - Fake Project</title>
+<link rel="stylesheet" href="/ui/ai-assistant/assistant.css">
+<style>body{font:13px Arial;background:#eef2f6;padding:18px;--statusbar-h:24px}iframe{width:460px;height:390px;border:1px solid #cbd5e1}button{padding:7px;margin:4px}#fixtureStatus{white-space:pre-wrap}</style>
+</head><body>
+<h2>ArcBot GUI · Fake Project</h2>
+<p>Actual widget and host. Simulated CLI and project; no Gateway or real project writes.</p>
+<button id="prefill">Prefill project review</button><button id="switch">Switch active page</button>
+<p id="fixtureStatus">Open ArcBot to inspect background preparation, then Send the prefilled request.</p>
+<iframe id="fakePage" title="Fake method"></iframe>
+<script type="module">
+import { configureAiAssistant, initAiAssistant } from '/ui/ai-assistant/index.js';
+const frame = document.querySelector('#fakePage');
+frame.srcdoc = `<h3>Fake Project: Paid DFM</h3><p>Active method window</p><script>
+window.addEventListener('message', e => {
+ if(e.data.type==='arcrho:assistant-context-request') parent.postMessage({type:'arcrho:assistant-context-result',requestId:e.data.requestId,context:{available:true,tabType:'dfm',targetPath:'fake-method.json',fields:{project:'ArcBot GUI Fake Project',reservingClass:'Auto',methodName:'Paid DFM'},activeJson:{name:'Paid DFM'}}},'*');
+});<\/script>`;
+const shell = {state:{activeId:'fake',tabs:[{id:'fake',type:'dfm',title:'Fake Project: Paid DFM',iframe:frame}]}};
+configureAiAssistant({appName:'Arco',botName:'ArcBot',messageNamespace:'arcrho',storagePrefix:'gui-test',shell,getHostApi:()=>window.ADAHost});
+initAiAssistant();
+document.querySelector('#prefill').onclick=()=>{document.querySelector('#aiAssistantInput').value='Read all methods in this project and summarize the main findings.';};
+document.querySelector('#switch').onclick=()=>{shell.state.activeId=shell.state.activeId==='fake'?'other':'fake';document.querySelector('#fixtureStatus').textContent='Active tab: '+shell.state.activeId;};
+</script></body></html>

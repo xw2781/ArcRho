@@ -66,6 +66,16 @@ method data. Specific section font properties override broader table settings;
 resetting a section's font preserves its colors. See [shell](../ui/shell.md).
 
 ## Before Finishing
+ArcBot prepares an unused read-only CLI thread when entering a chat. Task
+commands and output remain in a collapsible work log; the final response
+contains the result. Local Windows dictation inserts editable draft text and
+never sends it automatically. ArcBot's project-read tool is restricted to the
+active project's registered method loads and discovery reads. Project-wide
+reads do not grant write access: edits still require the original method page
+to be open and active and use its existing apply/save and dirty-state flow.
+ArcBot account switching applies to new requests only and is refused while a
+reply is running; credentials stay in each account's own folder.
+
 1. State which behavior area changed, or state "no frontend behavior impact."
 2. Update relevant MANUAL sections in `docs/ui/*.md` when behavior changes.
 3. Run `python tools/docs_index_builder.py --write`.

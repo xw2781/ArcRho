@@ -1,0 +1,10 @@
+{
+  "type": "feature",
+  "scope": "ArcBot",
+  "audience": "user",
+  "summary": "ArcBot prepares chats in the background, shows commands and output, and collapses completed work into a concise reply.",
+  "details": [
+    "Dictate into the composer using local Windows speech recognition and review the text before sending.",
+    "Read methods across the active project through a read-only tool, including closed methods; edits still require the original page to be open and active."
+  ]
+}

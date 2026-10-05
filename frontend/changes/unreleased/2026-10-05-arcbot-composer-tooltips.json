@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "ArcBot",
+  "audience": "user",
+  "summary": "The context ring's tooltip now shows the chat's model and reasoning effort, and the dictate and attach buttons use the same tooltip style."
+}

@@ -1,0 +1,6 @@
+{
+  "type": "improvement",
+  "scope": "ArcBot",
+  "audience": "user",
+  "summary": "Replaced the Dictate text button with a compact microphone icon and a visible active-dictation state."
+}

@@ -12,39 +12,8 @@ const LEGACY_CODEX_OPTION_BASE = Object.freeze({
   legacy: true,
 });
 
-export const CLAUDE_MODEL_OPTIONS = Object.freeze([
-  Object.freeze({
-    value: "claude-opus-4-8",
-    label: "Claude Opus 4.8",
-    provider: "anthropic",
-    supportsReasoning: true,
-    supportedReasoningEfforts: Object.freeze(["low", "medium", "high", "xhigh"]),
-    defaultReasoningEffort: "high",
-    isDefault: false,
-    available: true,
-    highTokenUse: true,
-  }),
-  Object.freeze({
-    value: "claude-sonnet-4-6",
-    label: "Claude Sonnet 4.6",
-    provider: "anthropic",
-    supportsReasoning: true,
-    supportedReasoningEfforts: Object.freeze(["low", "medium", "high", "xhigh"]),
-    defaultReasoningEffort: "high",
-    isDefault: false,
-    available: true,
-  }),
-  Object.freeze({
-    value: "claude-haiku-4-5",
-    label: "Claude Haiku 4.5",
-    provider: "anthropic",
-    supportsReasoning: false,
-    supportedReasoningEfforts: Object.freeze([]),
-    defaultReasoningEffort: "",
-    isDefault: false,
-    available: true,
-  }),
-]);
+// The host owns the Anthropic list (discovered, with a built-in fallback); it arrives with the model catalog.
+export const CLAUDE_MODEL_OPTIONS = [];
 
 export const REASONING_OPTIONS = Object.freeze([
   Object.freeze({ value: "none", label: "None" }),
@@ -61,6 +30,8 @@ const REASONING_VALUES = new Set(REASONING_OPTIONS.map((option) => option.value)
 const SAFE_MODEL_SLUG = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 let discoveredOpenAiOptions = [];
 let defaultAssistantModel = LEGACY_CODEX_MODEL;
+// Replaced by the host's runtime-contract default once the catalog arrives.
+let defaultReasoningEffort = "medium";
 
 // Keep this live export for existing consumers while the OpenAI portion is populated at runtime.
 export const MODEL_OPTIONS = [];
@@ -146,12 +117,12 @@ function readCatalogPayload(catalogLike) {
   };
 }
 
-function normalizeCatalogEntry(entry) {
+function normalizeCatalogEntry(entry, provider = "openai") {
   if (!entry || typeof entry !== "object" || entry.hidden === true) return null;
   const value = String(entry.value ?? entry.model ?? entry.id ?? "").trim();
   if (!isSafeAssistantModelSlug(value)) return null;
   const key = modelKey(value);
-  if (key === LEGACY_CODEX_MODEL || key.startsWith("claude-")) return null;
+  if (key === LEGACY_CODEX_MODEL || key.startsWith("claude-") !== (provider === "anthropic")) return null;
 
   const supportedReasoningEfforts = normalizeSupportedReasoningEfforts(entry);
   const defaultReasoningEffort = normalizeReasoningValue(
@@ -168,7 +139,7 @@ function normalizeCatalogEntry(entry) {
   return {
     value,
     label: available ? displayLabel : `${displayLabel} (unavailable)`,
-    provider: "openai",
+    provider,
     supportsReasoning,
     supportedReasoningEfforts,
     defaultReasoningEffort,
@@ -204,19 +175,33 @@ export function isSafeAssistantModelSlug(model) {
   return SAFE_MODEL_SLUG.test(String(model || "").trim());
 }
 
+function normalizeCatalogEntries(entries, provider) {
+  const seen = new Set();
+  const options = [];
+  for (const entry of entries) {
+    const option = normalizeCatalogEntry(entry, provider);
+    const key = modelKey(option?.value);
+    if (!option || seen.has(key)) continue;
+    seen.add(key);
+    options.push(option);
+  }
+  return options;
+}
+
 export function applyAssistantModelCatalog(catalogLike) {
   const payload = readCatalogPayload(catalogLike);
   if (!payload) return getAssistantModelOptions();
 
-  const seen = new Set([LEGACY_CODEX_MODEL, ...CLAUDE_MODEL_OPTIONS.map((option) => modelKey(option.value))]);
-  const nextOptions = [];
-  for (const entry of payload.entries) {
-    const option = normalizeCatalogEntry(entry);
-    const key = modelKey(option?.value);
-    if (!option || seen.has(key)) continue;
-    seen.add(key);
-    nextOptions.push(option);
+  const claudePayload = readCatalogPayload(catalogLike?.claude);
+  if (claudePayload) {
+    CLAUDE_MODEL_OPTIONS.splice(
+      0,
+      CLAUDE_MODEL_OPTIONS.length,
+      ...normalizeCatalogEntries(claudePayload.entries, "anthropic"),
+    );
   }
+  defaultReasoningEffort = normalizeReasoningValue(catalogLike?.defaultReasoningEffort, defaultReasoningEffort);
+  const nextOptions = normalizeCatalogEntries(payload.entries, "openai");
 
   discoveredOpenAiOptions = nextOptions;
   const explicitDefaultKey = modelKey(payload.defaultModel);
@@ -230,10 +215,14 @@ export function applyAssistantModelCatalog(catalogLike) {
 }
 
 export function getAssistantModelOptions(selectedModel = "") {
-  const options = MODEL_OPTIONS.map(cloneModelOption);
   const selectedValue = typeof selectedModel === "object" && selectedModel !== null
     ? String(selectedModel.selectedModel ?? selectedModel.model ?? "").trim()
     : String(selectedModel || "").trim();
+  // "Codex default" is only offered while discovery has no list, or when an older chat still uses it.
+  const showLegacy = !discoveredOpenAiOptions.length || modelKey(selectedValue) === LEGACY_CODEX_MODEL;
+  const options = MODEL_OPTIONS
+    .filter((option) => showLegacy || !option.legacy)
+    .map(cloneModelOption);
   if (
     selectedValue
     && isSafeAssistantModelSlug(selectedValue)
@@ -255,7 +244,12 @@ export function normalizeAssistantModel(model) {
 }
 
 export function normalizeAssistantReasoningEffort(effort) {
-  return normalizeReasoningValue(effort, "high");
+  return normalizeReasoningValue(effort, defaultReasoningEffort);
+}
+
+// The effort a new chat, or a switch to the other provider, starts at for this model.
+export function getDefaultAssistantReasoningEffort(model) {
+  return reconcileAssistantReasoningEffort(model, defaultReasoningEffort);
 }
 
 export function reconcileAssistantReasoningEffort(model, effort) {

@@ -730,6 +730,8 @@ FRONTEND_DOC_META: Mapping[str, Dict[str, object]] = {
             ("ui/ai-assistant/assistant.css", "Shared assistant launcher, panel, composer, message, history, and activity styling."),
             ("ui/ai-assistant/skills.js", "ArcBot skill contracts, SQL formatting client, and structured SQL review schema."),
             ("ui/ai-assistant/run-gate.js", "Single-owner gate preventing overlapping chat and skill runs."),
+            ("ui/ai-assistant/select-menu.js", "App-styled listbox over the settings Model and Reasoning selects."),
+            ("ui/ai-assistant/accounts.js", "Settings Account pickers for switching, adding, and signing in to ArcBot accounts."),
             ("ui/ai-assistant/arcrho.js", "ArcRho host adapter for arcrho messages, storage keys, and DFM edit approval."),
             ("ui/ai-assistant/arcode.js", "Arcode host adapter for arcode notebook context messages and storage keys."),
         ],

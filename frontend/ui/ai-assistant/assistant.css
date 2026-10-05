@@ -1,4 +1,67 @@
 ﻿/* Shared ArcBot assistant widget styles. */
+.aiAssistantCommandStep {
+  min-width: 0;
+  margin: 2px 0;
+}
+.aiAssistantCommandStep summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #f4f7fa;
+  color: #334155;
+  font: 11px/1.45 Consolas, monospace;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.aiAssistantCommandStep summary::-webkit-details-marker { display: none; }
+.aiAssistantCommandStep summary::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  margin-right: 2px;
+  border-right: 1.5px solid #8aa0b8;
+  border-bottom: 1.5px solid #8aa0b8;
+  transform: rotate(-45deg);
+  transition: transform 150ms ease;
+}
+.aiAssistantCommandStep[open] summary::after { transform: rotate(45deg); }
+.aiAssistantCommandStep summary:hover { background: #edf2f7; }
+.aiAssistantCommandStep.failed summary { color: #8f1d2c; }
+.aiAssistantCommandHeadline {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aiAssistantCommandOutput {
+  margin: 3px 0;
+  padding: 6px 8px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 11px/1.45 Consolas, monospace;
+  background: #f4f7fa;
+  border: 1px solid #d8dde3;
+  border-radius: 4px;
+  user-select: text;
+}
+#aiAssistantSessionStatus,
+.aiAssistantVoiceStatus {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  padding: 2px 8px;
+}
+#aiAssistantSessionStatus:empty,
+.aiAssistantVoiceStatus:empty { display: none; }
+
 #aiAssistantLauncher {
   position: fixed;
   right: 18px;
@@ -99,12 +162,13 @@
   color: #1d4ed8;
 }
 #aiAssistantPanel {
+  --ai-assistant-min-width: 440px;
   position: fixed;
   right: 18px;
   bottom: calc(var(--statusbar-h) + 70px);
-  width: 465px;
+  width: var(--ai-assistant-min-width);
   height: min(640px, calc(100vh - 132px));
-  min-width: 420px;
+  min-width: var(--ai-assistant-min-width);
   min-height: 340px;
   display: flex;
   flex-direction: column;
@@ -393,24 +457,362 @@
   color: #657488;
   font-size: 11px;
 }
-.aiAssistantSettingsField select {
+/* App-styled listbox over the hidden settings <select> (select-menu.js). */
+.aiAssistantMenuSelect {
+  position: relative;
   min-width: 0;
+}
+.aiAssistantMenuSelectTrigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
   height: 28px;
+  padding: 0 24px 0 8px;
   border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  border-radius: 4px;
   background: #ffffff;
   color: #223247;
+  font: inherit;
   font-size: 12px;
-  padding: 0 8px;
-  outline: none;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
-.aiAssistantSettingsField select:focus {
+.aiAssistantMenuSelectTrigger:hover:not(:disabled) {
+  border-color: #94a3b8;
+}
+.aiAssistantMenuSelectTrigger:focus-visible,
+.aiAssistantMenuSelectTrigger[aria-expanded="true"] {
   border-color: #60a5fa;
   box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
+  outline: none;
 }
-.aiAssistantSettingsField select:disabled {
+.aiAssistantMenuSelectTrigger:disabled {
   color: #8a97a8;
   background: #f1f5f9;
+  cursor: not-allowed;
+}
+.aiAssistantMenuSelectValue {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aiAssistantMenuSelectCaret {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  width: 0;
+  height: 0;
+  transform: translateY(-25%);
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid #94a3b8;
+  pointer-events: none;
+  transition: border-top-color 150ms ease;
+}
+.aiAssistantMenuSelectTrigger:hover:not(:disabled) .aiAssistantMenuSelectCaret,
+.aiAssistantMenuSelectTrigger[aria-expanded="true"] .aiAssistantMenuSelectCaret {
+  border-top-color: #2563eb;
+}
+.aiAssistantMenuSelectTrigger[aria-expanded="true"] .aiAssistantMenuSelectCaret {
+  transform: translateY(-75%) rotate(180deg);
+}
+.aiAssistantMenuSelectList {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  max-height: 260px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 3px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fbfcfe;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
+}
+.aiAssistantMenuSelectList[hidden] {
+  display: none;
+}
+.aiAssistantMenuSelectGroup {
+  padding: 6px 6px 2px 24px;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.aiAssistantMenuSelectGroup:first-child {
+  padding-top: 3px;
+}
+.aiAssistantMenuSelectGroup:not(:first-child) {
+  margin-top: 3px;
+  border-top: 1px solid #edf1f5;
+}
+.aiAssistantMenuSelectOption {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 26px;
+  padding: 0 6px 0 4px;
+  border-radius: 3px;
+  color: #223247;
+  font-size: 12px;
+  cursor: pointer;
+}
+.aiAssistantMenuSelectOption.active {
+  background: #e8eef6;
+}
+.aiAssistantMenuSelectOption[aria-selected="true"] {
+  color: #2563eb;
+  font-weight: 600;
+}
+.aiAssistantMenuSelectOption[aria-disabled="true"] {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+.aiAssistantMenuSelectCheck {
+  flex: 0 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+}
+.aiAssistantMenuSelectCheck svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.aiAssistantMenuSelectName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aiAssistantMenuSelectNote {
+  flex: 0 0 auto;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 400;
+}
+/* Account pickers (accounts.js): the same trigger and list, with per-account actions. */
+.aiAssistantAccountTrigger {
+  gap: 6px;
+  padding-left: 5px;
+}
+.aiAssistantAccountTrigger .aiAssistantMenuSelectValue {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.aiAssistantAccountTrigger.signed-out .aiAssistantAccountDetail {
+  color: #b45309;
+}
+.aiAssistantAccountAvatar {
+  flex: 0 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+.aiAssistantAccountName {
+  flex: 0 0 auto;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aiAssistantAccountDetail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: #8a97a8;
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Spans the label column too, so names and emails have room beside the row actions. */
+.aiAssistantAccountList {
+  left: -87px;
+  max-height: 240px;
+}
+.aiAssistantAccountRow {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  border-radius: 3px;
+}
+.aiAssistantAccountRow:hover,
+.aiAssistantAccountRow:focus-within {
+  background: #e8eef6;
+}
+.aiAssistantAccountChoose {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 5px;
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  height: 26px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #223247;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.aiAssistantAccountChoose:focus-visible {
+  outline: none;
+}
+.aiAssistantAccountAction:focus-visible {
+  outline: 1px solid #60a5fa;
+  outline-offset: -1px;
+}
+.aiAssistantAccountChoose[aria-checked="true"] .aiAssistantAccountName {
+  color: #2563eb;
+  font-weight: 600;
+}
+.aiAssistantAccountChoose[aria-checked="true"] .aiAssistantMenuSelectCheck {
+  color: #2563eb;
+}
+.aiAssistantAccountChoose .aiAssistantMenuSelectCheck {
+  margin-right: -1px;
+}
+.aiAssistantAccountAdd {
+  color: #475569;
+}
+.aiAssistantAccountAdd:hover,
+.aiAssistantAccountAdd:focus-visible {
+  background: #e8eef6;
+}
+.aiAssistantAccountAction,
+.aiAssistantAccountActionSpacer {
+  flex: 0 0 22px;
+  height: 22px;
+}
+.aiAssistantAccountAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 3px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  visibility: hidden;
+}
+.aiAssistantAccountRow:hover .aiAssistantAccountAction,
+.aiAssistantAccountRow:focus-within .aiAssistantAccountAction,
+.aiAssistantAccountAction.confirm {
+  visibility: visible;
+}
+.aiAssistantAccountAction:hover:not(:disabled) {
+  background: #dbe4ef;
+  color: #1e293b;
+}
+.aiAssistantAccountAction:disabled {
+  color: #b6c0cc;
+  cursor: default;
+}
+.aiAssistantAccountAction.remove:hover,
+.aiAssistantAccountAction.confirm {
+  color: #be123c;
+}
+.aiAssistantAccountAction.confirm {
+  flex-basis: auto;
+}
+.aiAssistantAccountAction svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.aiAssistantAccountSeparator {
+  height: 1px;
+  margin: 3px 2px;
+  background: #edf1f5;
+}
+.aiAssistantAccountForm {
+  display: flex;
+  gap: 4px;
+  padding: 2px;
+}
+.aiAssistantAccountInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #223247;
+  font: inherit;
+  font-size: 12px;
+}
+.aiAssistantAccountInput:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
+  outline: none;
+}
+.aiAssistantAccountSubmit {
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid #bfd3f6;
+  border-radius: 4px;
+  background: #eaf1fe;
+  color: #2b6df6;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.aiAssistantAccountSubmit:hover:not(:disabled) {
+  background: #dce8fd;
+}
+.aiAssistantAccountSubmit:disabled {
+  color: #94a3b8;
+  cursor: default;
+}
+.aiAssistantAccountStatus {
+  margin-top: 6px;
+  color: #657488;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.aiAssistantAccountStatus:empty {
+  display: none;
+}
+.aiAssistantAccountStatus.error {
+  color: #be123c;
 }
 .aiAssistantSettingsDetails {
   display: grid;
@@ -1538,6 +1940,7 @@
   align-items: end;
 }
 #aiAssistantComposerControls {
+  flex-wrap: nowrap;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1590,13 +1993,14 @@
 #aiAssistantTokenUsage.critical .aiAssistantTokenRingFill {
   stroke: #dc2626;
 }
-.aiAssistantTokenUsageText {
+.aiAssistantTokenUsageText,
+.aiAssistantComposerTip {
   position: absolute;
   left: -7px;
   bottom: calc(100% + 9px);
   z-index: 20;
-  width: 180px;
-  max-width: min(180px, calc(100vw - 28px));
+  width: max-content;
+  max-width: min(240px, calc(100vw - 28px));
   padding: 7px 9px;
   border: 1px solid #d5dce6;
   border-radius: 9px;
@@ -1613,7 +2017,25 @@
   transform: translateY(3px) scale(0.98);
   transition: opacity 140ms ease, transform 140ms ease;
 }
-.aiAssistantTokenUsageText::after {
+.aiAssistantTokenUsageText {
+  display: grid;
+  grid-template-columns: auto auto;
+  column-gap: 12px;
+  row-gap: 3px;
+}
+.aiAssistantTokenUsageLabel {
+  color: #64748b;
+  font-weight: 500;
+}
+.aiAssistantComposerIconBtn > .aiAssistantComposerTip {
+  overflow: visible;
+  color: #263241;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.aiAssistantTokenUsageText::after,
+.aiAssistantComposerTip::after {
   content: "";
   position: absolute;
   left: 17px;
@@ -1626,7 +2048,10 @@
   transform: rotate(45deg);
 }
 #aiAssistantTokenUsage:hover .aiAssistantTokenUsageText,
-#aiAssistantTokenUsage:focus-visible .aiAssistantTokenUsageText {
+#aiAssistantTokenUsage:focus-visible .aiAssistantTokenUsageText,
+.aiAssistantComposerIconBtn:not([aria-expanded="true"]):hover > .aiAssistantComposerTip,
+.aiAssistantComposerIconBtn:not([aria-expanded="true"]):focus-visible > .aiAssistantComposerTip {
+  transition-delay: 250ms;
   opacity: 1;
   transform: translateY(0) scale(1);
 }
@@ -2185,6 +2610,23 @@
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+.aiAssistantVoiceBtn {
+  width: 28px;
+  padding: 0;
+  flex: 0 0 auto;
+}
+.aiAssistantVoiceIcon {
+  width: 16px;
+  height: 16px;
+  background-color: currentColor;
+  -webkit-mask: url("./dictate.svg?v=20261005a") center / contain no-repeat;
+  mask: url("./dictate.svg?v=20261005a") center / contain no-repeat;
+}
+#aiAssistantComposer .aiAssistantVoiceBtn[aria-pressed="true"] {
+  color: #be123c;
+  background: #fff1f2;
+  border-color: #fda4af;
 }
 .aiAssistantSqlReviewStatus {
   flex: 0 0 auto;

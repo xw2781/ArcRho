@@ -22,7 +22,10 @@ const wheelDir = path.join(appRoot, "build", "python_packages");
 const wheelPath = path.join(wheelDir, "arcrho_api-0.2.1-py3-none-any.whl");
 const extraFolder = path.join(testRoot, "Team Notes");
 const exchangeFolder = path.join(documentsDir, "ArcRho", "ArcBot", "workspace");
-const serverRoot = "E:\\Fake Arco Server";
+// Use a different drive from the local fixture: resolving the explicitly
+// allowed Team Notes folder must not look like resolving the server drive.
+const serverDrive = path.parse(testRoot).root.toUpperCase().startsWith("Z:") ? "Y:" : "Z:";
+const serverRoot = `${serverDrive}\\Fake Arco Server`;
 const methodPath = `${serverRoot}\\projects\\Fake Project\\Auto\\methods\\F 1 - Paid DFM.json`;
 fs.mkdirSync(userDataDir, { recursive: true });
 fs.mkdirSync(wheelDir, { recursive: true });
@@ -96,7 +99,7 @@ function assertNoServerFolder({ exec, prompt }) {
   assert.doesNotMatch(prompt, /Fake Arco Server/u, "the prompt never names the server folder");
   assert.ok(exec.args.every((arg) => !/Fake Arco Server/u.test(arg)), "the Codex start never names it");
   assert.ok(
-    hostCommands.every((call) => !(call.command === "net" && /^E:/iu.test(String(call.args[1] || "")))),
+    hostCommands.every((call) => !(call.command === "net" && String(call.args[1] || "").toUpperCase() === serverDrive)),
     "the server folder's drive is never resolved to its share",
   );
 }
@@ -115,7 +118,7 @@ test("a review starts in the exchange folder and points the model at the Gateway
   assertNoServerFolder(run);
   assert.equal(run.exec.args[run.exec.args.indexOf("--cd") + 1], exchangeFolder);
   assert.ok(fs.statSync(exchangeFolder).isDirectory());
-  assert.match(run.prompt, /from arcrho_api\.gateway import GatewayClient/u);
+  assert.match(run.prompt, /arcrho_project_read/u);
   assert.match(run.prompt, /"methodPath": "F 1 - Paid DFM\.json"/u, "the page's file is named, not located");
   assert.match(run.prompt, /"project": "Fake Project"/u);
   assert.ok(run.prompt.includes(`Extra folders the user allowed you to read: ${extraFolder}`));

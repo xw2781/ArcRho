@@ -1,0 +1,10 @@
+{
+  "type": "improvement",
+  "scope": "ArcBot",
+  "audience": "user",
+  "summary": "ArcBot now offers the current Claude models, picks up new OpenAI and Claude models on its own, and starts new chats on GPT-6.1-Sol at Medium reasoning.",
+  "details": [
+    "Claude choices are Fable 5.1, Opus 5.5, Sonnet 5.5, and Haiku 4.5, read from Anthropic when you are signed in to Claude; Sonnet 5.5 at Medium is the Claude default.",
+    "The Model and Reasoning pickers are now app-styled lists with provider groups, a quiet Default tag, a check on the current choice, and keyboard control."
+  ]
+}

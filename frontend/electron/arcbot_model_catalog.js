@@ -3,9 +3,23 @@
 const ARCBOT_RUNTIME_CONTRACT = require("./arcbot_runtime_contract.json");
 
 const DEFAULT_CODEX_MODEL_ID = ARCBOT_RUNTIME_CONTRACT.minimumDefaultModel;
+const PREFERRED_CODEX_MODEL_ID = ARCBOT_RUNTIME_CONTRACT.defaultModel;
+const DEFAULT_REASONING_EFFORT = ARCBOT_RUNTIME_CONTRACT.defaultReasoningEffort;
 const MODEL_ID_PATTERN = /^[a-z0-9][a-z0-9._:-]{0,127}$/u;
 const REASONING_EFFORTS = new Set([
   "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
+]);
+// Anthropic families ArcBot offers, in picker order; the newest model of each is shown.
+const CLAUDE_MODEL_FAMILIES = ["fable", "opus", "sonnet", "haiku"];
+const DEFAULT_CLAUDE_FAMILY = "sonnet";
+const HIGH_TOKEN_CLAUDE_FAMILIES = new Set(["fable", "opus"]);
+const CLAUDE_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
+// Used when the Anthropic Models API cannot be reached with the signed-in Claude credentials.
+const FALLBACK_CLAUDE_MODELS = Object.freeze([
+  { id: "claude-fable-5-1", display_name: "Claude Fable 5.1", supportedReasoningEfforts: CLAUDE_EFFORT_LEVELS },
+  { id: "claude-opus-5-5", display_name: "Claude Opus 5.5", supportedReasoningEfforts: CLAUDE_EFFORT_LEVELS },
+  { id: "claude-sonnet-5-5", display_name: "Claude Sonnet 5.5", supportedReasoningEfforts: CLAUDE_EFFORT_LEVELS },
+  { id: "claude-haiku-4-5-20251001", display_name: "Claude Haiku 4.5", supportedReasoningEfforts: [] },
 ]);
 
 function normalizeModelId(model, fallback = "codex") {
@@ -13,7 +27,7 @@ function normalizeModelId(model, fallback = "codex") {
   return MODEL_ID_PATTERN.test(value) ? value : fallback;
 }
 
-function normalizeReasoningEffort(effort, fallback = "high") {
+function normalizeReasoningEffort(effort, fallback = DEFAULT_REASONING_EFFORT) {
   const value = String(effort || "").trim().toLowerCase();
   return REASONING_EFFORTS.has(value) ? value : fallback;
 }
@@ -101,9 +115,13 @@ function buildCodexModelCatalog(entries) {
       const version = compareGptModelVersion(model.value, DEFAULT_CODEX_MODEL_ID);
       return version === 0;
     });
-  const selectedDefault = detectedDefaultVersion === 0 || detectedDefaultVersion === 1
-    ? detectedDefault
-    : advertisedMinimum || detectedDefault;
+  // The preferred model wins while advertised, unless Codex already defaults to a newer GPT version.
+  const preferred = models.find((model) => model.value === PREFERRED_CODEX_MODEL_ID);
+  const selectedDefault = preferred && compareGptModelVersion(detectedDefault.value, PREFERRED_CODEX_MODEL_ID) !== 1
+    ? preferred
+    : detectedDefaultVersion === 0 || detectedDefaultVersion === 1
+      ? detectedDefault
+      : advertisedMinimum || detectedDefault;
   const defaultModel = selectedDefault.value;
   const defaultVersion = compareGptModelVersion(defaultModel, DEFAULT_CODEX_MODEL_ID);
   const meetsMinimum = defaultVersion === 0 || defaultVersion === 1;
@@ -111,6 +129,7 @@ function buildCodexModelCatalog(entries) {
   return {
     models,
     defaultModel,
+    defaultReasoningEffort: DEFAULT_REASONING_EFFORT,
     minimumDefaultModel: DEFAULT_CODEX_MODEL_ID,
     meetsMinimum,
     upgradeRequired: !meetsMinimum,
@@ -123,6 +142,7 @@ function getFallbackCodexModelCatalog() {
   return {
     models: [],
     defaultModel: "codex",
+    defaultReasoningEffort: DEFAULT_REASONING_EFFORT,
     minimumDefaultModel: DEFAULT_CODEX_MODEL_ID,
     meetsMinimum: false,
     upgradeRequired: false,
@@ -131,11 +151,74 @@ function getFallbackCodexModelCatalog() {
   };
 }
 
+function readClaudeModelFamily(model) {
+  const match = String(model || "").match(/^claude-([a-z]+)-/u);
+  return match && CLAUDE_MODEL_FAMILIES.includes(match[1]) ? match[1] : "";
+}
+
+// Accepts an Anthropic Models API entry (`id`, `display_name`, `capabilities.effort`)
+// or a fallback entry that lists its efforts directly.
+function normalizeClaudeModelEntry(entry) {
+  const value = normalizeModelId(entry?.id, "");
+  const family = readClaudeModelFamily(value);
+  if (!family) return null;
+  const effortCapability = entry.capabilities?.effort;
+  const efforts = Array.isArray(entry.supportedReasoningEfforts)
+    ? entry.supportedReasoningEfforts
+    : CLAUDE_EFFORT_LEVELS.filter((level) => (
+      effortCapability?.supported === true && effortCapability?.[level]?.supported === true
+    ));
+  const supportedReasoningEfforts = normalizeReasoningOptions(efforts.map((level) => ({ value: level })));
+  const supported = supportedReasoningEfforts.map((option) => option.value);
+  return {
+    value,
+    label: String(entry.display_name || value).trim() || value,
+    provider: "anthropic",
+    family,
+    createdAt: String(entry.created_at || ""),
+    supportsReasoning: supported.length > 0,
+    supportedReasoningEfforts,
+    defaultReasoningEffort: supported.includes(DEFAULT_REASONING_EFFORT) ? DEFAULT_REASONING_EFFORT : supported[0] || "",
+    isDefault: false,
+    ...(HIGH_TOKEN_CLAUDE_FAMILIES.has(family) ? { highTokenUse: true } : {}),
+  };
+}
+
+// Keeps the newest model of each family, so a new Fable, Opus, Sonnet, or Haiku replaces its predecessor.
+function buildClaudeModelCatalog(entries, source = "anthropic-models-api") {
+  const newestByFamily = new Map();
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const model = normalizeClaudeModelEntry(entry);
+    if (!model) continue;
+    const current = newestByFamily.get(model.family);
+    if (!current || model.createdAt > current.createdAt) newestByFamily.set(model.family, model);
+  }
+  const models = CLAUDE_MODEL_FAMILIES
+    .map((family) => newestByFamily.get(family))
+    .filter(Boolean)
+    .map(({ family, createdAt, ...model }) => ({ ...model, isDefault: family === DEFAULT_CLAUDE_FAMILY }));
+  if (!models.length && source !== "fallback") return getFallbackClaudeModelCatalog();
+  return {
+    models,
+    defaultModel: models.find((model) => model.isDefault)?.value || models[0]?.value || "",
+    verified: source !== "fallback",
+    source,
+  };
+}
+
+function getFallbackClaudeModelCatalog() {
+  return buildClaudeModelCatalog(FALLBACK_CLAUDE_MODELS, "fallback");
+}
+
 module.exports = {
   DEFAULT_CODEX_MODEL_ID,
+  DEFAULT_REASONING_EFFORT,
   MODEL_ID_PATTERN,
+  PREFERRED_CODEX_MODEL_ID,
+  buildClaudeModelCatalog,
   buildCodexModelCatalog,
   compareGptModelVersion,
+  getFallbackClaudeModelCatalog,
   getFallbackCodexModelCatalog,
   normalizeCodexModelEntry,
   normalizeModelId,

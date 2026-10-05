@@ -100,9 +100,24 @@ contextBridge.exposeInMainWorld("ADAHost", {
   showItemInFolder: (payload) => invoke("show-item-in-folder", payload),
   openTerminal: (payload) => invoke("open-terminal", payload),
   codexAssistantStatus: () => invoke("codex-assistant-status"),
+  codexAssistantPrepare: (payload) => invoke("codex-assistant-prepare", payload),
+  codexAssistantRelease: () => invoke("codex-assistant-release"),
+  arcBotVoiceStart: (requestId) => invoke("arcbot-voice-start", { requestId }),
+  arcBotVoiceStop: () => invoke("arcbot-voice-stop"),
+  onArcBotVoice: (callback) => {
+    const handler = (_event, value) => callback(value);
+    ipcRenderer.on("arcbot-voice-event", handler);
+    return () => ipcRenderer.removeListener("arcbot-voice-event", handler);
+  },
   codexAssistantModels: (payload) => invoke("codex-assistant-models", payload),
   codexAssistantInstall: () => invoke("codex-assistant-install"),
   codexAssistantLogin: (payload) => invoke("codex-assistant-login", payload),
+  codexAssistantListAccounts: () => invoke("codex-assistant-accounts-list"),
+  codexAssistantCreateAccount: (provider, label) => invoke("codex-assistant-account-create", { provider, label }),
+  codexAssistantActivateAccount: (provider, accountId) =>
+    invoke("codex-assistant-account-activate", { provider, accountId }),
+  codexAssistantSignOutAccount: (accountId) => invoke("codex-assistant-account-logout", { accountId }),
+  codexAssistantRemoveAccount: (accountId) => invoke("codex-assistant-account-remove", { accountId }),
   codexAssistantLoadPromptGuide: () => invoke("codex-assistant-prompt-guide-load"),
   codexAssistantLoadUiSettings: () => invoke("codex-assistant-ui-settings-load"),
   codexAssistantSaveUiSettings: (settings) => invoke("codex-assistant-ui-settings-save", { settings }),

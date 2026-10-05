@@ -2,7 +2,6 @@ import { ensureAiAssistantDom } from "./template.js?v=20260927smb24";
 import {
   ATTACHMENT_EXTENSIONS as ASSISTANT_ATTACHMENT_EXTENSIONS,
   PANEL_DEFAULT_HEIGHT as ASSISTANT_PANEL_DEFAULT_HEIGHT,
-  PANEL_MIN_WIDTH as ASSISTANT_PANEL_MIN_WIDTH,
   VISIBLE_WORK_STEP_IDS as ASSISTANT_VISIBLE_WORK_STEP_IDS,
   WORK_STEP_DEFS as ASSISTANT_WORK_STEP_DEFS,
   WORK_TYPING_CHARS_PER_FRAME as ASSISTANT_WORK_TYPING_CHARS_PER_FRAME,
@@ -14,6 +13,7 @@ import {
   getAssistantModelOptions,
   getAssistantReasoningOptionsForModel,
   getDefaultAssistantModel,
+  getDefaultAssistantReasoningEffort,
   getAssistantModelLabelFor,
   getAssistantReasoningLabelFor,
   isClaudeAssistantModel,
@@ -47,6 +47,35 @@ import {
   getAttachmentTypeLabel,
 } from "./attachments.js";
 import { formatElapsed, formatWorkDuration } from "./activity.js";
+import { installVoiceInput } from "./voice.js";
+import { addComposerTip } from "./composer-tip.js";
+import { arcBotEditScopeError } from "./edit-scope.js";
+import { installAssistantSelectMenu, syncAssistantSelectMenu } from "./select-menu.js";
+import { installAssistantAccounts } from "./accounts.js";
+
+let assistantVoice = null;
+let assistantAccounts = null;
+let preparationGeneration = 0;
+async function prepareAssistantSession() {
+  const host = getHostApi();
+  if (!currentSessionId || assistantBusy || !host?.codexAssistantPrepare) return;
+  const generation = ++preparationGeneration;
+  const status = $("aiAssistantSessionStatus");
+  if (status) status.textContent = "";
+  try {
+    const result = await host.codexAssistantPrepare({ sessionId: currentSessionId, model: assistantModel });
+    if (generation !== preparationGeneration) return;
+    if (status) {
+      status.textContent = result?.ok ? "" : "Preparation failed · retry on send";
+      status.title = result?.error || "";
+    }
+  } catch (error) {
+    if (generation === preparationGeneration && status) {
+      status.textContent = "Preparation failed · retry on send";
+      status.title = String(error.message || error);
+    }
+  }
+}
 import { normalizeReadableRootList } from "./settings.js";
 import { clampAssistantPanelSize } from "./layout.js";
 import { getHostErrorMessage } from "./host.js";
@@ -97,12 +126,13 @@ let currentRunStartedAt = 0;
 let currentStepStartedAt = 0;
 let currentWorkCardEl = null;
 let assistantWorkCardExpanded = false;
+const assistantOpenCommandKeys = new Set();
 let assistantProgressSteps = [];
 let assistantProgressTicker = null;
 let latestSessionList = [];
 let assistantMode = "edit";
 let assistantModel = "codex";
-let assistantReasoningEffort = "high";
+let assistantReasoningEffort = normalizeAssistantReasoningEffort("");
 let assistantReadableRoots = [];
 let assistantReady = false;
 let assistantBusy = false;
@@ -234,15 +264,17 @@ function renderAssistantModelOptions() {
     for (const modelOption of providerOptions) {
       const option = document.createElement("option");
       option.value = modelOption.value;
-      option.textContent = modelOption.value === defaultModel && modelOption.available !== false
-        ? `${modelOption.label} (Default)`
-        : modelOption.label;
+      option.textContent = modelOption.label;
+      if ((modelOption.isDefault || modelOption.value === defaultModel) && modelOption.available !== false) {
+        option.dataset.note = "Default";
+      }
       option.disabled = modelOption.available === false;
       group.appendChild(option);
     }
     select.appendChild(group);
   }
   select.value = assistantModel;
+  syncAssistantSelectMenu(select);
 }
 
 function renderAssistantReasoningOptions() {
@@ -257,6 +289,7 @@ function renderAssistantReasoningOptions() {
     select.appendChild(option);
   }
   select.value = assistantReasoningEffort;
+  syncAssistantSelectMenu(select);
 }
 
 function extractAssistantLoginEmail(value) {
@@ -409,13 +442,20 @@ function updateTokenUsageRing() {
   const windowTokens = Math.max(0, Math.round(Number(usage.contextWindowTokens || 0)));
   const percent = windowTokens ? getUsagePercent(usage) : 0;
   const measured = !!windowTokens;
-  const tooltip = measured
-    ? `Context window\n${formatTokenCount(used)} / ${formatTokenCount(windowTokens)} tokens (${formatContextPercent(percent)})`
-    : "Context window usage\nNot measured yet.";
-  const ariaLabel = measured
-    ? `Context window usage: ${formatTokenCount(used)} / ${formatTokenCount(windowTokens)} tokens (${formatContextPercent(percent)}).`
-    : "Context window usage has not been measured yet.";
-  textEl.textContent = tooltip;
+  const rows = [["Model", getAssistantModelLabel()]];
+  if (assistantModelHasReasoning()) rows.push(["Reasoning", getAssistantReasoningLabel()]);
+  rows.push(["Context", measured
+    ? `${formatTokenCount(used)} / ${formatTokenCount(windowTokens)} (${formatContextPercent(percent)})`
+    : "Not measured yet"]);
+  const ariaLabel = rows.map(([label, value]) => `${label}: ${value}`).join(". ");
+  textEl.replaceChildren(...rows.flatMap(([label, value]) => {
+    const labelEl = document.createElement("span");
+    labelEl.className = "aiAssistantTokenUsageLabel";
+    labelEl.textContent = label;
+    const valueEl = document.createElement("span");
+    valueEl.textContent = value;
+    return [labelEl, valueEl];
+  }));
   fillEl.setAttribute("stroke-dasharray", `${Math.min(100, Math.max(0, percent))} 100`);
   usageEl.classList.toggle("not-measured", !measured);
   usageEl.classList.toggle("high", measured && percent >= 75 && percent < 90);
@@ -425,6 +465,7 @@ function updateTokenUsageRing() {
 }
 
 function formatAssistantActivityForCard(text, event = {}) {
+  if (["command", "command-output", "commentary"].includes(event.type)) return String(text || "");
   const raw = String(text || "").trim();
   const lower = raw.toLowerCase();
   const modeLabel = getModeLabel();
@@ -709,6 +750,7 @@ function appendActivity(text, type = "activity", options = {}) {
 }
 
 function shouldShowAssistantActivity(activity, text) {
+  if (["command", "command-output", "commentary"].includes(activity?.type)) return !!text;
   const visible = String(text || "").trim();
   if (!visible) return false;
   const raw = String(activity?.rawText || activity?.text || "").trim();
@@ -722,9 +764,6 @@ function shouldShowAssistantActivity(activity, text) {
   if (lower.includes("temporary editable copy")) return true;
   if (lower.includes("validating the temp copy")) return true;
   if (lower.includes("extracted the edited json")) return true;
-  if (lower.includes("codex is using a tool") || lower.includes("arcbot is using a tool")) return true;
-  if (lower.includes("codex is searching") || lower.includes("arcbot is searching")) return true;
-  if (lower.includes("codex is drafting") || lower.includes("arcbot is drafting")) return true;
   if (lower.includes("active notebook")) return true;
   if (lower.includes("request canceled") || lower.includes("failed") || lower.includes("could not") || lower.includes("error:")) return true;
   return false;
@@ -744,7 +783,7 @@ function getAssistantActivityItems() {
       timestamp: activity.timestamp || "",
     });
   }
-  return items.slice(-18);
+  return items;
 }
 
 function getAssistantActivityElapsedMs() {
@@ -820,13 +859,43 @@ function scheduleAssistantActivityTyping(keysInUse) {
   }, ASSISTANT_WORK_TYPING_FRAME_MS);
 }
 
+// One collapsed line per command; the full command and output open on click.
+function getAssistantCommandHeadline(text) {
+  const first = String(text || "").split(/\r?\n/).map(line => line.trim()).find(Boolean) || "";
+  return first.replace(/^"?[^"\s]*powershell(?:\.exe)?"?\s+(?:-\w+\s+)*?-Command\s+/i, "");
+}
+
+function createAssistantCommandStep(item, index) {
+  const key = `${item.timestamp || ""}:${index}`;
+  const step = document.createElement("details");
+  step.className = "aiAssistantCommandStep";
+  const exit = /\nExit:\s*(-?\d+)/.exec(item.text);
+  if (exit && exit[1] !== "0") step.classList.add("failed");
+  step.open = assistantOpenCommandKeys.has(key);
+  step.ontoggle = () => {
+    if (step.open) assistantOpenCommandKeys.add(key);
+    else assistantOpenCommandKeys.delete(key);
+  };
+  const summary = document.createElement("summary");
+  const headline = document.createElement("span");
+  headline.className = "aiAssistantCommandHeadline";
+  headline.textContent = getAssistantCommandHeadline(item.text);
+  summary.appendChild(headline);
+  const output = document.createElement("pre");
+  output.className = "aiAssistantCommandOutput";
+  output.textContent = String(item.text || "").replace(/^\s+/, "");
+  step.append(summary, output);
+  return step;
+}
+
 function createAssistantActivityList(items, options = {}) {
   const list = document.createElement("ul");
   list.className = "aiAssistantWorkList";
   const typingKeys = new Set();
   const enableTyping = !!options.typing;
   items.forEach((item, index) => {
-    const typingState = getAssistantActivityTypingState(item, index, enableTyping);
+    const isCommand = item.type === "command" || item.type === "command-output";
+    const typingState = getAssistantActivityTypingState(item, index, enableTyping && !isCommand);
     if (typingState.key) typingKeys.add(typingState.key);
     const bullet = document.createElement("li");
     bullet.className = [
@@ -834,7 +903,10 @@ function createAssistantActivityList(items, options = {}) {
       typingState.isTyping ? "typing" : "",
     ].filter(Boolean).join(" ");
     bullet.setAttribute("aria-label", item.text);
-    if (typingState.isTyping && !typingState.text) {
+    if (isCommand) {
+      bullet.classList.add("command");
+      bullet.appendChild(createAssistantCommandStep(item, index));
+    } else if (typingState.isTyping && !typingState.text) {
       bullet.appendChild(document.createTextNode("\u00a0"));
     } else if (typingState.isTyping) {
       bullet.appendChild(document.createTextNode(typingState.text));
@@ -868,7 +940,7 @@ function renderActivities() {
     workEl.className = "aiAssistantWorkLog running";
     workEl.appendChild(createAssistantActivityList(activityItems, { typing: true }));
   } else {
-    const hasError = activityItems.some((item) => item.type === "error" || /failed|could not|error|canceled/i.test(item.text));
+    const hasError = activityItems.some((item) => item.type === "error" || (item.type === "activity" && /failed|could not|error|canceled/i.test(item.text)));
     workEl.className = `aiAssistantWorkArchive${hasError ? " failed" : ""}`;
     workEl.open = assistantWorkCardExpanded;
     const summary = document.createElement("summary");
@@ -897,7 +969,6 @@ function renderActivities() {
 }
 
 function updateContextPanel() {
-  updateTokenUsageRing();
   updateAssistantSettingsPanel();
   const panel = $("aiAssistantContextPanel");
   if (!panel) return;
@@ -968,6 +1039,7 @@ async function refreshAssistantModels(options = {}) {
       setAssistantModel(nextModel, {
         save: shouldPromoteEmptyDefault && !!currentSessionId,
         refreshStatus: false,
+        defaultEffort: shouldPromoteEmptyDefault,
       });
       if (result.warning) appendDebugLog(`Model discovery fallback: ${result.warning}`, "debug");
       return true;
@@ -988,7 +1060,11 @@ async function refreshAssistantModels(options = {}) {
 function setAssistantModel(model, options = {}) {
   const prevClaude = isClaudeModel();
   assistantModel = normalizeAssistantModel(model);
-  assistantReasoningEffort = reconcileAssistantReasoningEffort(assistantModel, assistantReasoningEffort);
+  void prepareAssistantSession();
+  // A promoted default or a switch between OpenAI and Claude starts at the default effort.
+  assistantReasoningEffort = options.defaultEffort === true || prevClaude !== isClaudeModel()
+    ? getDefaultAssistantReasoningEffort(assistantModel)
+    : reconcileAssistantReasoningEffort(assistantModel, assistantReasoningEffort);
   renderAssistantModelOptions();
   renderAssistantReasoningOptions();
   updateAssistantSettingsPanel();
@@ -1144,6 +1220,7 @@ async function openAssistantPromptGuide() {
 }
 
 function updateAssistantSettingsPanel() {
+  updateTokenUsageRing();
   const panel = $("aiAssistantSettingsPanel");
   if (!panel) return;
   const modelSelect = $("aiAssistantSettingsModelSelect");
@@ -1155,10 +1232,12 @@ function updateAssistantSettingsPanel() {
   if (modelSelect) {
     modelSelect.value = assistantModel;
     modelSelect.disabled = assistantBusy;
+    syncAssistantSelectMenu(modelSelect);
   }
   if (reasoningSelect) {
     reasoningSelect.value = assistantReasoningEffort;
     reasoningSelect.disabled = assistantBusy;
+    syncAssistantSelectMenu(reasoningSelect);
   }
   if (reasoningField) reasoningField.style.display = hasReasoning ? "" : "none";
   if (reasoningLabel) reasoningLabel.textContent = isClaudeProvider ? "Thinking" : "Reasoning";
@@ -1185,6 +1264,7 @@ function updateAssistantSettingsPanel() {
 }
 
 function closeAssistantSettingsPanel() {
+  assistantAccounts?.close();
   $("aiAssistantSettingsPanel")?.classList.remove("open");
   $("aiAssistantSettingsBtn")?.setAttribute("aria-expanded", "false");
 }
@@ -1200,7 +1280,19 @@ function toggleAssistantSettingsPanel(forceOpen) {
     $("aiAssistantDebugPanel")?.classList.remove("open");
     $("aiAssistantDebugBtn")?.setAttribute("aria-expanded", "false");
     updateAssistantSettingsPanel();
+    // Cheap while the host's discovered lists are fresh; picks up new models once they age out.
+    void refreshAssistantModels();
+    void assistantAccounts?.refresh();
+  } else {
+    assistantAccounts?.close();
   }
+}
+
+// The host has already restarted what held the old sign-in; re-read what the new account can do.
+async function handleAssistantAccountChange() {
+  if (assistantBusy) return;
+  await refreshAssistantModels();
+  await refreshAssistantStatus();
 }
 
 function renderAssistantAttachments() {
@@ -1419,6 +1511,8 @@ async function refreshSessionList(selectedId = currentSessionId) {
 }
 
 async function loadAssistantSession(sessionId) {
+  if (assistantBusy) return false;
+  assistantVoice?.stop();
   const host = getHostApi();
   if (!host?.codexAssistantLoadSession || !sessionId) return false;
   const result = await host.codexAssistantLoadSession(sessionId);
@@ -1447,16 +1541,21 @@ async function loadAssistantSession(sessionId) {
   renderDebugLog();
   await refreshSessionList(currentSessionId);
   updateSessionSelectLabel();
+  void prepareAssistantSession();
   return true;
 }
 
 async function createAssistantSession() {
+  if (assistantBusy && currentSessionId) return false;
+  assistantVoice?.stop();
   const host = getHostApi();
   if (!host?.codexAssistantCreateSession) return false;
+  // A new chat starts on the verified default model and effort; until discovery verifies one, it keeps the current pick.
+  const model = assistantModelDefaultVerified ? getDefaultAssistantModel() : assistantModel;
   const result = await host.codexAssistantCreateSession({
     mode: assistantMode,
-    model: assistantModel,
-    reasoningEffort: assistantReasoningEffort,
+    model,
+    reasoningEffort: assistantModelDefaultVerified ? getDefaultAssistantReasoningEffort(model) : assistantReasoningEffort,
   });
   if (!result?.ok || !result.session) return false;
   currentSessionId = result.session.id;
@@ -1481,6 +1580,7 @@ async function createAssistantSession() {
   renderDebugLog();
   await refreshSessionList(currentSessionId);
   updateSessionSelectLabel();
+  void prepareAssistantSession();
   return true;
 }
 
@@ -1493,6 +1593,10 @@ function findEmptyAssistantSession(sessions) {
 }
 
 async function openOrCreateEmptyAssistantSession() {
+  if (assistantBusy) {
+    setStatus("Finish or cancel the current request before changing chats.");
+    return { ok: false };
+  }
   const sessions = await refreshSessionList(currentSessionId);
   const emptySession = findEmptyAssistantSession(sessions);
   if (emptySession) {
@@ -1582,6 +1686,7 @@ async function refreshHistoryPage() {
     meta.textContent = `${session.messageCount || 0} messages${updated ? ` - ${updated}` : ""}${session.archived ? " - Archived" : ""}`;
     info.append(name, meta);
     const openSession = async () => {
+      if (assistantBusy) { setStatus("Finish or cancel the current request before changing chats."); return; }
       if (session.archived && host.codexAssistantArchiveSession) {
         await host.codexAssistantArchiveSession(session.id, false);
       }
@@ -1598,6 +1703,7 @@ async function refreshHistoryPage() {
     const actions = document.createElement("div");
     actions.className = "aiAssistantHistoryActions";
     const archiveBtn = createAssistantHistoryIconButton(session.archived ? "restore" : "archive", session.archived ? "Restore chat" : "Archive chat", async () => {
+      if (assistantBusy) return;
       if (!host.codexAssistantArchiveSession) return;
       await host.codexAssistantArchiveSession(session.id, !session.archived);
       if (session.id === currentSessionId && !session.archived) {
@@ -1607,6 +1713,7 @@ async function refreshHistoryPage() {
       await refreshHistoryPage();
     });
     const deleteBtn = createAssistantHistoryIconButton("delete", "Delete chat", async () => {
+      if (assistantBusy) return;
       if (!host.codexAssistantDeleteSession) return;
       const confirmed = window.confirm(`Delete this ArcBot chat session?\n\n${session.title || "ArcBot Chat"}`);
       if (!confirmed) return;
@@ -2980,7 +3087,13 @@ function requestActivePageContext() {
 // switching tabs while ArcBot works cannot send the edit to another page.
 let lastArcBotEdit = null;
 
-function requestPageArcBotEdit(tabId, name, payload = {}, timeoutMs = 120000) {
+async function requestPageArcBotEdit(tabId, name, payload = {}, timeoutMs = 120000) {
+  if (shell.state?.activeId !== tabId) {
+    return { ok: false, error: "The page ArcBot worked on must still be active. Nothing was changed." };
+  }
+  const active = await requestActivePageContext();
+  const scopeError = arcBotEditScopeError(tabId, shell.state?.activeId, active, payload.targetPath);
+  if (scopeError) return { ok: false, error: scopeError };
   const tab = shell.state?.tabs?.find?.((item) => item.id === tabId) || null;
   const iframe = tab?.iframe || null;
   if (!tabId || !iframe?.contentWindow) {
@@ -3056,6 +3169,7 @@ async function refreshAssistantStatus() {
 }
 
 function openAssistant() {
+  void prepareAssistantSession();
   const panel = $("aiAssistantPanel");
   applyFirstSessionOpenPanelSize(panel);
   $("aiAssistantLauncher")?.classList.add("assistant-open");
@@ -3067,6 +3181,7 @@ function openAssistant() {
 }
 
 function closeAssistant() {
+  assistantVoice?.stop();
   if (isAiAssistantLauncherVisible()) $("aiAssistantLauncher")?.classList.remove("assistant-open");
   $("aiAssistantPanel")?.classList.remove("open");
   closeAssistantSettingsPanel();
@@ -3347,14 +3462,15 @@ function markPanelOpenedThisSession() {
 
 function clampPanelSize(width, height) {
   const statusbarHeight = Number(shell.getStatusBarHeight?.() || 0);
-  const maxWidth = Math.max(ASSISTANT_PANEL_MIN_WIDTH, window.innerWidth - 16);
+  const minWidth = parseFloat(getComputedStyle($("aiAssistantPanel")).minWidth);
+  const maxWidth = Math.max(minWidth, window.innerWidth - 16);
   const maxHeight = Math.max(340, window.innerHeight - statusbarHeight - 16);
   return clampAssistantPanelSize(width, height, {
-    minWidth: ASSISTANT_PANEL_MIN_WIDTH,
+    minWidth,
     minHeight: 340,
     maxWidth,
     maxHeight,
-    fallbackWidth: ASSISTANT_PANEL_MIN_WIDTH,
+    fallbackWidth: minWidth,
     fallbackHeight: ASSISTANT_PANEL_DEFAULT_HEIGHT,
   });
 }
@@ -3371,7 +3487,7 @@ function applyFirstSessionOpenPanelSize(panel) {
   const saved = readPanelSize();
   const rect = panel.getBoundingClientRect();
   applyPanelSize(panel, {
-    width: ASSISTANT_PANEL_MIN_WIDTH,
+    width: undefined,
     height: saved?.height || rect.height || ASSISTANT_PANEL_DEFAULT_HEIGHT,
   });
   markPanelOpenedThisSession();
@@ -3524,17 +3640,19 @@ async function loginCodexCli() {
   const usingClaude = isClaudeModel();
   const confirmed = window.confirm(
     usingClaude
-      ? "Open Claude sign-in now?\n\nA terminal window will run: claude login"
+      ? "Open Claude sign-in now?\n\nA terminal window will run: claude auth login"
       : "Open Codex sign-in now?\n\nA terminal window will run: codex login"
   );
   if (!confirmed) return;
   try {
-    const result = await host.codexAssistantLogin(usingClaude ? { provider: "anthropic" } : undefined);
+    // Signs in the account chosen in Settings; ArcBot notices when the window finishes.
+    const result = await host.codexAssistantLogin({ provider: usingClaude ? "anthropic" : "openai" });
     if (!result?.ok) {
       setStatus(result?.error || `Could not start ${usingClaude ? "Claude" : "Codex"} sign-in.`, "error");
       return;
     }
-    setStatus(`Complete ${usingClaude ? "Claude" : "Codex"} sign-in, then refresh status.`);
+    setStatus(`Finish ${usingClaude ? "Claude" : "Codex"} sign-in in the new window.`);
+    void assistantAccounts?.refresh();
   } catch (err) {
     setStatus(String(err?.message || err || `Could not start ${usingClaude ? "Claude" : "Codex"} sign-in.`), "error");
   }
@@ -3560,6 +3678,7 @@ async function cancelAssistantMessage() {
 
 async function sendAssistantMessage() {
   if (assistantBusy) return;
+  assistantVoice?.stop();
   const host = getHostApi();
   const input = $("aiAssistantInput");
   const text = String(input?.value || "").trim();
@@ -3596,6 +3715,10 @@ async function sendAssistantMessage() {
   renderAssistantAttachments();
   autoGrowAssistantInput();
   currentRequestId = `arcbot_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  preparationGeneration += 1;
+  setText($("aiAssistantSessionStatus"), "");
+  setComposerEnabled(false);
+  currentWorkCardEl = null;
   currentRunStartedAt = performance.now();
   currentStepStartedAt = currentRunStartedAt;
   assistantProgressSteps = createAssistantProgressSteps();
@@ -3775,6 +3898,7 @@ async function sendAssistantMessage() {
     currentRequestId = "";
     currentRunStartedAt = 0;
     currentStepStartedAt = 0;
+    assistantWorkCardExpanded = false;
     stopAssistantProgressTicker();
     renderActivities();
     currentPendingMessageEl = null;
@@ -3787,12 +3911,33 @@ async function sendAssistantMessage() {
       assistantCancelRequested = false;
       assistantHostRequestSubmitted = false;
       setComposerEnabled(assistantReady);
+      void prepareAssistantSession();
     }
   }
 }
 
 function handleAssistantEvent(event) {
   if (!event || event.requestId !== currentRequestId) return;
+  if (event.type === "assistant-reset") {
+    currentAssistantStreamText = "";
+    if (currentPendingMessageEl) {
+      currentPendingMessageEl.textContent = "Thinking ...";
+      currentPendingMessageEl.classList.add("thinking");
+    }
+    return;
+  }
+  if (["command", "command-output", "commentary"].includes(event.type)) {
+    const existing = event.itemId && assistantActivities.find(item => item.itemId === event.itemId);
+    if (existing) {
+      existing.text = event.type === "command-output" ? existing.text + event.text : event.text;
+      existing.rawText = existing.text;
+      renderActivities();
+    } else {
+      appendActivity(event.text, event.type, { save: false });
+      if (assistantActivities.length) assistantActivities.at(-1).itemId = event.itemId;
+    }
+    return;
+  }
   if (event.type === "assistant-delta") {
     const delta = String(event.text || "");
     if (!delta || !currentPendingMessageEl) return;
@@ -3838,11 +3983,25 @@ export function initAiAssistant() {
   const panel = $("aiAssistantPanel");
   const composer = $("aiAssistantComposer");
   if (!launcher || !panel || !composer) return;
+  installAssistantSelectMenu($("aiAssistantSettingsModelSelect"));
+  installAssistantSelectMenu($("aiAssistantSettingsReasoningSelect"));
+  assistantAccounts = installAssistantAccounts({
+    container: $("aiAssistantAccountFields"),
+    getHost: getHostApi,
+    onChanged: () => void handleAssistantAccountChange(),
+  });
   const host = getHostApi();
   if (!host) {
     launcher.style.display = "none";
     return;
   }
+  const sessionStatus = document.createElement("span");
+  sessionStatus.id = "aiAssistantSessionStatus";
+  sessionStatus.setAttribute("role", "status");
+  $("aiAssistantComposerTop")?.before(sessionStatus);
+  addComposerTip($("aiAssistantAttachBtn"), "Attach files");
+  assistantVoice = installVoiceInput({ host, input: $("aiAssistantInput"), controls: $("aiAssistantComposerControls"), onInput: autoGrowAssistantInput, getSessionId: () => currentSessionId });
+  window.addEventListener("pagehide", () => { void host.codexAssistantRelease?.(); });
   panel.addEventListener("pointerdown", bringAssistantPanelToFront);
   panel.addEventListener("focusin", bringAssistantPanelToFront);
   ensureAssistantSkillDom();
@@ -3860,6 +4019,7 @@ export function initAiAssistant() {
       setAssistantModel(getDefaultAssistantModel(), {
         save: !!currentSessionId,
         refreshStatus: false,
+        defaultEffort: true,
       });
     }
   });
@@ -3890,6 +4050,7 @@ export function initAiAssistant() {
   $("aiAssistantAttachFileOption")?.addEventListener("click", attachAssistantContextFile);
   $("aiAssistantNewChatBtn")?.addEventListener("click", async () => {
     const result = await openOrCreateEmptyAssistantSession();
+    if (!result?.ok) return;
     closeHistoryPage();
     setStatus(result?.created
       ? "New ArcBot chat started."

@@ -5,10 +5,19 @@ const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
 const { StringDecoder } = require("string_decoder");
+const { PreparedArcBotSessions } = require("./arcbot_prepared_session");
+const { arcBotTurnActivity } = require("./arcbot_turn_events");
+const { registerArcBotVoice } = require("./arcbot_voice");
+const { PROJECT_READ_TOOL, readArcBotProject } = require("./arcbot_project_read");
+const { createArcBotAccounts, decodeJwtPayload } = require("./arcbot_accounts");
+const preparedSessions = new PreparedArcBotSessions();
+let arcBotAccounts = null;
 const { formatJsonForSave } = require("./persisted_json_text");
 const { pruneAgedLogFiles } = require("./log_retention");
 const {
+  buildClaudeModelCatalog,
   buildCodexModelCatalog,
+  getFallbackClaudeModelCatalog,
   getFallbackCodexModelCatalog,
   normalizeModelId,
   normalizeReasoningEffort,
@@ -46,7 +55,7 @@ const ARCBOT_CHAT_SESSIONS_DIR = "arcbot_chat_sessions";
 const ARCBOT_CODEX_COMMAND_HINT_FILE = "arcbot_codex_command.json";
 const CODEX_ASSISTANT_TIMEOUT_MS = Math.max(
   15000,
-  parseInt(process.env.ARCRHO_CODEX_ASSISTANT_TIMEOUT_MS || "120000", 10) || 120000
+  parseInt(process.env.ARCRHO_CODEX_ASSISTANT_TIMEOUT_MS || "1800000", 10) || 1800000
 );
 const CODEX_ASSISTANT_CONTEXT_WINDOW_TOKENS = Math.max(
   1000,
@@ -62,6 +71,11 @@ let codexAppServerClient = null;
 let codexModelCatalogCache = null;
 let codexModelCatalogRequest = null;
 let codexModelCatalogGeneration = 0;
+// Discovered model lists are re-read after this long, so a long-running app still picks up new models.
+const ARCBOT_MODEL_CATALOG_TTL_MS = 6 * 60 * 60 * 1000;
+let codexModelCatalogCachedAt = 0;
+let claudeModelCatalogCache = null;
+let claudeModelCatalogCachedAt = 0;
 
   const runHostCommand = (command, args = [], options = {}) => {
     if (typeof runHostCommandBase !== "function") {
@@ -170,7 +184,7 @@ function normalizeArcBotActivities(activities) {
   if (!Array.isArray(activities)) return [];
   return activities.slice(-120).map((activity) => ({
     type: String(activity?.type || "info").slice(0, 32),
-    text: String(activity?.text || "").slice(0, 1000),
+    text: String(activity?.text || "").slice(0, 16000),
     elapsedMs: Number.isFinite(activity?.elapsedMs) ? Math.max(0, Math.round(activity.elapsedMs)) : null,
     timestamp: String(activity?.timestamp || new Date().toISOString()),
   })).filter((activity) => activity.text.trim());
@@ -190,7 +204,7 @@ function normalizeArcBotModel(model) {
 }
 
 function normalizeArcBotReasoningEffort(effort) {
-  return normalizeReasoningEffort(effort, "high");
+  return normalizeReasoningEffort(effort);
 }
 
 function isClaudeArcBotModel(model) {
@@ -198,7 +212,9 @@ function isClaudeArcBotModel(model) {
 }
 
 function getClaudeCredentialsPath() {
-  return path.join(os.homedir(), ".claude", ".credentials.json");
+  return arcBotAccounts
+    ? arcBotAccounts.authFilePath(arcBotAccounts.active("claude"))
+    : path.join(os.homedir(), ".claude", ".credentials.json");
 }
 
 function loadClaudeAuthToken() {
@@ -218,18 +234,6 @@ function loadClaudeAuthToken() {
 function extractEmailFromText(value) {
   const match = String(value || "").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu);
   return match ? match[0] : "";
-}
-
-function decodeJwtPayload(token) {
-  const parts = String(token || "").split(".");
-  if (parts.length < 2) return null;
-  try {
-    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-    return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
-  } catch {
-    return null;
-  }
 }
 
 function findEmailInCodexAuthValue(value, depth = 0, keyHint = "") {
@@ -275,8 +279,10 @@ function getCodexAuthCandidatePaths() {
       candidates.add(path.join(cleanRoot, name));
     }
   };
-  addAuthFiles(process.env.CODEX_HOME);
-  addAuthFiles(path.join(os.homedir(), ".codex"));
+  const account = arcBotAccounts?.active("codex");
+  // An added account's sign-in lives only in its own folder.
+  if (account && !account.builtin) return [path.join(account.configDir, "auth.json")];
+  addAuthFiles(account ? account.configDir : path.join(os.homedir(), ".codex"));
   addAuthFiles(process.env.APPDATA ? path.join(process.env.APPDATA, "OpenAI", "Codex") : "");
   addAuthFiles(process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "OpenAI", "Codex") : "");
   return Array.from(candidates);
@@ -334,14 +340,75 @@ function buildClaudeSystemPrompt(mode, activeContext, activeJson) {
   return parts.join("\n\n");
 }
 
+// The signed-in Claude Code token is only ever sent to api.anthropic.com.
+function getClaudeApiHeaders(authToken) {
+  return {
+    "Authorization": `Bearer ${authToken}`,
+    "anthropic-version": "2023-06-01",
+    "anthropic-beta": "oauth-2025-04-20",
+  };
+}
+
+function listClaudeModelEntries(authToken) {
+  const https = require("https");
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: "api.anthropic.com",
+      path: "/v1/models?limit=100",
+      method: "GET",
+      headers: getClaudeApiHeaders(authToken),
+      timeout: 10000,
+    }, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`Anthropic models API error ${res.statusCode}`));
+          return;
+        }
+        try {
+          resolve(JSON.parse(body)?.data);
+        } catch (err) {
+          reject(err);
+        }
+      });
+      res.on("error", reject);
+    });
+    req.on("timeout", () => req.destroy(new Error("Anthropic models API timed out.")));
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+async function getClaudeModelCatalog(options = {}) {
+  const fresh = Date.now() - claudeModelCatalogCachedAt < ARCBOT_MODEL_CATALOG_TTL_MS;
+  if (claudeModelCatalogCache && fresh && options.refresh !== true) return claudeModelCatalogCache;
+  const authToken = loadClaudeAuthToken();
+  if (!authToken) return claudeModelCatalogCache || getFallbackClaudeModelCatalog();
+  try {
+    claudeModelCatalogCache = buildClaudeModelCatalog(await listClaudeModelEntries(authToken));
+    claudeModelCatalogCachedAt = Date.now();
+    return claudeModelCatalogCache;
+  } catch (err) {
+    return {
+      ...(claudeModelCatalogCache || getFallbackClaudeModelCatalog()),
+      warning: String(err?.message || err || "Claude model discovery failed."),
+    };
+  }
+}
+
 function runClaudeArcBotRequest({ event, requestId, requestState, model, reasoningEffort, systemText, messages, attachments, usage }) {
   const authToken = loadClaudeAuthToken();
   if (!authToken) {
     return Promise.resolve({ ok: false, needsAuth: true, error: "Claude is not authenticated. Run: claude login" });
   }
-  const thinkingBudgetMap = { low: 1024, medium: 4096, high: 8192, xhigh: 16000 };
-  const thinkingBudget = thinkingBudgetMap[reasoningEffort] ?? 8192;
-  const enableThinking = (model === "claude-opus-4-8" || model === "claude-sonnet-4-6") && reasoningEffort !== "low";
+  // Current Claude models think adaptively; effort is the only depth control, and Haiku takes none.
+  const modelOption = (claudeModelCatalogCache || getFallbackClaudeModelCatalog()).models
+    .find((entry) => entry.value === model);
+  const supportedEfforts = (modelOption?.supportedReasoningEfforts || []).map((entry) => entry.value);
+  const effort = supportedEfforts.includes(reasoningEffort)
+    ? reasoningEffort
+    : modelOption?.defaultReasoningEffort || "";
   const anthropicMessages = (Array.isArray(messages) ? messages : [])
     .filter((m) => m.role === "user" || m.role === "assistant")
     .map((m, i, arr) => {
@@ -356,18 +423,17 @@ function runClaudeArcBotRequest({ event, requestId, requestState, model, reasoni
   }
   const bodyObj = {
     model,
-    max_tokens: enableThinking ? thinkingBudget + 8192 : 8192,
+    max_tokens: effort ? 64000 : 8192,
     system: systemText,
     messages: anthropicMessages,
     stream: true,
   };
-  if (enableThinking) bodyObj.thinking = { type: "enabled", budget_tokens: thinkingBudget };
+  if (effort) bodyObj.output_config = { effort };
   const requestBodyStr = JSON.stringify(bodyObj);
   const https = require("https");
   return new Promise((resolve) => {
     const reqHeaders = {
-      "Authorization": `Bearer ${authToken}`,
-      "anthropic-version": "2023-06-01",
+      ...getClaudeApiHeaders(authToken),
       "content-type": "application/json",
       "content-length": Buffer.byteLength(requestBodyStr),
     };
@@ -775,9 +841,10 @@ function extractCodexCommandFromInstallOutput(output) {
 // ArcBot's Python imports this app's own arcrho_api: the source folder in
 // development, else the bundled wheel, which is pure Python and imports
 // straight from the path. Its Gateway client then signs with this app's
-// credential and knows the same read kinds as the app.
-function getArcBotCodexEnv(env = process.env) {
-  const nextEnv = { ...env };
+// credential and knows the same read kinds as the app. Codex itself runs
+// under the active ArcBot account unless the caller names another.
+function getArcBotCodexEnv(env = process.env, account = arcBotAccounts?.active("codex")) {
+  const nextEnv = account ? arcBotAccounts.envFor(account, env) : { ...env };
   const wheelPath = getPythonApiWheelPath();
   const importRoot = fs.existsSync(PYTHON_API_SRC) ? PYTHON_API_SRC : wheelPath;
   if (importRoot) {
@@ -844,25 +911,25 @@ function runCodexCommand(args = [], options = {}) {
     if (nodeSpec) {
       return runHostCommand(nodeSpec.command, nodeSpec.args, {
         ...options,
-        env: getArcBotCodexEnv(options.env || process.env),
+        env: getArcBotCodexEnv(options.env || process.env, options.account),
         shell: false,
       });
     }
     if (/\.(cmd|bat)$/iu.test(command)) {
       return runWindowsCmdCommand(command, args, {
         ...options,
-        env: getArcBotCodexEnv(options.env || process.env),
+        env: getArcBotCodexEnv(options.env || process.env, options.account),
       });
     }
     return runHostCommand(command, args, {
       ...options,
-      env: getArcBotCodexEnv(options.env || process.env),
+      env: getArcBotCodexEnv(options.env || process.env, options.account),
       shell: false,
     });
   }
   return runHostCommand(command, args, {
     ...options,
-    env: getArcBotCodexEnv(options.env || process.env),
+    env: getArcBotCodexEnv(options.env || process.env, options.account),
     shell: false,
   });
 }
@@ -1059,6 +1126,7 @@ class CodexAppServerClient {
     this.nextId = 1;
     this.pending = new Map();
     this.notificationHandlers = new Set();
+    this.toolHandlers = new Map();
     this.disconnectHandlers = new Set();
     this.stdoutBuffer = "";
     this.stdoutDecoder = new StringDecoder("utf8");
@@ -1135,6 +1203,7 @@ class CodexAppServerClient {
 
   stop() {
     const proc = this.proc;
+    this.toolHandlers.clear();
     this.proc = null;
     this.started = false;
     this.stdoutBuffer = "";
@@ -1215,6 +1284,15 @@ class CodexAppServerClient {
     }
     if (message?.method) {
       if (Object.prototype.hasOwnProperty.call(message, "id")) {
+        const handler = message.method === "item/tool/call" && this.toolHandlers.get(message.params?.threadId);
+        if (handler) {
+          const proc = this.proc;
+          void Promise.resolve().then(() => handler(message.params)).then(
+            text => ({ success: true, contentItems: [{ type: "inputText", text: String(text) }] }),
+            error => ({ success: false, contentItems: [{ type: "inputText", text: String(error.message || error) }] }),
+          ).then(result => { if (this.proc === proc && this.isAlive()) this.writeMessage({ id: message.id, result }); }).catch(() => {});
+          return;
+        }
         this.respondUnsupported(message.id, message.method);
         return;
       }
@@ -1341,6 +1419,7 @@ class CodexAppServerClient {
       approvalPolicy: "never",
       sandbox: mode === "edit" ? "workspace-write" : "read-only",
       ephemeral: true,
+      dynamicTools: [PROJECT_READ_TOOL],
     });
     const threadId = String(result?.thread?.id || "");
     if (!threadId) throw new Error("Codex app-server did not return a thread id.");
@@ -1355,6 +1434,7 @@ async function ensureCodexAppServerStarted() {
 }
 
 function resetCodexAppServerClient() {
+  preparedSessions.clear();
   codexAppServerClient?.stop();
   codexAppServerClient = null;
   codexModelCatalogCache = null;
@@ -1363,18 +1443,29 @@ function resetCodexAppServerClient() {
 }
 
 async function discoverCodexModelCatalog() {
-  if (codexModelCatalogCache) return codexModelCatalogCache;
+  const fresh = Date.now() - codexModelCatalogCachedAt < ARCBOT_MODEL_CATALOG_TTL_MS;
+  if (codexModelCatalogCache && fresh) return codexModelCatalogCache;
   if (!codexModelCatalogRequest) {
     const requestGeneration = codexModelCatalogGeneration;
+    const previous = codexModelCatalogCache;
     const request = (async () => {
-      const client = await ensureCodexAppServerStarted();
-      const entries = await client.listModels();
-      const catalog = buildCodexModelCatalog(entries);
-      if (catalog.source !== "codex-app-server") {
-        throw new Error("Codex app-server returned no visible models.");
+      try {
+        const client = await ensureCodexAppServerStarted();
+        const entries = await client.listModels();
+        const catalog = buildCodexModelCatalog(entries);
+        if (catalog.source !== "codex-app-server") {
+          throw new Error("Codex app-server returned no visible models.");
+        }
+        if (requestGeneration === codexModelCatalogGeneration) {
+          codexModelCatalogCache = catalog;
+          codexModelCatalogCachedAt = Date.now();
+        }
+        return catalog;
+      } catch (err) {
+        // A failed timed re-read keeps the last verified list rather than blocking sends.
+        if (previous) return previous;
+        throw err;
       }
-      if (requestGeneration === codexModelCatalogGeneration) codexModelCatalogCache = catalog;
-      return catalog;
     })();
     codexModelCatalogRequest = request;
     const clearRequest = () => {
@@ -1411,7 +1502,7 @@ async function startCodexWarmThread({ isCanceled, mode, codexCwd, model, ensureC
   return { canceled: false, client, threadId };
 }
 
-async function runCodexWarmTurn({ event, requestId, requestState, payload, mode, model, reasoningEffort, codexCwd, codexSandbox, prompt }) {
+async function runCodexWarmTurn({ event, requestId, requestState, payload, mode, model, reasoningEffort, codexCwd, codexSandbox, prompt, ensureClient = ensureCodexAppServerStarted }) {
   let client = null;
   let threadId = "";
   let turnId = "";
@@ -1440,15 +1531,21 @@ async function runCodexWarmTurn({ event, requestId, requestState, payload, mode,
     requestState.cancelProcess = cancelTurn;
     if (requestState.canceled) cancelTurn();
   }
-  const startup = await startCodexWarmThread({
+  const startup = payload?.sessionId ? await (async () => {
+    const warmClient = await ensureClient();
+    const prepared = await preparedSessions.take(event.sender.id, payload.sessionId, model, codexCwd, warmClient);
+    return { ...prepared, canceled: canceled || !!requestState?.canceled };
+  })() : await startCodexWarmThread({
     isCanceled: () => canceled || !!requestState?.canceled,
     mode,
     codexCwd,
     model,
+    ensureClient,
   });
   client = startup.client;
   threadId = startup.threadId;
   if (startup.canceled) {
+    void client?.request("thread/unsubscribe", { threadId }, 5000).catch(() => {});
     return { ok: false, canceled: true, stdout: "", stderr: "", error: "Request canceled." };
   }
   const flushAssistantDelta = () => {
@@ -1467,6 +1564,7 @@ async function runCodexWarmTurn({ event, requestId, requestState, payload, mode,
     }, 32);
   };
   const cleanupTurnWait = () => {
+    client.toolHandlers.delete(threadId);
     if (waitTimer) clearTimeout(waitTimer);
     waitTimer = null;
     if (assistantDeltaTimer) clearTimeout(assistantDeltaTimer);
@@ -1490,6 +1588,23 @@ async function runCodexWarmTurn({ event, requestId, requestState, payload, mode,
     }
     if (!isCodexNotificationForTurn(message, { threadId, turnId })) return;
 
+    const activity = arcBotTurnActivity(message);
+    if (activity?.text) sendArcBotActivity(event, requestId, activity.type, activity.text, { itemId: activity.itemId });
+    if (message?.method === "item/started" && message.params?.item?.type === "agentMessage") {
+      agentText = "";
+      assistantDeltaBuffer = "";
+      sendArcBotActivity(event, requestId, "assistant-reset", "");
+    }
+    if (message?.method === "item/completed" && message.params?.item?.type === "agentMessage") {
+      agentText = String(message.params.item.text || agentText);
+      if (message.params.item.phase === "commentary") {
+        // The work log already shows this commentary; drop its streamed copy from the reply bubble.
+        if (assistantDeltaTimer) clearTimeout(assistantDeltaTimer);
+        assistantDeltaTimer = null;
+        assistantDeltaBuffer = "";
+        sendArcBotActivity(event, requestId, "assistant-reset", "");
+      }
+    }
     if (message?.method === "item/agentMessage/delta") {
       const delta = String(message.params?.delta || "");
       agentText += delta;
@@ -1498,7 +1613,7 @@ async function runCodexWarmTurn({ event, requestId, requestState, payload, mode,
         agentStartedSent = true;
         sendArcBotActivity(event, requestId, "activity", "ArcBot is drafting a response.");
       }
-    } else {
+    } else if (!activity) {
       const notificationSummary = summarizeCodexTurnNotification(message);
       const summary = typeof notificationSummary === "string"
         ? notificationSummary
@@ -1533,6 +1648,23 @@ async function runCodexWarmTurn({ event, requestId, requestState, payload, mode,
     }
   };
   removeNotificationHandler = client.onNotification(handleTurnNotification);
+  client.toolHandlers.set(threadId, async params => {
+    if (canceled || requestState?.canceled || (turnId && params.turnId !== turnId)) throw new Error("The ArcBot turn is no longer active.");
+    sendArcBotActivity(event, requestId, "command", `${params.tool}\n${JSON.stringify(params.arguments)}`, { itemId: params.callId });
+    const output = await readArcBotProject(params, payload.activeContext, async (script, input) => {
+      const result = await runHostCommand(PYTHON_EXE, ["-X", "utf8", "-c", script], {
+        // No shell: a Python path with spaces ("C:\Program Files\...") breaks cmd.exe parsing.
+        input, env: getArcBotCodexEnv(), windowsHide: true, shell: false, timeoutMs: CODEX_ASSISTANT_TIMEOUT_MS,
+      });
+      if (!result.ok) throw new Error(result.stderr || result.error || "Project read failed.");
+      return result.stdout;
+    }).catch(error => {
+      sendArcBotActivity(event, requestId, "command-output", `\n${error.message || error}`, { itemId: params.callId });
+      throw error;
+    });
+    sendArcBotActivity(event, requestId, "command-output", `\n${output}`, { itemId: params.callId });
+    return output;
+  });
   removeDisconnectHandler = client.onDisconnect((message) => {
     const error = new Error(String(message || "Codex app-server disconnected."));
     if (!turnId) {
@@ -1600,6 +1732,7 @@ async function runCodexWarmTurn({ event, requestId, requestState, payload, mode,
     };
   } finally {
     cleanupTurnWait();
+    if (threadId) void client.request("thread/unsubscribe", { threadId }, 5000).catch(() => {});
   }
 }
 
@@ -2008,21 +2141,13 @@ function writeCodexInstallScript() {
     "if ($npmDir) { $env:Path = \"$npmDir;$env:Path\" }",
     "New-Item -ItemType Directory -Path $InstallPrefix -Force | Out-Null",
     "& $NpmCommand install --global --prefix $InstallPrefix @openai/codex",
-    "Write-Output 'Codex CLI install completed.'",
-    "$prefix = $InstallPrefix",
-    "$codexCandidates = @(",
-    "  (Join-Path $prefix 'codex.cmd'),",
-    "  (Join-Path $prefix 'bin\\codex.cmd'),",
-    "  (Join-Path $npmDir 'codex.cmd')",
-    ")",
-    "$codexCmd = $codexCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1",
-    "if (-not $codexCmd) {",
-    "  $pathCmd = Get-Command codex -ErrorAction SilentlyContinue",
-    "  if ($pathCmd) { $codexCmd = $pathCmd.Path }",
-    "}",
-    "if (-not $codexCmd) { throw 'Codex CLI installed, but codex.cmd was not found on the npm global path.' }",
-    "Write-Output \"ARCRHO_CODEX_CMD=$codexCmd\"",
+    "if ($LASTEXITCODE -ne 0) { throw \"npm installation failed (exit $LASTEXITCODE). See the npm error above. If it reports ENOSPC, free space on the installation/cache drive, then retry.\" }",
+    "$codexCmd = Join-Path $InstallPrefix 'codex.cmd'",
+    "if (-not (Test-Path -LiteralPath $codexCmd -PathType Leaf)) { throw \"npm returned success but did not create $codexCmd. Check npm's bin-links setting and retry Repair.\" }",
     "& $codexCmd --version",
+    "if ($LASTEXITCODE -ne 0) { throw \"The installed Codex CLI could not start (exit $LASTEXITCODE). Retry Repair after resolving the error above.\" }",
+    "Write-Output \"ARCRHO_CODEX_CMD=$codexCmd\"",
+    "Write-Output 'Codex CLI install completed.'",
     "",
   ].join("\r\n");
   fs.writeFileSync(scriptPath, script, "utf8");
@@ -2239,7 +2364,7 @@ function buildAssistantPrompt(
     ACTIVE_JSON_DATA: editSession?.jsonPath
       ? `The active JSON-backed file is available as ${activeJsonName} in the current working folder. Use the Arco Python API helper for DFM reads and edits before falling back to raw JSON inspection. When using the public Arco Python API directly, use ArcRhoClient(${JSON.stringify(exchangeRoot || ".")}) so API reads and writes stay inside the local exchange workspace.`
       : (activeJson ? JSON.stringify(activeJson, null, 2) : "No active JSON-backed data was loaded."),
-    SHARED_INSTRUCTIONS: readArcBotSharedInstructions(promptFiles),
+    SHARED_INSTRUCTIONS: `${readArcBotSharedInstructions(promptFiles)}\n\n${fs.readFileSync(path.join(__dirname, "prompts", "arcbot_runtime_workflow.md"), "utf8")}`,
     ATTACHMENT_TEXT: attachmentText,
     TRANSCRIPT: transcript || "User: Hello",
   });
@@ -2363,11 +2488,38 @@ function registerArcBotIpc(deps = {}) {
     throw new Error("registerArcBotIpc requires ipcMain and app dependencies");
   }
   spawnProcessBase = typeof deps.spawnProcess === "function" ? deps.spawnProcess : spawn;
+  arcBotAccounts = createArcBotAccounts({ getRootDir: getPrefsDir, homeDir: deps.homeDir || os.homedir() });
   resetCodexAppServerClient();
+  const voice = registerArcBotVoice(ipcMain);
   PYTHON_API_SRC = path.join(REPO_ROOT, "python-api", "src");
   PYTHON_API_WHEEL_DIR = app.isPackaged
     ? path.join(process.resourcesPath, "python_packages")
     : path.join(APP_ROOT, "build", "python_packages");
+
+ipcMain.handle("codex-assistant-prepare", async (event, payload) => {
+  const owner = event.sender.id;
+  if (!event.sender.__arcBotPreparedCleanup) {
+    event.sender.__arcBotPreparedCleanup = true;
+    event.sender.once("destroyed", () => preparedSessions.release(owner));
+  }
+  if (!payload?.sessionId || isClaudeArcBotModel(payload?.model) || !CODEX_APP_SERVER_ENABLED) {
+    preparedSessions.release(owner);
+    return { ok: true, state: "on-demand" };
+  }
+  try {
+    const cwd = getArcBotWorkspaceRoot();
+    fs.mkdirSync(cwd, { recursive: true });
+    const client = await ensureCodexAppServerStarted();
+    await preparedSessions.prepare(owner, payload.sessionId, normalizeArcBotModel(payload.model), cwd, client);
+    return { ok: true, state: "ready" };
+  } catch (error) {
+    return { ok: false, state: "failed", error: String(error.message || error) };
+  }
+});
+ipcMain.handle("codex-assistant-release", (event) => {
+  preparedSessions.release(event.sender.id);
+  return { ok: true };
+});
 
 ipcMain.handle("codex-assistant-status", async () => {
   const codexCommand = getCodexCommand();
@@ -2413,9 +2565,14 @@ ipcMain.handle("codex-assistant-status", async () => {
   };
 });
 
-ipcMain.handle("codex-assistant-models", async (_event, payload) => (
-  getCodexModelCatalog({ refresh: payload?.refresh === true })
-));
+ipcMain.handle("codex-assistant-models", async (_event, payload) => {
+  const refresh = payload?.refresh === true;
+  const [catalog, claude] = await Promise.all([
+    getCodexModelCatalog({ refresh }),
+    getClaudeModelCatalog({ refresh }),
+  ]);
+  return { ...catalog, claude };
+});
 
 ipcMain.handle("codex-assistant-readable-roots-load", async () => {
   try {
@@ -2516,31 +2673,124 @@ ipcMain.handle("codex-assistant-install", async () => {
   };
 });
 
-ipcMain.handle("codex-assistant-login", async (_event, payload) => {
-  const provider = String(payload?.provider || "openai").trim().toLowerCase();
-  if (provider === "anthropic") {
+// Opens the vendor sign-in in its own window under the account's folder.
+async function launchArcBotAccountLogin(account) {
+  let result;
+  if (account.provider === "claude") {
     const claudeCmd = getClaudeCommand();
     if (!claudeCmd) return { ok: false, error: "Claude CLI (claude) was not found. Install it to sign in." };
-    if (process.platform === "win32") {
-      return launchDetachedArcBotProcess(
-        "cmd.exe",
-        ["/d", "/k", `${quoteWindowsCmdArg(claudeCmd)} login`],
-      );
+    const env = arcBotAccounts.envFor(account, process.env);
+    result = process.platform === "win32"
+      ? await launchDetachedArcBotProcess("cmd.exe", ["/d", "/k", `${quoteWindowsCmdArg(claudeCmd)} auth login`], { env })
+      : await launchDetachedArcBotProcess(claudeCmd, ["auth", "login"], { env });
+  } else {
+    const codexSpec = getCodexSpawnSpec(["login"]);
+    if (!codexSpec) {
+      return { ok: false, error: "Codex CLI was not found. Install Codex CLI before signing in." };
     }
-    return launchDetachedArcBotProcess(claudeCmd, ["login"]);
+    const env = getArcBotCodexEnv(process.env, account);
+    result = process.platform === "win32"
+      ? await launchDetachedArcBotProcess(
+        "cmd.exe",
+        ["/d", "/k", [codexSpec.command, ...codexSpec.args].map(quoteWindowsCmdArg).join(" ")],
+        { env },
+      )
+      : await launchDetachedArcBotProcess(codexSpec.command, codexSpec.args, { shell: codexSpec.shell, env });
   }
-  const codexSpec = getCodexSpawnSpec(["login"]);
-  if (!codexSpec) {
-    return { ok: false, error: "Codex CLI was not found. Install Codex CLI before signing in." };
+  if (result.ok) arcBotAccounts.markLoginPending(account.id);
+  return result;
+}
+
+function arcBotAccountProvider(value) {
+  const provider = String(value || "").trim().toLowerCase();
+  return provider === "anthropic" || provider === "claude" ? "claude" : "codex";
+}
+
+// Switching an account restarts what holds the old sign-in, which would fail a running reply.
+function arcBotAccountBusyError() {
+  return activeCodexAssistantRequests.size ? "Wait for the current reply to finish." : "";
+}
+
+function afterArcBotAccountChange(provider) {
+  if (provider === "codex") {
+    resetCodexAppServerClient();
+  } else {
+    claudeModelCatalogCache = null;
+    claudeModelCatalogCachedAt = 0;
   }
-  if (process.platform === "win32") {
-    return launchDetachedArcBotProcess(
-      "cmd.exe",
-      ["/d", "/k", [codexSpec.command, ...codexSpec.args].map(quoteWindowsCmdArg).join(" ")],
-    );
+}
+
+function arcBotAccountsResult() {
+  return { ok: true, accounts: arcBotAccounts.views() };
+}
+
+async function handleArcBotAccountChange(change) {
+  try {
+    return await change();
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "The account could not be changed.") };
   }
-  return launchDetachedArcBotProcess(codexSpec.command, codexSpec.args, { shell: codexSpec.shell });
-});
+}
+
+ipcMain.handle("codex-assistant-login", async (_event, payload) => handleArcBotAccountChange(() => (
+  launchArcBotAccountLogin(payload?.accountId
+    ? arcBotAccounts.get(String(payload.accountId))
+    : arcBotAccounts.active(arcBotAccountProvider(payload?.provider)))
+)));
+
+ipcMain.handle("codex-assistant-accounts-list", async () => handleArcBotAccountChange(arcBotAccountsResult));
+
+ipcMain.handle("codex-assistant-account-create", async (_event, payload) => handleArcBotAccountChange(async () => {
+  const busy = arcBotAccountBusyError();
+  if (busy) return { ok: false, error: busy };
+  const provider = arcBotAccountProvider(payload?.provider);
+  const account = arcBotAccounts.create(provider, payload?.label);
+  arcBotAccounts.setActive(provider, account.id);
+  afterArcBotAccountChange(provider);
+  const login = await launchArcBotAccountLogin(account);
+  return { ...arcBotAccountsResult(), ok: login.ok, error: login.error || "" };
+}));
+
+ipcMain.handle("codex-assistant-account-activate", async (_event, payload) => handleArcBotAccountChange(() => {
+  const provider = arcBotAccountProvider(payload?.provider);
+  if (arcBotAccounts.active(provider).id === payload?.accountId) return arcBotAccountsResult();
+  const busy = arcBotAccountBusyError();
+  if (busy) return { ok: false, error: busy };
+  arcBotAccounts.setActive(provider, String(payload?.accountId || ""));
+  afterArcBotAccountChange(provider);
+  return arcBotAccountsResult();
+}));
+
+ipcMain.handle("codex-assistant-account-logout", async (_event, payload) => handleArcBotAccountChange(async () => {
+  const account = arcBotAccounts.get(String(payload?.accountId || ""));
+  const isActive = arcBotAccounts.active(account.provider).id === account.id;
+  const busy = isActive ? arcBotAccountBusyError() : "";
+  if (busy) return { ok: false, error: busy };
+  let result;
+  if (account.provider === "codex") {
+    result = await runCodexCommand(["logout"], { account, timeoutMs: 15000 });
+  } else {
+    const claudeCmd = getClaudeCommand();
+    if (!claudeCmd) return { ok: false, error: "Claude CLI (claude) was not found." };
+    const options = { env: arcBotAccounts.envFor(account, process.env), timeoutMs: 15000 };
+    result = /\.(cmd|bat)$/iu.test(claudeCmd)
+      ? await runWindowsCmdCommand(claudeCmd, ["auth", "logout"], options)
+      : await runHostCommand(claudeCmd, ["auth", "logout"], { ...options, shell: false });
+  }
+  if (isActive) afterArcBotAccountChange(account.provider);
+  if (!result.ok) return { ok: false, error: normalizeHostError(result, "Sign-out failed.") };
+  return arcBotAccountsResult();
+}));
+
+ipcMain.handle("codex-assistant-account-remove", async (_event, payload) => handleArcBotAccountChange(() => {
+  const account = arcBotAccounts.get(String(payload?.accountId || ""));
+  const isActive = arcBotAccounts.active(account.provider).id === account.id;
+  const busy = isActive ? arcBotAccountBusyError() : "";
+  if (busy) return { ok: false, error: busy };
+  arcBotAccounts.remove(account.id);
+  if (isActive) afterArcBotAccountChange(account.provider);
+  return arcBotAccountsResult();
+}));
 
 ipcMain.handle("codex-assistant-sessions-list", async (_event, payload) => {
   try {
@@ -3020,6 +3270,7 @@ ipcMain.handle("codex-assistant-cancel", async (_event, payload) => {
 
 return {
   stop() {
+    voice.stop();
     resetCodexAppServerClient();
   },
 };
@@ -3037,12 +3288,16 @@ module.exports = {
     getCodexModelCatalog,
     getFallbackCodexModelCatalog,
     isCodexNotificationForTurn,
+    getArcBotCodexEnv,
     getArcBotHostCwd,
+    getClaudeCredentialsPath,
     getNodeBackedCodexSpec,
     launchDetachedArcBotProcess,
     reconcileArcBotReasoningEffort,
     runCodexCommand,
+    runCodexWarmTurn,
     startCodexWarmThread,
     withArcBotHostCwd,
+    writeCodexInstallScript,
   },
 };

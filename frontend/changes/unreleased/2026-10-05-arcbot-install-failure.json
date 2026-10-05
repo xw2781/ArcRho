@@ -1,0 +1,7 @@
+{
+  "type": "fix",
+  "scope": "ArcBot",
+  "audience": "user",
+  "summary": "ArcBot Repair now reports failed npm installations instead of incorrectly claiming installation completed.",
+  "details": ["Repair verifies that the Codex launcher was created in its per-user folder and can start before reporting success."]
+}

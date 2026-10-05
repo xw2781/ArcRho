@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "ArcBot",
+  "audience": "user",
+  "summary": "Kept ArcBot composer controls on one row by increasing the chat window's minimum width."
+}

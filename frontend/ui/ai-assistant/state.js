@@ -1,4 +1,3 @@
-export const PANEL_MIN_WIDTH = 420;
 export const PANEL_DEFAULT_HEIGHT = 640;
 
 export const ATTACHMENT_EXTENSIONS = [

@@ -1,0 +1,6 @@
+{
+  "type": "fix",
+  "scope": "ArcBot",
+  "audience": "user",
+  "summary": "Tidied ArcBot's work log: each command shows as one line that expands to its full output, filler status lines and the composer's working label are gone, and a request may now run for up to 30 minutes."
+}
