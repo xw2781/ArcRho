@@ -38,6 +38,7 @@ Document path/config setup, AppData-backed workspace path persistence, and runti
   - `get_project_dataset_cache_dir`
   - `get_project_dataset_sidecar_dir`
   - `get_project_instance_default_preferences_path`
+  - `get_project_lock_path`
   - `get_project_master_table_path`
   - `get_project_method_data_dir`
   - `get_project_reserving_class_data_dir`

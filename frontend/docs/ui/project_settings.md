@@ -10,7 +10,7 @@ Source Data offers two import sources for the same project-owned table: a flat C
 
 ## Entry Points
 <!-- AUTO-GEN:BEGIN frontend.project_settings.entry_points -->
-- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20260927smb18`, `/ui/shared/services/color_theme.js?v=20260923c`; inline imports _none_.
+- `ui/project_settings/project_settings.html`: external scripts `/ui/project_settings/project_settings.js?v=20261004lock1`, `/ui/shared/services/color_theme.js?v=20260923c`; inline imports _none_.
 
 Detected `fetch(...)` targets in key JS files:
 - `/arcrho/headers/cache/clear`
@@ -104,6 +104,8 @@ Detected `arcrho:*` message types in key JS files:
 - Project tree rows reveal a red open-corner `View project contents in a new tab` icon button on row hover or keyboard focus, opening the selected project as a top-level project instance tab.
 - Project tree folder expand/collapse state is saved in `%APPDATA%\ArcRho\local_project_prefs.json` under `projectExplorer.expandedFolders` and restored when Project Settings opens.
 - `Project Settings` ribbon page includes an `Open Folder` action button with folder icon styling and disabled-state feedback while the request is in flight.
+- `Project Settings` ribbon page also holds the `Lock Project` switch (`project_settings_project_lock.js`), read through `GET /project_lock` when a project is selected and changed through `POST /project_lock`; its status line names who locked the project and when. While the selected project is locked, the page's explicit save buttons (Save Field Mapping, the type and rule editors' Apply, Import Data, Rename) answer a click with the "Project Locked" message box instead of saving. Every other write, including the auto-saving grids, is refused by the server with the same message.
+- Every method and Dataset window passes its project to the shared save progress (`createArcRhoSaveProgress({projectName})`), which asks `/project_lock` before the save starts; a locked project shows the "Project Locked" message box and the save returns `{ok: false, projectLocked: true}` without writing. When the lock cannot be read the save goes ahead and the server decides.
 - Coordinates feature modules for mapping/type editors.
 - Dataset Types row mutations (add/edit/delete) update in-memory state and schedule per-project debounced save. The shared auto-save scheduler cannot be wedged by a save that never answers: a watchdog releases its single-flight slot, says so in the pane's status, and leaves the edits queued for the next save rather than silently dropping them.
 - Dataset Types pane now reuses shared dataset-types helpers (`dataset_types_source.js`, `dataset_types_view_model.js`) for `/dataset_types` payload normalization, `Name`/`Data Format`/`Category`/`Calculated` filter option-building, shared filter label/key generation, and active-filter state checks, to stay aligned with the reusable dataset picker while preserving the existing Project Settings UI behavior.

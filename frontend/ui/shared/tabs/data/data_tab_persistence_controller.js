@@ -5,7 +5,7 @@ import { createTemporaryDatasetFormat } from "/ui/shared/tabs/data/data_tab_temp
 import { createDatasetDirtyState } from "/ui/shared/tabs/data/data_tab_dirty_state.js?v=20260830a";
 import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260919a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260925a";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260916b";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20261004lock1";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 export function registerDataTabPersistenceController(runtime) {
   const { state, config, instanceId, isProjectInstanceDraft, isReadOnlyDatasetViewer, isTemporaryDatasetView } = runtime;
@@ -1133,7 +1133,7 @@ export function registerDataTabPersistenceController(runtime) {
 
   // The saving animation is created per controller instance so the Dataset
   // window and a method page hosting this Data tab keep separate popups.
-  const datasetSaveProgress = createArcRhoSaveProgress({ subject: "Dataset", noun: "dataset" });
+  const datasetSaveProgress = createArcRhoSaveProgress({ subject: "Dataset", noun: "dataset", projectName: () => getResolvedProjectValue() });
 
   async function saveDatasetSidecarForCurrentContext(progress = null) {
     if (isReadOnlyDatasetWindow()) {

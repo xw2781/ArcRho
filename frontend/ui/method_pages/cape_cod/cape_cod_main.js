@@ -25,7 +25,7 @@ import { createCapeCodRatiosChart } from "/ui/method_pages/cape_cod/cape_cod_rat
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260925a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260925a";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260916b";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20261004lock1";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
@@ -1624,7 +1624,7 @@ async function reloadPersistedCapeCod(options = {}) {
 
 // The window blocks edits behind the shared saving animation for the whole
 // round trip: recalculation, method write, then dependent-propagation queueing.
-const ccSaveProgress = createArcRhoSaveProgress({ subject: CC_METHOD_TYPE });
+const ccSaveProgress = createArcRhoSaveProgress({ subject: CC_METHOD_TYPE, projectName: () => state.project });
 
 async function saveCapeCod() {
   return ccSaveProgress.run((progress) => runCapeCodSave(progress));

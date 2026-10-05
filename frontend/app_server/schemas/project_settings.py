@@ -94,6 +94,12 @@ class GeneratedDatasetCacheClearRequest(BaseModel):
     project_name: str
 
 
+class ProjectLockUpdateRequest(BaseModel):
+    project_name: str
+    locked: bool = False
+    request_id: Optional[str] = None
+
+
 class GeneralSettingsUpdateRequest(BaseModel):
     project_name: str
     origin_start_date: Optional[str] = ""

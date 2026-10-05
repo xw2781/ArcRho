@@ -19,6 +19,13 @@ async function importSaveProgress() {
     + " (globalThis.__arcrhoNoticeDialogs = globalThis.__arcrhoNoticeDialogs || []).push(options);"
     + " }",
   )}`;
+  // The lock check answers from a global the test sets, and records the
+  // project it was asked about.
+  const projectLockUrl = `data:text/javascript,${encodeURIComponent(
+    "export async function refuseIfProjectLocked(name){"
+    + " (globalThis.__arcrhoLockChecks = globalThis.__arcrhoLockChecks || []).push(name);"
+    + " return globalThis.__arcrhoLockedMessage || ''; }",
+  )}`;
   // The notice opens a clicked dataset through the real review-warning helper,
   // so that one keeps its own source rather than being stubbed out.
   const reviewWarningUrl = new URL(
@@ -37,6 +44,10 @@ async function importSaveProgress() {
     .replace(
       /"\/ui\/shared\/components\/message_box\/message_box\.js\?v=[0-9a-z]+"/u,
       JSON.stringify(messageBoxUrl),
+    )
+    .replace(
+      /"\/ui\/shared\/services\/project_lock\.js\?v=[0-9a-z]+"/u,
+      JSON.stringify(projectLockUrl),
     );
   return import(`data:text/javascript,${encodeURIComponent(text)}`);
 }
@@ -503,6 +514,32 @@ test("a clicked dependent name asks Project Instance to open its page", async ()
   delete globalThis.__arcrhoNoticeDialogs;
 });
 
+test("a locked project refuses the save before the work or the card starts", async () => {
+  const { createArcRhoSaveProgress } = await importSaveProgress();
+  globalThis.__arcrhoLockChecks = [];
+  globalThis.__arcrhoLockedMessage = "This project is locked.";
+  let ran = false;
+  const saveProgress = createArcRhoSaveProgress({ subject: "Cape Cod", documentRef: createStubDocument(), projectName: () => "Demo" });
+
+  const previousRequest = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = () => 1;
+  const previousCancel = globalThis.cancelAnimationFrame;
+  globalThis.cancelAnimationFrame = () => {};
+  const result = await saveProgress.run(async () => { ran = true; });
+
+  assert.deepEqual(result, { ok: false, error: "This project is locked.", projectLocked: true });
+  assert.equal(ran, false);
+  assert.deepEqual(globalThis.__arcrhoLockChecks, ["Demo"]);
+
+  globalThis.__arcrhoLockedMessage = "";
+  await saveProgress.run(async () => { ran = true; });
+  globalThis.requestAnimationFrame = previousRequest;
+  globalThis.cancelAnimationFrame = previousCancel;
+  assert.equal(ran, true);
+  delete globalThis.__arcrhoLockChecks;
+  delete globalThis.__arcrhoLockedMessage;
+});
+
 test("every method and dataset window saves behind the shared save progress", async () => {
   const sources = await Promise.all(SAVE_SURFACES.map((surface) => source(surface.path)));
 
@@ -510,12 +547,12 @@ test("every method and dataset window saves behind the shared save progress", as
     const surface = SAVE_SURFACES[index];
     assert.match(
       text,
-      new RegExp(`createArcRhoSaveProgress\\(\\{ subject: ${surface.subject.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")} \\}\\)`, "u"),
+      new RegExp(`createArcRhoSaveProgress\\(\\{ subject: ${surface.subject.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}, projectName: \\(\\) => [^}]+ \\}\\)`, "u"),
       `${surface.label} must build its saving animation from the shared save progress`,
     );
     assert.match(
       text,
-      /save_progress\.js\?v=20260916b/u,
+      /save_progress\.js\?v=20261004lock1/u,
       `${surface.label} must load one version of the shared save progress`,
     );
     // No page owns popup markup, styles, or its own scope counter.

@@ -21,7 +21,7 @@ import {
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { wireNumberFormatField } from "/ui/shared/components/pickers/number_format_field.js?v=20260914a";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260925a";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260916b";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20261004lock1";
 import { trackSavePropagation } from "/ui/shared/services/dependent_propagation_job.js?v=20260813e";
 import {
   getBerquistShermanContract,
@@ -2791,7 +2791,7 @@ function blockSaveForActiveSourcePreviews() {
 // The window blocks edits behind the shared saving animation for the whole
 // round trip: source refresh, method and CSV writes, then the sidecar write
 // that queues dependent updates.
-const bsSaveProgress = createArcRhoSaveProgress({ subject: contract.displayLabel });
+const bsSaveProgress = createArcRhoSaveProgress({ subject: contract.displayLabel, projectName: () => state.project });
 
 async function saveMethod() {
   return bsSaveProgress.run((progress) => runBerquistShermanSave(progress));

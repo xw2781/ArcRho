@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Mapping
 from fastapi import HTTPException
 
 from arcrho_api.resq_sync_queue import (
+    PHASE_APPLY,
     BridgeRequestError,
     create_sync_request,
     publish_sync_request,
@@ -31,7 +32,7 @@ from arcrho_project_duplication_contract import (
 )
 
 from app_server import config
-from app_server.services import user_identity_service
+from app_server.services import project_lock_service, user_identity_service
 
 
 def publish_resq_sync_request(
@@ -61,6 +62,10 @@ def publish_resq_sync_request(
         )
     except ValueError as error:
         raise HTTPException(400, str(error)) from error
+    if payload["Phase"] == PHASE_APPLY:
+        # Applying a reviewed synchronization writes ResQ values into the
+        # project; previews and exports to ResQ leave the project alone.
+        project_lock_service.require_project_unlocked(project_name)
 
     server_root = config.get_root_path()
     request_path, status_path = request_paths(server_root, identifier)

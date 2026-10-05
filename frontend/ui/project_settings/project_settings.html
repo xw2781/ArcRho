@@ -244,11 +244,15 @@
             </div>
             <div class="ribbon-panel" id="ribbonFieldMapping">
               <div class="field-mapping-panel">
-                <div class="summary-header">Field Mapping</div>
-                <div class="field-mapping-toolbar">
-                  <div class="field-mapping-help">Select significance for each field. New dataset types can be created in "Dataset Types" Page. </div>
-                  <button id="saveFieldMappingBtn" type="button" disabled>Save Field Mapping</button>
-                </div>
+                <header class="ps-panel-head">
+                  <div class="ps-panel-heading">
+                    <div class="summary-header">Field Mapping</div>
+                    <div class="field-mapping-help">Select significance for each field. New dataset types can be created in "Dataset Types" Page.</div>
+                  </div>
+                  <div class="field-mapping-toolbar ps-panel-actions">
+                    <button id="saveFieldMappingBtn" type="button" disabled>Save Field Mapping</button>
+                  </div>
+                </header>
                 <div class="field-mapping-status" id="fieldMappingStatus"></div>
                 <div class="field-mapping-grid">
                   <table class="field-mapping-table" id="fieldMappingTable">
@@ -277,15 +281,17 @@
             </div>
             <div class="ribbon-panel" id="ribbonReservingClassTypes">
               <div class="dataset-types-panel">
-                <div class="summary-header">Reserving Class Types</div>
-                <div class="dataset-types-toolbar">
-                  <div class="dataset-types-help">
-                    Loaded from field mapping. 
-                    Click a column header to sort rows within each Level group. 
-                    Right-click any data row to add below or delete. 
-                    Changes auto-save.
+                <header class="ps-panel-head">
+                  <div class="ps-panel-heading">
+                    <div class="summary-header">Reserving Class Types</div>
+                    <div class="dataset-types-help">
+                      Loaded from field mapping.
+                      Click a column header to sort rows within each Level group.
+                      Right-click any data row to add below or delete.
+                      Changes auto-save.
+                    </div>
                   </div>
-                </div>
+                </header>
                 <div class="dataset-types-status" id="reservingClassTypesStatus"></div>
                 <div class="dataset-types-grid">
                   <table class="dataset-types-table" id="reservingClassTypesTable">
@@ -310,10 +316,12 @@
             </div>
             <div class="ribbon-panel" id="ribbonDatasetTypes">
               <div class="dataset-types-panel">
-                <div class="summary-header">Dataset Types</div>
-                <div class="dataset-types-toolbar">
-                  <div class="dataset-types-help">Right-click any row to edit, add, or delete. Changes auto-save.</div>
-                </div>
+                <header class="ps-panel-head">
+                  <div class="ps-panel-heading">
+                    <div class="summary-header">Dataset Types</div>
+                    <div class="dataset-types-help">Right-click any row to edit, add, or delete. Changes auto-save.</div>
+                  </div>
+                </header>
                 <div class="dataset-types-status" id="datasetTypesStatus"></div>
                 <div class="dataset-types-grid">
                   <table class="dataset-types-table" id="datasetTypesTable">
@@ -344,13 +352,17 @@
             </div>
             <div class="ribbon-panel" id="ribbonDataProcessing">
               <div class="dataset-types-panel">
-                <div class="summary-header">Data Processing Rules</div>
-                <div class="dataset-types-toolbar dpr-toolbar">
-                  <div class="dataset-types-help">Filter source rows for a dataset type before totals are calculated. Hover a rule and drag the grip in its Enabled cell to reorder; right-click to edit, duplicate, enable/disable, or delete.</div>
-                  <button id="dataProcessingRulesJsonBtn" type="button">View JSON</button>
-                  <button id="validateDataProcessingRulesBtn" type="button">Validate all</button>
-                  <button id="addDataProcessingRuleBtn" class="primary" type="button">Add rule</button>
-                </div>
+                <header class="ps-panel-head">
+                  <div class="ps-panel-heading">
+                    <div class="summary-header">Data Processing Rules</div>
+                    <div class="dataset-types-help">Filter source rows for a dataset type before totals are calculated. Hover a rule and drag the grip in its Enabled cell to reorder; right-click to edit, duplicate, enable/disable, or delete.</div>
+                  </div>
+                  <div class="dataset-types-toolbar dpr-toolbar ps-panel-actions">
+                    <button id="dataProcessingRulesJsonBtn" type="button">View JSON</button>
+                    <button id="validateDataProcessingRulesBtn" type="button">Validate all</button>
+                    <button id="addDataProcessingRuleBtn" class="primary" type="button">Add rule</button>
+                  </div>
+                </header>
                 <div class="dataset-types-status" id="dataProcessingRulesStatus"></div>
                 <div class="dataset-types-grid">
                   <table class="dataset-types-table dpr-rules-table" id="dataProcessingRulesTable">
@@ -381,10 +393,12 @@
             </div>
             <div class="ribbon-panel" id="ribbonAuditLog">
               <div class="dataset-types-panel">
-                <div class="summary-header">Audit Log</div>
-                <div class="dataset-types-toolbar">
-                  <div class="dataset-types-help">Records project settings changes with timestamp, user, and action description.</div>
-                </div>
+                <header class="ps-panel-head">
+                  <div class="ps-panel-heading">
+                    <div class="summary-header">Audit Log</div>
+                    <div class="dataset-types-help">Records project settings changes with timestamp, user, and action description.</div>
+                  </div>
+                </header>
                 <div class="dataset-types-status" id="auditLogStatus"></div>
                 <div class="dataset-types-grid">
                   <table class="dataset-types-table" id="auditLogTable">
@@ -411,18 +425,36 @@
             </div>
             <div class="ribbon-panel" id="ribbonProjectSettings">
               <div class="dataset-types-panel">
-                <div class="summary-header">Project Settings</div>
-                <div class="dataset-types-toolbar">
-                  <div class="dataset-types-help">Open the selected project's folder in File Explorer.</div>
-                  <button id="openProjectFolderBtn" class="detail-open-folder-btn" type="button" title="Open project folder in File Explorer" aria-label="Open project folder in File Explorer">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-                      <path d="M1.5 5.5H6l1.2 1.5H14.5v6.5H1.5z"></path>
-                      <path d="M1.5 5.5V3.8h4.2l1.1 1.4H14.5V7"></path>
-                    </svg>
-                    <span>Open Folder</span>
-                  </button>
+                <header class="ps-panel-head">
+                  <div class="ps-panel-heading">
+                    <div class="summary-header">Project Settings</div>
+                    <div class="dataset-types-help">Folder access and edit lock for the selected project.</div>
+                  </div>
+                </header>
+                <div class="project-settings-list">
+                  <div class="project-setting-row">
+                    <div class="project-setting-text">
+                      <div class="project-setting-title">Project Folder</div>
+                      <div class="project-setting-desc">Open the selected project's folder in File Explorer.</div>
+                    </div>
+                    <button id="openProjectFolderBtn" class="detail-open-folder-btn project-setting-btn" type="button" aria-label="Open project folder in File Explorer">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                        <path d="M1.5 5.5H6l1.2 1.5H14.5v6.5H1.5z"></path>
+                        <path d="M1.5 5.5V3.8h4.2l1.1 1.4H14.5V7"></path>
+                      </svg>
+                      <span>Open Folder</span>
+                    </button>
+                  </div>
+                  <div class="project-setting-row">
+                    <div class="project-setting-text">
+                      <div class="project-setting-title">Lock Project</div>
+                      <div class="project-setting-desc" id="projectLockStatus"></div>
+                    </div>
+                    <button id="projectLockSwitch" class="project-lock-switch" type="button" role="switch" aria-checked="false" aria-label="Lock project" disabled>
+                      <span class="project-lock-switch-knob" aria-hidden="true"></span>
+                    </button>
+                  </div>
                 </div>
-                <div class="ribbon-panel-placeholder">Project Settings configuration will appear here.</div>
               </div>
             </div>
           </div>
@@ -846,6 +878,6 @@
     </div>
   </div>
 
-<script type="module" src="/ui/project_settings/project_settings.js?v=20260927smb18"></script>
+<script type="module" src="/ui/project_settings/project_settings.js?v=20261004lock1"></script>
 </body>
 </html>

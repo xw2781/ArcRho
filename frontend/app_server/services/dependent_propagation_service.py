@@ -47,7 +47,7 @@ from arcrho_dependent_propagation_contract import (
 from arcrho_project_duplication_contract import path_is_link_or_reparse
 
 from app_server import config
-from app_server.services import propagation_gateway_client, user_identity_service
+from app_server.services import project_lock_service, propagation_gateway_client, user_identity_service
 
 
 _PROTOCOL_PATH_VALIDATION_CACHE_SECONDS = 30.0
@@ -385,6 +385,7 @@ def require_reserving_class_writable(
         _record_latency(timings, "preflight_engine_heartbeat_ms", started)
         raise HTTPException(503, ENGINE_UNAVAILABLE_MESSAGE) from error
     _record_latency(timings, "preflight_engine_heartbeat_ms", started)
+    project_lock_service.require_project_unlocked(project_name)
     if _hold_check_suspended.get():
         return server_root
     started = time.perf_counter_ns()
@@ -442,6 +443,7 @@ def require_project_scope_writable(project_name: str) -> Path:
         require_live_engine(server_root)
     except EngineUnavailableError as error:
         raise HTTPException(503, ENGINE_UNAVAILABLE_MESSAGE) from error
+    project_lock_service.require_project_unlocked(project_name)
 
     try:
         project_hold = find_project_scope_propagation_hold(server_root, project_name)

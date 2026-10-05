@@ -26,6 +26,7 @@ strand the overlay by adding a new early return.
 import { createArcRhoBusyOverlay } from "/ui/shared/components/progress_popup/progress_popup.js?v=20260824a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260925a";
 import { openMethodReviewDataset } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260925a";
+import { refuseIfProjectLocked } from "/ui/shared/services/project_lock.js?v=20261004lock1";
 
 /**
  * Creates the saving animation controller for one window.
@@ -35,9 +36,11 @@ import { openMethodReviewDataset } from "/ui/shared/components/message_box/metho
  * @param {string} [options.noun='method'] - Word the step messages use for the
  *   saved object; the Dataset window passes `dataset`.
  * @param {Document} [options.documentRef] - Document that owns the popup.
+ * @param {() => string} [options.projectName] - Returns the project being
+ *   saved into; a locked project refuses the save before it starts.
  * @returns {{run: Function, isVisible: Function}}
  */
-export function createArcRhoSaveProgress({ subject, noun = "method", documentRef } = {}) {
+export function createArcRhoSaveProgress({ subject, noun = "method", documentRef, projectName } = {}) {
   const savedSubject = String(subject || "").trim() || "Method";
   const savedNoun = String(noun || "").trim() || "method";
   const overlay = createArcRhoBusyOverlay({ documentRef, title: `Saving ${savedSubject}` });
@@ -46,9 +49,14 @@ export function createArcRhoSaveProgress({ subject, noun = "method", documentRef
    * Runs one save behind the saving animation.
    *
    * @param {(progress: {writing: Function, finish: Function}) => Promise<any>} work
-   * @returns {Promise<any>} Whatever `work` resolves to.
+   * @returns {Promise<any>} Whatever `work` resolves to, or
+   *   `{ok: false, error, projectLocked: true}` when the project is locked.
    */
   async function run(work) {
+    if (projectName) {
+      const lockedMessage = await refuseIfProjectLocked(projectName(), { documentRef });
+      if (lockedMessage) return { ok: false, error: lockedMessage, projectLocked: true };
+    }
     let message = `Preparing the ${savedNoun} before saving.`;
     let scope = overlay.begin(message);
     const liveItems = [];

@@ -48,7 +48,7 @@ import { statusNeedsReview } from "/ui/shared/dataset/review_status.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260925a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260925a";
 import { showExcelLinkFailureAlert } from "/ui/shared/integrations/excel_link_alert.js?v=20260919a";
-import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20260916b";
+import { createArcRhoSaveProgress } from "/ui/shared/components/progress_popup/save_progress.js?v=20261004lock1";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
@@ -1529,7 +1529,7 @@ export function cancelDfmMethodAsyncTasks() {
 // then dependent-propagation queueing -- so the window blocks edits behind the
 // shared saving animation until it settles. Overlapping saves (save bar plus
 // an Excel bridge save) share one popup through its scope counter.
-const dfmSaveProgress = createArcRhoSaveProgress({ subject: "DFM Method" });
+const dfmSaveProgress = createArcRhoSaveProgress({ subject: "DFM Method", projectName: () => getResolvedProjectName() });
 
 export async function saveRatioSelectionPattern(forceSaveAs, options = {}) {
   return dfmSaveProgress.run((progress) => runDfmMethodSave(forceSaveAs, options, progress));

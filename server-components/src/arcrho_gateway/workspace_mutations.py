@@ -163,12 +163,15 @@ class WorkspaceMutationExecutor:
         from fastapi import HTTPException
         from fastapi.encoders import jsonable_encoder
 
-        from app_server.services import user_identity_service
+        from app_server.services import project_lock_service, user_identity_service
 
         spec = WORKSPACE_MUTATION_KINDS[request["MutationKind"]]
         module = importlib.import_module(f"app_server.services.{spec.module}")
         mutate = getattr(module, spec.function)
         try:
+            project_lock_service.require_mutation_allowed(
+                request["MutationKind"], request["Kwargs"]
+            )
             # Whatever the mutation stamps on disk names the user who asked,
             # not the gateway's service profile.
             with user_identity_service.acting_identity(

@@ -368,6 +368,7 @@ AUDIT_LOG_MAX_ENTRIES = PROJECT_AUDIT_LOG_MAX_ENTRIES
 # cache built by another version so a schema change regenerates it in place.
 TABLE_SUMMARY_CACHE_FILE = "table_summary.json"
 GENERAL_SETTINGS_FILE = "general_settings.json"
+PROJECT_LOCK_FILE = "project_lock.json"
 PROJECT_DATA_DIR = "data"
 DATASET_CACHE_DIR = "datasets"
 METHOD_DATA_DIR = "methods"
@@ -568,6 +569,13 @@ def get_general_settings_path(project_name: str) -> str:
     if not project_dir:
         raise ValueError(f"Project folder not found under projects: {project_name}")
     return os.path.join(project_dir, GENERAL_SETTINGS_FILE)
+
+
+def get_project_lock_path(project_name: str) -> str:
+    project_dir = _find_existing_project_dir(project_name)
+    if not project_dir:
+        raise ValueError(f"Project folder not found under projects: {project_name}")
+    return os.path.join(project_dir, PROJECT_LOCK_FILE)
 
 
 def get_project_data_dir(project_name: str) -> str:

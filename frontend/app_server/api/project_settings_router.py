@@ -18,8 +18,14 @@ from app_server.schemas.project_settings import (
     OpenProjectFolderRequest,
     GeneratedDatasetCacheClearRequest,
     GeneralSettingsUpdateRequest,
+    ProjectLockUpdateRequest,
 )
-from app_server.services import project_settings_service, workspace_mutation_client, workspace_read_client
+from app_server.services import (
+    project_lock_service,
+    project_settings_service,
+    workspace_mutation_client,
+    workspace_read_client,
+)
 
 router = APIRouter()
 
@@ -199,6 +205,28 @@ def get_general_settings(project_name: str) -> Dict[str, Any]:
         "general_settings",
         {"project_name": project_name},
         local=lambda: project_settings_service.get_general_settings(project_name),
+    )
+
+
+@router.get("/project_lock")
+def get_project_lock(project_name: str) -> Dict[str, Any]:
+    if not str(project_name or "").strip():
+        raise HTTPException(400, "project_name is required")
+    return workspace_read_client.run_workspace_read(
+        "project_lock",
+        {"project_name": project_name},
+        local=lambda: project_lock_service.get_project_lock(project_name),
+    )
+
+
+@router.post("/project_lock")
+def set_project_lock(req: ProjectLockUpdateRequest) -> Dict[str, Any]:
+    kwargs = {"project_name": req.project_name, "locked": bool(req.locked)}
+    return _mutate(
+        "project_lock_set",
+        kwargs,
+        lambda: project_lock_service.set_project_lock(**kwargs),
+        req.request_id,
     )
 
 

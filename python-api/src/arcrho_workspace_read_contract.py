@@ -366,6 +366,11 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "get_general_settings",
         ("project_name",),
     ),
+    "project_lock": WorkspaceReadKind(
+        "project_lock_service",
+        "get_project_lock",
+        ("project_name",),
+    ),
     # The grid's own shape of the dataset-type table (``project_dataset_types``
     # above answers the Excel add-in's shape).
     "dataset_types_table": WorkspaceReadKind(

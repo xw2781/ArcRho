@@ -73,6 +73,11 @@ class WorkspaceMutationKind:
     # True for a kind that is not idempotent: the Gateway answers a repeated
     # request id from its stored receipt instead of running the kind again.
     receipt: bool = False
+    # The argument naming the project whose shared data this kind changes.
+    # Set, the kind is refused while that project is locked
+    # (``project_lock_service``); empty for kinds that leave project data
+    # alone, such as a user's own preferences or a regenerable cache.
+    locked_project_arg: str = ""
 
     @property
     def allowed(self) -> frozenset[str]:
@@ -130,6 +135,7 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         "delete_cached_datasets",
         ("project_name", "reserving_class", "dataset_names"),
         list_args=("dataset_names",),
+        locked_project_arg="project_name",
     ),
     # Setting the review flag of method outputs rewrites one sidecar per
     # selected object, so from a Client PC it is a read and a write per object
@@ -150,6 +156,7 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ("project_name", "reserving_class", "dataset_names"),
         ("status",),
         list_args=("dataset_names",),
+        locked_project_arg="project_name",
     ),
     # Submitting a source-table refresh publishes two small files into the
     # Engine's queue. It is idempotent because the client owns the request id:
@@ -170,6 +177,7 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
             "reserving_class_types",
         ),
         list_args=("dataset_types",),
+        locked_project_arg="project_name",
     ),
     # Submitting a data-processing-rules save publishes two small files into
     # the Engine's queue, idempotent by the client-owned request id exactly as
@@ -182,6 +190,7 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         "submit_data_processing_rules_job",
         ("project_name", "request_id"),
         ("expected_revision", "rules"),
+        locked_project_arg="project_name",
     ),
     # The DFM sync dialog publishes a request file the Arco Bridge claims,
     # then waits for the JSON the Bridge exports from ResQ. Both halves are
@@ -257,6 +266,7 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         "resq_import_queue_service",
         "publish_resq_import_request",
         ("project_name", "reserving_class", "request_id", "request"),
+        locked_project_arg="project_name",
     ),
     # Both ResQ import macros copy the reserving class they are about to
     # rewrite into the server's pre-import backups. That copy is one file per
@@ -341,12 +351,14 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         "rename_project_folder",
         ("source", "old_name", "new_name"),
         receipt=True,
+        locked_project_arg="old_name",
     ),
     "project_folder_delete": WorkspaceMutationKind(
         "project_settings_service",
         "delete_project_folder",
         ("source", "name"),
         receipt=True,
+        locked_project_arg="name",
     ),
     "project_registry_save": WorkspaceMutationKind(
         "project_settings_service",
@@ -360,6 +372,16 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         "update_general_settings",
         ("project_name",),
         ("origin_start_date", "origin_end_date", "development_end_date", "auto_generated"),
+        receipt=True,
+        locked_project_arg="project_name",
+    ),
+    # Locking or unlocking the project. A whole-value write that appends an
+    # audit entry each run, so it carries a receipt like General Settings.
+    "project_lock_set": WorkspaceMutationKind(
+        "project_lock_service",
+        "set_project_lock",
+        ("project_name",),
+        ("locked",),
         receipt=True,
     ),
     "generated_dataset_cache_clear": WorkspaceMutationKind(
@@ -390,6 +412,7 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         "save_dataset_types",
         ("project_name", "request_id"),
         ("rows", "renames", "plan"),
+        locked_project_arg="project_name",
     ),
     # Submitting a project duplication is idempotent by its request id through
     # the duplication's own submission receipt, which binds the id to one
@@ -422,6 +445,7 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ("project_name",),
         ("table_path", "rows"),
         receipt=True,
+        locked_project_arg="project_name",
     ),
     "source_profile_save": WorkspaceMutationKind(
         "source_table_service",
@@ -429,11 +453,13 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ("project_name", "source_type"),
         ("mssql", "csv_path"),
         receipt=True,
+        locked_project_arg="project_name",
     ),
     "source_csv_path_rewrite": WorkspaceMutationKind(
         "source_table_service",
         "rewrite_source_csv_path",
         ("project_name", "from_path", "csv_path"),
+        locked_project_arg="project_name",
     ),
     "reserving_class_types_save": WorkspaceMutationKind(
         "reserving_class_service",
@@ -441,6 +467,7 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         ("project_name",),
         ("columns", "rows"),
         receipt=True,
+        locked_project_arg="project_name",
     ),
     "table_summary_rebuild": WorkspaceMutationKind(
         "table_summary_service",
@@ -473,12 +500,14 @@ WORKSPACE_MUTATION_KINDS: dict[str, WorkspaceMutationKind] = {
         "receive_source_table_chunk",
         ("project_name", "upload_id", "data"),
         ("index",),
+        locked_project_arg="project_name",
     ),
     "source_table_upload_commit": WorkspaceMutationKind(
         "source_table_upload_service",
         "commit_source_table_upload",
         ("project_name", "upload_id", "source_type", "chunk_count", "byte_count"),
         ("row_count", "csv_path", "csv_mtime_ns", "csv_size"),
+        locked_project_arg="project_name",
     ),
 }
 

@@ -34,7 +34,7 @@ from arcrho_workspace_mutation_contract import (
     build_workspace_mutation_request,
 )
 
-from app_server.services import workspace_read_client
+from app_server.services import project_lock_service, workspace_read_client
 from app_server.services.workspace_read_client import (
     GatewayTransportFailure,
     TRANSPORT_HTTP,
@@ -121,6 +121,8 @@ def run_workspace_mutation(
             context, lambda capabilities: gateway_supports_mutation_kind(capabilities, mutation_kind)
         )
         if gateway_config is None:
+            # The Gateway checks the project lock itself before it runs a kind.
+            project_lock_service.require_mutation_allowed(mutation_kind, kwargs)
             return _finish(local())
         request_id = str(request_id or "").strip() or uuid.uuid4().hex
         context["request_id"] = request_id

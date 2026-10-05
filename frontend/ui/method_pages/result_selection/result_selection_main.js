@@ -21,7 +21,7 @@ import { createDetailsDependenciesController } from "/ui/shared/tabs/details/det
 import { createPageCloseConfirm } from "/ui/shared/components/close_confirm/close_confirm.js";
 import { showMethodSaveReviewWarning } from "/ui/shared/components/message_box/method_save_review_warning.js?v=20260925a";
 import { showPageMessageBox } from "/ui/shared/components/message_box/message_box.js?v=20260925a";
-import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20260916b";
+import { createArcRhoSaveProgress, showSavedDependentsNotice } from "/ui/shared/components/progress_popup/save_progress.js?v=20261004lock1";
 import {
   isEngineUnavailableSaveError,
   trackSavePropagation,
@@ -247,7 +247,7 @@ wireSamePropagationScopePause({
 // method write, then dependent-propagation queueing -- so the window blocks
 // edits behind the shared saving animation until it settles. Overlapping saves
 // (save bar plus a Sync dialog save) share one popup through its scope counter.
-const rsSaveProgress = createArcRhoSaveProgress({ subject: "Result Selection" });
+const rsSaveProgress = createArcRhoSaveProgress({ subject: "Result Selection", projectName: () => state.project });
 
 const ctx = {
   fetchProjectDatasetTypeItems,

@@ -1,0 +1,9 @@
+{
+  "type": "feature",
+  "scope": "project settings",
+  "audience": "user",
+  "summary": "Project Settings can now lock a project so no user can save its methods or datasets or change its imports until it is unlocked.",
+  "details": [
+    "Each user's own layout preferences, such as column widths, still save in a locked project."
+  ]
+}
