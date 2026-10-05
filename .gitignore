@@ -102,3 +102,8 @@ desktop.ini
 
 # Repo-local test tooling installed with pip --target; never committed.
 .pytest-tools/
+
+# Management presentation drafts; kept local only.
+docs/presentations/arco-milestones-2026.html
+docs/presentations/arco-progress-2026q3.html
+docs/presentations/arco-progress-2026q3-script.md
