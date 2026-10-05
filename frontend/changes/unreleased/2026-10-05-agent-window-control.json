@@ -1,0 +1,11 @@
+{
+  "type": "feature",
+  "scope": "automation",
+  "audience": "internal",
+  "summary": "Agents can now look at and drive an Arco window without taking over the whole computer.",
+  "details": [
+    "The agent's input goes only into Arco; the real mouse pointer stays with the person at the desk.",
+    "While an agent is in control, Arco shows an edge glow, the agent's own pointer, and a banner naming the agent and its current step.",
+    "Clicking, typing, or scrolling in Arco, or pressing Ctrl+Alt+Esc, pauses the agent at once; the banner's Resume and End buttons decide what happens next."
+  ]
+}

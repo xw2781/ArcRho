@@ -1,0 +1,199 @@
+/* The overlay an agent shows inside the Arco window it drives. Everything is click-through
+   except the banner, so the page underneath keeps working for the person at the desk. */
+
+:host {
+  --agent-accent: #ff9a1f;
+  --agent-accent-rgb: 255, 154, 31;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+  font: 12px Arial, "Segoe UI", "SegoeUI", Tahoma, sans-serif;
+  letter-spacing: 0;
+}
+
+:host([data-paused]) {
+  --agent-accent: #be123c;
+  --agent-accent-rgb: 190, 18, 60;
+}
+
+:host([data-capture-hidden]) {
+  visibility: hidden;
+}
+
+.edges {
+  position: absolute;
+  inset: 0;
+  box-shadow:
+    inset 0 0 0 2px rgba(var(--agent-accent-rgb), 0.85),
+    inset 0 0 24px 2px rgba(var(--agent-accent-rgb), 0.38);
+  transition: box-shadow 160ms ease;
+}
+
+/* The pointer element sits with its origin on the tip. */
+.pointer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  will-change: transform;
+}
+
+.pointer[hidden] {
+  display: none;
+}
+
+.glow {
+  position: absolute;
+  left: -33px;
+  top: -29px;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(var(--agent-accent-rgb), 0.5) 0%, rgba(var(--agent-accent-rgb), 0.2) 38%, rgba(var(--agent-accent-rgb), 0) 70%);
+}
+
+.ripple {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  border: 2.6px solid rgb(var(--agent-accent-rgb));
+  opacity: 0;
+}
+
+.arrow {
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  width: 18px;
+  height: 26px;
+  transform-origin: 2px 2px;
+  filter: drop-shadow(1px 2px 1.5px rgba(0, 0, 0, 0.28));
+}
+
+.arrow svg {
+  display: block;
+  width: 18px;
+  height: 26px;
+  overflow: visible;
+}
+
+.arrow .agentPointerArrow {
+  fill: rgba(78, 75, 72, 0.95);
+  stroke: rgba(255, 255, 255, 0.94);
+}
+
+.banner {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 24px));
+  min-height: 30px;
+  padding: 4px 6px 4px 10px;
+  box-sizing: border-box;
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid #cbd5e1;
+  border-left: 3px solid var(--agent-accent);
+  border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+  pointer-events: auto;
+  user-select: none;
+  transition: border-color 160ms ease;
+}
+
+.banner[data-position="TopCenter"] { top: 40px; left: 50%; transform: translateX(-50%); }
+.banner[data-position="TopRight"] { top: 40px; right: 12px; }
+.banner[data-position="BottomCenter"] { bottom: 32px; left: 50%; transform: translateX(-50%); }
+.banner[data-position="BottomRight"] { bottom: 32px; right: 12px; }
+
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--agent-accent);
+}
+
+:host(:not([data-paused]):not([data-waiting])) .dot {
+  animation: agentPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes agentPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--agent-accent-rgb), 0.55); }
+  50% { box-shadow: 0 0 0 4px rgba(var(--agent-accent-rgb), 0); }
+}
+
+.text {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.agent {
+  flex: none;
+  font-weight: bold;
+}
+
+.action {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #475569;
+}
+
+.state {
+  flex: none;
+  font-weight: bold;
+  color: #b45309;
+}
+
+:host([data-paused]) .state {
+  color: #be123c;
+}
+
+.clock {
+  flex: none;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+
+.button {
+  flex: none;
+  height: 22px;
+  padding: 0 9px;
+  font: inherit;
+  color: #1f2937;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.button:hover {
+  background: #f4f7fa;
+  border-color: #94a3b8;
+}
+
+.button.primary {
+  color: #ffffff;
+  background: #2b6df6;
+  border-color: #2b6df6;
+}
+
+.button.primary:hover {
+  background: #1f5ee0;
+}
+
+.button[hidden] {
+  display: none;
+}

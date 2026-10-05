@@ -2,7 +2,13 @@
 
 Read this before looking at or driving a desktop application's window — ResQ, Excel, the ArcRho desktop app, or any other — to verify behaviour through its real GUI.
 
-Use `tools/agent_screen_control/agent_screen_control.ps1` for every step. Do not write your own `SendInput`, `SetCursorPos`, or `CopyFromScreen` code. The tool already solves three problems that each broke a hand-written attempt:
+## Arco: use the Arco-only tool
+
+For anything inside the Arco desktop app, use `tools/arco_window_control/arco_window_control.ps1` instead of the desktop tool below. It sends input into Arco's page only, so nothing outside Arco can be clicked and the person's real pointer never moves. Coordinates are window pixels, the same pixels as its unzoomed screenshots. A click, key press, or wheel turn by the person in Arco pauses the agent, and the next command exits with code `3`; stop at once. Its [README](../tools/arco_window_control/README.md) documents every command. It cannot reach Windows dialogs such as a file picker; use the desktop tool for those. The loop and rules below apply to it as well, with `-Window` meaning which Arco window to drive rather than a guard.
+
+## Other applications: the desktop tool
+
+Use `tools/agent_screen_control/agent_screen_control.ps1` for every step outside Arco. Do not write your own `SendInput`, `SetCursorPos`, or `CopyFromScreen` code. The tool already solves three problems that each broke a hand-written attempt:
 
 - **Coordinates.** It works in real screen pixels. After a Remote Desktop reconnect at a different scale, a process using the older DPI setting sees a stretched screen, and its clicks land 25% away from what its screenshot showed.
 - **Wrong window.** A click names the window it expects (`-Window`), and the tool refuses when anything else is under the target. A test window once ended up behind ResQ and the clicks went into the live ResQ window.
@@ -26,4 +32,4 @@ The tool's [README](../tools/agent_screen_control/README.md) documents every com
 - **After a timeout, look before retrying.** A timeout means the click was not confirmed, not that it failed; a blind retry can double-click. `overlay.log` in `%APPDATA%\ArcRho\agent_screen_control` shows how far the command got.
 - **Put the layout back.** When a test drags a divider or resizes a panel, drag it back and compare a screenshot with the one taken before.
 - **The Remote Desktop window must stay open.** When the person minimises it, the remote screen stops drawing and clicks and screenshots fail; ask them to restore it rather than retrying.
-- **Keyboard input is not in the tool yet.** When a step needs typing, say so rather than improvising a key sender.
+- **Keyboard input is only in the Arco tool.** It has `type` and `key`. The desktop tool has none; when a step outside Arco needs typing, say so rather than improvising a key sender.

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, screen, shell } = require("electron");
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, screen, shell } = require("electron");
 const path = require("path");
 const { spawn, execFile } = require("child_process");
 const fs = require("fs");
@@ -6,6 +6,7 @@ const os = require("os");
 const crypto = require("crypto");
 const { registerArcBotIpc } = require("./arcbot_host");
 const { registerUiAutomationIpc } = require("./ui_automation_host");
+const { createAgentWindowControl } = require("./agent_control/agent_control_host");
 const {
   appendElectronLog,
   getElectronLogPath,
@@ -1969,6 +1970,18 @@ registerUiAutomationIpc({
   getSplashWindow: () => splashWin,
 });
 
+// Lets an agent drive an Arco window, and only that window; see tools/arco_window_control.
+const agentWindowControl = createAgentWindowControl({
+  BrowserWindow,
+  globalShortcut,
+  screen,
+  getMainWindow: () => win,
+  getArcodeWindow: () => arcodeWin,
+  entryPath: path.join(app.getPath("appData"), APP_MODE === "arcode" ? "Arcode" : "ArcRho", "agent_window_control.json"),
+  appMode: APP_MODE,
+  log: appendElectronLog,
+});
+
 function getIpcWindow(event) {
   return BrowserWindow.fromWebContents(event?.sender) || BrowserWindow.getFocusedWindow() || win;
 }
@@ -2103,6 +2116,7 @@ app.whenReady().then(async () => {
     `Arco startup begin. packaged=${app.isPackaged}; version=${app.getVersion()}; appPath=${app.getAppPath()}; resourcesPath=${process.resourcesPath}`
   );
   registerBackendClient();
+  agentWindowControl.listen();
 
   // Show splash screen first
   appendElectronLog("Creating splash window.");
@@ -2179,6 +2193,7 @@ async function prepareQuit({ forUpdate = false } = {}) {
     closeArcodeFolderWatch(watchId);
   }
   arcBotHost?.stop();
+  agentWindowControl.dispose();
   removeUiReadyMarker();
   const backendStopped = forUpdate ? await stopBackendForUpdate() : (await requestBackendShutdown(), true);
   unregisterBackendClient();

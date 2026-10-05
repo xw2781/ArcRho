@@ -218,6 +218,7 @@ function registerUiAutomationIpc(deps = {}) {
 
 module.exports = {
   registerUiAutomationIpc,
+  ensureCapturable,
   // Exported for tests.
   normalizeModifiers,
   normalizeRect,
