@@ -51,13 +51,21 @@ class ProjectReadTests(unittest.TestCase):
         _, calls = self.invoke("reserving_class_combinations", {}, reserving_class="Auto")
         self.assertNotIn("reserving_class", calls[0][1])
 
-    def test_other_project_is_rejected(self):
-        with self.assertRaisesRegex(ValueError, "outside the active project"):
-            self.invoke("dfm_method_load", {"project_name": "Other"})
+    def test_other_project_is_readable_without_active_class_default(self):
+        _, calls = self.invoke("dfm_method_load", {"project_name": "Other", "method_name": "D13"}, reserving_class="Auto")
+        self.assertEqual(calls, [("dfm_method_load", {"project_name": "Other", "method_name": "D13"})])
+
+    def test_datasets_and_project_names_are_readable(self):
+        _, calls = self.invoke("dataset_cache_load", {"project_name": "Other", "reserving_class": "Auto", "dataset_name": "Paid"})
+        self.assertEqual(calls[0][1]["project_name"], "Other")
+        _, calls = self.invoke("dataset_sidecar_load", {"reserving_class": "Auto", "dataset_name": "Paid"})
+        self.assertEqual(calls[0][1]["project_name"], "Fake Project")
+        _, calls = self.invoke("project_names")
+        self.assertEqual(calls, [("project_names", {})])
 
     def test_simulations_and_saves_are_rejected(self):
-        for kind in ("bootstrap_simulate", "stochastic_consolidation_consolidate", "dfm_method_save", "project_names"):
-            with self.subTest(kind=kind), self.assertRaisesRegex(ValueError, "method loads and discovery"):
+        for kind in ("bootstrap_simulate", "stochastic_consolidation_consolidate", "dfm_method_save"):
+            with self.subTest(kind=kind), self.assertRaisesRegex(ValueError, "method loads, dataset loads and discovery"):
                 self.invoke(kind)
 
 

@@ -1,0 +1,6 @@
+{
+  "type": "feature",
+  "scope": "ArcBot",
+  "audience": "user",
+  "summary": "ArcBot can now read the methods and datasets of any project on the server when you ask, and it still defaults to the project that is open."
+}
