@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 827b168b-ca2a-4425-baee-3c9ae817e04a
-  modified: 2026-10-06T17:26:14.478Z
+  modified: 2026-10-06T17:33:14.207Z
 ---
 
 On the Client PC (L-H2MQ6280FVP, CrowdStrike Falcon + Defender) the app-started 2.0.0 setup showed
@@ -19,5 +19,6 @@ All were gone by ~13:25 on their own; Retry then works.
 driver), so no app or installer change can kill it faster; only waiting or a reboot helps.
 
 **How to apply:** when this dialog recurs, check `Get-Process -Id <pid>` for HasExited/Handles=0 before
-blaming the update path in [[installer-close-processes-and-one-click-update]]. A possible improvement is
-for the close script to keep waiting (minutes, with a status line) instead of showing Retry after 18 s.
+blaming the update path in [[installer-close-processes-and-one-click-update]]. Since 2026-10-06 setup
+calls the close script a second time with `-WaitSeconds 300` under "Waiting for Windows to finish
+closing ..." before it shows the Retry dialog; this ships with the next release's setup.
