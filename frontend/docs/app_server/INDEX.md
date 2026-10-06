@@ -9,7 +9,7 @@ App-server domain map for FastAPI routers, schemas, and services.
 <!-- AUTO-GEN:BEGIN app_server.index.entry_points -->
 | Domain | Router | Route Count | Domain Index |
 | --- | --- | --- | --- |
-| `app_control` | [`app_server/api/app_control_router.py`](../../app_server/api/app_control_router.py) | 5 | [`app_control.md`](domains/app_control.md) |
+| `app_control` | [`app_server/api/app_control_router.py`](../../app_server/api/app_control_router.py) | 6 | [`app_control.md`](domains/app_control.md) |
 | `arcrho` | [`app_server/api/arcrho_router.py`](../../app_server/api/arcrho_router.py) | 9 | [`arcrho.md`](domains/arcrho.md) |
 | `audit_log` | [`app_server/api/audit_log_router.py`](../../app_server/api/audit_log_router.py) | 2 | [`audit_log.md`](domains/audit_log.md) |
 | `bootstrap` | [`app_server/api/bootstrap_router.py`](../../app_server/api/bootstrap_router.py) | 6 | [`bootstrap.md`](domains/bootstrap.md) |

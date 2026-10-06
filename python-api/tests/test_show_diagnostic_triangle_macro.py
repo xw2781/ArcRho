@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import TestCase
@@ -16,23 +17,33 @@ SPEC.loader.exec_module(MACRO)
 
 class ShowDiagnosticTriangleMacroTests(TestCase):
     def test_matching_ignores_dfm_prefix_case_and_repeated_whitespace(self) -> None:
-        with (
-            patch.object(MACRO, "MAPPING_WORKBOOK", Path(__file__)),
-            patch.object(
-                MACRO,
-                "_iter_mapping_rows",
-                return_value=iter(
-                    [
-                        {1: "Methods", 2: "Triangles"},
-                        {1: " DFM: Selected   Method ", 2: "Diagnostic Triangle"},
-                    ]
-                ),
-            ),
-        ):
+        rows = [{"method": " DFM: Selected   Method ", "diagnostic_dataset": "Diagnostic Triangle"}]
+        with patch.object(MACRO, "_load_mappings", return_value=rows):
             self.assertEqual(
                 MACRO._find_diagnostic_dataset("selected method"),
                 "Diagnostic Triangle",
             )
+            self.assertEqual(MACRO._find_diagnostic_dataset("Another Method"), "")
+
+    def test_mapping_is_read_from_the_skill_folder_through_the_gateway(self) -> None:
+        mapping = {"mappings": [{"method": "M", "diagnostic_dataset": "D"}]}
+        skills = {"skills": [{"id": "dfm-diagnostics", "references": [
+            {"name": "notes.md", "text": "ignored"},
+            {"name": "diagnostic_mapping.json", "text": json.dumps(mapping)},
+        ]}]}
+        gateway = Mock()
+        gateway.read.return_value = skills
+        with patch.object(MACRO, "GatewayClient", return_value=gateway):
+            self.assertEqual(MACRO._load_mappings(), mapping["mappings"])
+        gateway.read.assert_called_once_with("agent_skills", skill_id="dfm-diagnostics")
+
+    def test_a_missing_skill_or_mapping_file_is_reported(self) -> None:
+        gateway = Mock()
+        for answer in ({"skills": []}, {"skills": [{"id": "dfm-diagnostics", "references": []}]}):
+            gateway.read.return_value = answer
+            with patch.object(MACRO, "GatewayClient", return_value=gateway):
+                with self.assertRaises(FileNotFoundError):
+                    MACRO._load_mappings()
 
     def test_run_opens_dataset_without_returning_a_dfm_payload(self) -> None:
         project_instance = SimpleNamespace(

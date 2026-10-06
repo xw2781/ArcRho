@@ -550,6 +550,14 @@ WORKSPACE_READ_KINDS: dict[str, WorkspaceReadKind] = {
         "read_arcbot_prompt_files",
         (),
     ),
+    # ArcBot's skills under shared\agent-skills: every skill's menu entry, and
+    # with ``skill_id`` that one skill's instructions and reference files.
+    "agent_skills": WorkspaceReadKind(
+        "agent_skill_service",
+        "read_agent_skills",
+        (),
+        ("skill_id",),
+    ),
 }
 
 HTTP_WORKSPACE_READ_KINDS: tuple[str, ...] = tuple(sorted(WORKSPACE_READ_KINDS))

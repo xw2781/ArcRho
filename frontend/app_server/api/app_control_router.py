@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request
 
 from app_server import config
 from app_server.app_control_flags import restart_flag, shutdown_flag
-from app_server.services import arcbot_prompt_service, workspace_read_client
+from app_server.services import agent_skill_service, arcbot_prompt_service, workspace_read_client
 
 router = APIRouter()
 
@@ -70,4 +70,16 @@ def arcbot_prompt_files() -> Dict[str, Any]:
         "arcbot_prompt_files",
         {},
         local=arcbot_prompt_service.read_arcbot_prompt_files,
+    )
+
+
+@router.get("/arcbot/agent-skills")
+def arcbot_agent_skills(skill_id: str = "") -> Dict[str, Any]:
+    """ArcBot's skills, read on the server host through the Gateway."""
+
+    kwargs = {"skill_id": skill_id} if skill_id else {}
+    return workspace_read_client.run_workspace_read(
+        "agent_skills",
+        kwargs,
+        local=lambda: agent_skill_service.read_agent_skills(**kwargs),
     )

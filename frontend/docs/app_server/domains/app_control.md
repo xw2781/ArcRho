@@ -13,6 +13,7 @@ Application lifecycle control domain (restart/shutdown flags) coordinated betwee
 | `POST` | `/app/restart_electron` | `app_restart_electron` | - | - | - |
 | `POST` | `/app/shutdown` | `app_shutdown` | `Request` | - | - |
 | `POST` | `/app/shutdown_electron` | `app_shutdown_electron` | - | - | - |
+| `GET` | `/arcbot/agent-skills` | `arcbot_agent_skills` | `str` | - | `agent_skill_service.read_agent_skills`, `workspace_read_client.run_workspace_read` |
 | `GET` | `/arcbot/prompt-files` | `arcbot_prompt_files` | - | - | `workspace_read_client.run_workspace_read` |
 <!-- AUTO-GEN:END -->
 
