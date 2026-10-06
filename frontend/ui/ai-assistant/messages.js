@@ -307,6 +307,16 @@ export function renderAssistantMarkdown(el, text) {
       flushAssistantMarkdownList(el, listState);
       continue;
     }
+    const heading = line.match(/^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/);
+    if (heading) {
+      flushAssistantMarkdownList(el, listState);
+      // Chat headings stay small: "#" and "##" both read as a section title.
+      const title = document.createElement(`h${Math.min(heading[1].length + 2, 6)}`);
+      title.className = "aiAssistantHeading";
+      appendAssistantInlineMarkdown(title, heading[2]);
+      el.appendChild(title);
+      continue;
+    }
     const bullet = line.match(/^\s*[-*]\s+(.+)$/);
     const ordered = line.match(/^\s*(\d+)[.)]\s+(.+)$/);
     if (bullet || ordered) {

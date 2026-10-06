@@ -32,6 +32,11 @@
 .aiAssistantCommandStep[open] summary::after { transform: rotate(45deg); }
 .aiAssistantCommandStep summary:hover { background: #edf2f7; }
 .aiAssistantCommandStep.failed summary { color: #8f1d2c; }
+/* An ArcBot tool call is headed by a plain sentence, not a command line. */
+.aiAssistantCommandStep.tool summary {
+  font-family: inherit;
+  font-size: 12px;
+}
 .aiAssistantCommandHeadline {
   flex: 1 1 auto;
   min-width: 0;
@@ -1405,6 +1410,15 @@
 .aiAssistantMessage.rich p:last-child {
   margin-bottom: 0;
 }
+.aiAssistantMessage.rich .aiAssistantHeading {
+  margin: 8px 0 4px;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 700;
+}
+.aiAssistantMessage.rich .aiAssistantHeading:first-child {
+  margin-top: 0;
+}
 .aiAssistantMessage.rich ul,
 .aiAssistantMessage.rich ol {
   margin: 4px 0 6px 18px;
@@ -1593,6 +1607,10 @@
 }
 .aiAssistantWorkList li.typing {
   color: #4c5f76;
+}
+.aiAssistantWorkList li.thinking {
+  color: #6b7a8c;
+  font-style: italic;
 }
 .aiAssistantWorkList li.typing::after {
   content: "";

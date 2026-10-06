@@ -1,0 +1,12 @@
+{
+  "type": "improvement",
+  "scope": "arcbot",
+  "audience": "user",
+  "summary": "ArcBot's work log now says in plain words what each step does, and Claude replies show their progress while the model thinks.",
+  "details": [
+    "A step reads, for example, \"Reading DFM \\\"C 22 - CWOP DFM\\\" from NJ_Annual_Prod_202605_Fake\" or \"Ran the Show Diagnostic Triangle macro\" instead of a tool name.",
+    "While a Claude model thinks, a short summary of its thinking appears in the work log and the reply bubble counts the thinking tokens so far.",
+    "A Claude reply now streams into the chat as it is written instead of appearing all at once at the end.",
+    "Section headings in a reply show as headings instead of \"##\" marks."
+  ]
+}

@@ -119,6 +119,7 @@ contextBridge.exposeInMainWorld("ADAHost", {
   codexAssistantSignOutAccount: (accountId) => invoke("codex-assistant-account-logout", { accountId }),
   codexAssistantRemoveAccount: (accountId) => invoke("codex-assistant-account-remove", { accountId }),
   codexAssistantLoadPromptGuide: () => invoke("codex-assistant-prompt-guide-load"),
+  codexAssistantListSkills: () => invoke("codex-assistant-skills-list"),
   codexAssistantLoadUiSettings: () => invoke("codex-assistant-ui-settings-load"),
   codexAssistantSaveUiSettings: (settings) => invoke("codex-assistant-ui-settings-save", { settings }),
   codexAssistantLoadReadableRoots: () => invoke("codex-assistant-readable-roots-load"),

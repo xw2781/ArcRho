@@ -54,6 +54,7 @@ import { addComposerTip } from "./composer-tip.js";
 import { arcBotEditScopeError } from "./edit-scope.js";
 import { installAssistantSelectMenu, syncAssistantSelectMenu } from "./select-menu.js";
 import { installAssistantAccounts } from "./accounts.js";
+import { getAssistantToolLabel } from "./tool-labels.js";
 
 let assistantVoice = null;
 let assistantAccounts = null;
@@ -161,6 +162,8 @@ let assistantSqlReviewDialogPosition = null;
 let assistantSqlReviewResizeState = null;
 let assistantSqlReviewDialogSize = null;
 const assistantSkills = [SQL_FORMAT_VALIDATION_SKILL];
+// Skills the team keeps on the server (shared\agent-skills); they run as chat turns.
+let serverAssistantSkills = [];
 const SQL_REVIEW_DIALOG_MIN_WIDTH = 520;
 const SQL_REVIEW_DIALOG_MIN_HEIGHT = 360;
 const SQL_REVIEW_DIALOG_Z = 9400;
@@ -530,7 +533,7 @@ function updateTokenUsageRing() {
 }
 
 function formatAssistantActivityForCard(text, event = {}) {
-  if (["command", "command-output", "commentary"].includes(event.type)) return String(text || "");
+  if (["command", "command-output", "commentary", "thinking"].includes(event.type)) return String(text || "");
   const raw = String(text || "").trim();
   const lower = raw.toLowerCase();
   const modeLabel = getModeLabel();
@@ -815,7 +818,7 @@ function appendActivity(text, type = "activity", options = {}) {
 }
 
 function shouldShowAssistantActivity(activity, text) {
-  if (["command", "command-output", "commentary"].includes(activity?.type)) return !!text;
+  if (["command", "command-output", "commentary", "thinking"].includes(activity?.type)) return !!text;
   const visible = String(text || "").trim();
   if (!visible) return false;
   const raw = String(activity?.rawText || activity?.text || "").trim();
@@ -925,7 +928,10 @@ function scheduleAssistantActivityTyping(keysInUse) {
 }
 
 // One collapsed line per command; the full command and output open on click.
+// An ArcBot tool call reads in plain words; a shell command shows its first line.
 function getAssistantCommandHeadline(text) {
+  const toolLabel = getAssistantToolLabel(text);
+  if (toolLabel) return toolLabel;
   const first = String(text || "").split(/\r?\n/).map(line => line.trim()).find(Boolean) || "";
   return first.replace(/^"?[^"\s]*powershell(?:\.exe)?"?\s+(?:-\w+\s+)*?-Command\s+/i, "");
 }
@@ -945,6 +951,7 @@ function createAssistantCommandStep(item, index) {
   const headline = document.createElement("span");
   headline.className = "aiAssistantCommandHeadline";
   headline.textContent = getAssistantCommandHeadline(item.text);
+  if (getAssistantToolLabel(item.text)) step.classList.add("tool");
   summary.appendChild(headline);
   const output = document.createElement("pre");
   output.className = "aiAssistantCommandOutput";
@@ -960,7 +967,8 @@ function createAssistantActivityList(items, options = {}) {
   const enableTyping = !!options.typing;
   items.forEach((item, index) => {
     const isCommand = item.type === "command" || item.type === "command-output";
-    const typingState = getAssistantActivityTypingState(item, index, enableTyping && !isCommand);
+    // A thinking summary already arrives piece by piece; typing it out again would restart on every piece.
+    const typingState = getAssistantActivityTypingState(item, index, enableTyping && !isCommand && item.type !== "thinking");
     if (typingState.key) typingKeys.add(typingState.key);
     const bullet = document.createElement("li");
     bullet.className = [
@@ -968,6 +976,7 @@ function createAssistantActivityList(items, options = {}) {
       typingState.isTyping ? "typing" : "",
     ].filter(Boolean).join(" ");
     bullet.setAttribute("aria-label", item.text);
+    if (item.type === "thinking") bullet.classList.add("thinking");
     if (isCommand) {
       bullet.classList.add("command");
       bullet.appendChild(createAssistantCommandStep(item, index));
@@ -2010,10 +2019,28 @@ function getSlashSkillFilter(input) {
   return String(match?.[1] || "").toLowerCase();
 }
 
+async function loadServerAssistantSkills() {
+  const host = getHostApi();
+  if (!host?.codexAssistantListSkills) return;
+  try {
+    const answer = await host.codexAssistantListSkills();
+    serverAssistantSkills = (answer?.skills || []).map((skill) => ({
+      id: skill.id,
+      title: skill.title,
+      subtitle: skill.description,
+      badge: String(skill.scope || "AI").toUpperCase(),
+    }));
+    if (assistantSkillMenuOpen) renderAssistantSkillMenu();
+  } catch {
+    serverAssistantSkills = [];
+  }
+}
+
 function getFilteredAssistantSkills(filter = assistantSkillFilter) {
   const text = String(filter || "").trim().toLowerCase();
-  if (!text) return assistantSkills;
-  return assistantSkills.filter((skill) => (
+  const allSkills = [...assistantSkills, ...serverAssistantSkills];
+  if (!text) return allSkills;
+  return allSkills.filter((skill) => (
     `${skill.title} ${skill.subtitle} ${skill.badge}`.toLowerCase().includes(text)
   ));
 }
@@ -2103,12 +2130,13 @@ function renderAssistantSkillMenu() {
     button.setAttribute("role", "option");
     button.setAttribute("aria-selected", index === 0 ? "true" : "false");
     button.innerHTML = `
-      <span class="aiAssistantSkillIcon" aria-hidden="true">${skill.badge || "/"}</span>
+      <span class="aiAssistantSkillIcon" aria-hidden="true"></span>
       <span class="aiAssistantSkillText">
         <span class="aiAssistantSkillTitle"></span>
         <span class="aiAssistantSkillSubtitle"></span>
       </span>
     `;
+    button.querySelector(".aiAssistantSkillIcon").textContent = skill.badge || "/";
     button.querySelector(".aiAssistantSkillTitle").textContent = skill.title;
     button.querySelector(".aiAssistantSkillSubtitle").textContent = skill.subtitle;
     button.addEventListener("click", () => {
@@ -2123,6 +2151,7 @@ function renderAssistantSkillMenu() {
 function openAssistantSkillMenu() {
   assistantSkillMenuOpen = true;
   renderAssistantSkillMenu();
+  void loadServerAssistantSkills();
 }
 
 function closeAssistantSkillMenu() {
@@ -2934,7 +2963,10 @@ async function runSqlFormatValidationSkill() {
 async function runAssistantSkill(skillId) {
   if (skillId === SQL_FORMAT_VALIDATION_SKILL.id) {
     await runSqlFormatValidationSkill();
+    return;
   }
+  const skill = serverAssistantSkills.find((item) => item.id === skillId);
+  if (skill) await sendAssistantMessage({ skill });
 }
 
 async function loadAssistantUserAvatarName() {
@@ -3741,12 +3773,13 @@ async function cancelAssistantMessage() {
   }
 }
 
-async function sendAssistantMessage() {
+// `skill` starts a server skill: the turn carries its id and a fixed request in place of typed text.
+async function sendAssistantMessage({ skill = null } = {}) {
   if (assistantBusy) return;
   assistantVoice?.stop();
   const host = getHostApi();
   const input = $("aiAssistantInput");
-  const text = String(input?.value || "").trim();
+  const text = skill ? `Run the ${skill.title} skill.` : String(input?.value || "").trim();
   if ((!text && !assistantAttachments.length) || !host?.codexAssistantSend) return;
   if (!assistantReady) {
     setStatus("Install Codex CLI or sign in before sending.", "error");
@@ -3839,7 +3872,7 @@ async function sendAssistantMessage() {
     }
     setStatus(`ArcBot is responding in ${getModeLabel()}...`);
     assistantHostRequestSubmitted = true;
-    const result = assistantMode === "edit" && isRevertLatestArcBotEditRequest(userText)
+    const result = !skill && assistantMode === "edit" && isRevertLatestArcBotEditRequest(userText)
       ? await revertLatestArcBotEdit()
       : await host.codexAssistantSend({
           requestId: currentRequestId,
@@ -3850,6 +3883,7 @@ async function sendAssistantMessage() {
           messages: assistantMessages,
           activeContext,
           attachments: requestAttachments,
+          ...(skill ? { skillId: skill.id } : {}),
         });
     currentUsage = result?.usage || currentUsage;
     updateContextPanel();
@@ -3981,17 +4015,32 @@ async function sendAssistantMessage() {
   }
 }
 
+// The model's running thinking-token estimate for the current request, when it reports one.
+let assistantThinkingTokens = { requestId: "", tokens: 0 };
+
+function getAssistantThinkingLabel() {
+  const tokens = assistantThinkingTokens.requestId === currentRequestId ? assistantThinkingTokens.tokens : 0;
+  return tokens ? `Thinking ... ~${tokens.toLocaleString()} tokens` : "Thinking ...";
+}
+
 function handleAssistantEvent(event) {
   if (!event || event.requestId !== currentRequestId) return;
   if (event.type === "assistant-reset") {
     currentAssistantStreamText = "";
     if (currentPendingMessageEl) {
-      currentPendingMessageEl.textContent = "Thinking ...";
+      currentPendingMessageEl.textContent = getAssistantThinkingLabel();
       currentPendingMessageEl.classList.add("thinking");
     }
     return;
   }
-  if (["command", "command-output", "commentary"].includes(event.type)) {
+  if (event.type === "thinking-tokens") {
+    assistantThinkingTokens = { requestId: event.requestId, tokens: Number(event.tokens) || 0 };
+    if (currentPendingMessageEl && !currentAssistantStreamText) {
+      currentPendingMessageEl.textContent = getAssistantThinkingLabel();
+    }
+    return;
+  }
+  if (["command", "command-output", "commentary", "thinking"].includes(event.type)) {
     const existing = event.itemId && assistantActivities.find(item => item.itemId === event.itemId);
     if (existing) {
       existing.text = event.type === "command-output" ? existing.text + event.text : event.text;

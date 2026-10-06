@@ -1,0 +1,12 @@
+{
+  "type": "feature",
+  "scope": "arcbot",
+  "audience": "user",
+  "summary": "ArcBot's Skills menu now lists skills the team keeps on the server, starting with DFM Diagnostics for the open DFM.",
+  "details": [
+    "DFM Diagnostics opens the diagnostic triangle, flags unusual early values, suggests ratio selections, and reviews last quarter's excluded ratios.",
+    "A skill only advises: it never changes a method, and it needs the matching window open.",
+    "Show Diagnostic Triangle now finds a DFM's triangle in the skill's JSON mapping instead of the old workbook.",
+    "Claude models can use project reads and macros while a skill runs."
+  ]
+}

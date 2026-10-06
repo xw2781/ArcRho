@@ -118,7 +118,7 @@ test("a review starts in the exchange folder and points the model at the Gateway
   assertNoServerFolder(run);
   assert.equal(run.exec.args[run.exec.args.indexOf("--cd") + 1], exchangeFolder);
   assert.ok(fs.statSync(exchangeFolder).isDirectory());
-  assert.match(run.prompt, /arcrho_project_read/u);
+  assert.match(run.prompt, /arco_project_read/u);
   assert.match(run.prompt, /"methodPath": "F 1 - Paid DFM\.json"/u, "the page's file is named, not located");
   assert.match(run.prompt, /"project": "Fake Project"/u);
   assert.ok(run.prompt.includes(`Extra folders the user allowed you to read: ${extraFolder}`));

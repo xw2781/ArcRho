@@ -213,7 +213,7 @@ test("ArcBot warm turns honor app-server retry and terminal status semantics", (
   assert.match(host, /message\.params\?\.willRetry[\s\S]*?Codex is retrying the current turn/);
   assert.match(host, /turnStatus === "failed"[\s\S]*?turn\?\.error\?\.message/);
   assert.match(host, /turnStatus === "interrupted"[\s\S]*?canceled: true/);
-  assert.match(host, /type !== "assistant-delta"/);
+  assert.match(host, /!\["assistant-delta", "thinking", "thinking-tokens"\]\.includes\(type\)/);
   assert.deepEqual(
     testHooks.getCodexInterruptParams("thread-a", "turn-a"),
     { threadId: "thread-a", turnId: "turn-a" },

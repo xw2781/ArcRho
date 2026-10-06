@@ -9,7 +9,10 @@ const { PreparedArcBotSessions } = require("./arcbot_prepared_session");
 const { arcBotTurnActivity } = require("./arcbot_turn_events");
 const { registerArcBotVoice } = require("./arcbot_voice");
 const { PROJECT_READ_TOOL, readArcBotProject } = require("./arcbot_project_read");
+const { RUN_MACRO_TOOL, buildSkillPrompt, runSkillMacro } = require("./arcbot_skill_tools");
 const { createArcBotAccounts, decodeJwtPayload } = require("./arcbot_accounts");
+const { currentAgent, isCertTrustError, loadWindowsRootAgent } = require("./arcbot_windows_roots");
+const { runClaudeCliTurn } = require("./arcbot_claude_cli");
 const preparedSessions = new PreparedArcBotSessions();
 let arcBotAccounts = null;
 const { formatJsonForSave } = require("./persisted_json_text");
@@ -231,6 +234,16 @@ function loadClaudeAuthToken() {
   }
 }
 
+// The CLI renews an expired access token itself, so a refresh token is enough.
+function hasClaudeSignIn() {
+  try {
+    const oauth = JSON.parse(fs.readFileSync(getClaudeCredentialsPath(), "utf8"))?.claudeAiOauth;
+    return !!(oauth?.refreshToken || loadClaudeAuthToken());
+  } catch {
+    return false;
+  }
+}
+
 function extractEmailFromText(value) {
   const match = String(value || "").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu);
   return match ? match[0] : "";
@@ -327,7 +340,8 @@ function getClaudeCommand() {
   return findExecutableOnPath(["claude"]) || "";
 }
 
-function buildClaudeSystemPrompt(mode, activeContext, activeJson) {
+// A skill needs the whole ratio triangle, so a skill turn lifts the active-data cap.
+function buildClaudeSystemPrompt(mode, activeContext, activeJson, skill = null) {
   const parts = [
     "You are ArcBot, an AI assistant embedded in Arco Workspace, an actuarial reserving and analytics platform.",
     mode === "edit"
@@ -340,8 +354,13 @@ function buildClaudeSystemPrompt(mode, activeContext, activeJson) {
     if (activeContext.targetPath) parts.push(`Active file: ${withFileNamesOnly(activeContext.targetPath)}`);
   }
   if (activeJson && typeof activeJson === "object" && !activeJson.error) {
-    const jsonStr = JSON.stringify(activeJson, null, 2).slice(0, 12000);
+    const jsonStr = JSON.stringify(activeJson, null, skill ? 0 : 2).slice(0, skill ? 150000 : 12000);
     parts.push(`Active page data:\n\`\`\`json\n${jsonStr}\n\`\`\``);
+  }
+  if (skill) {
+    parts.push(`Project, class and method open in the UI:\n${JSON.stringify(withFileNamesOnly({ fields: activeContext?.fields, activeNestedWindow: activeContext?.activeNestedWindow }))}`);
+    parts.push("Use the arco_project_read tool for any data not shown above (call kind=catalog first).");
+    parts.push(buildSkillPrompt(skill));
   }
   return parts.join("\n\n");
 }
@@ -355,7 +374,7 @@ function getClaudeApiHeaders(authToken) {
   };
 }
 
-function listClaudeModelEntries(authToken) {
+function listClaudeModelEntries(authToken, agent = currentAgent()) {
   const https = require("https");
   return new Promise((resolve, reject) => {
     const req = https.request({
@@ -364,6 +383,7 @@ function listClaudeModelEntries(authToken) {
       method: "GET",
       headers: getClaudeApiHeaders(authToken),
       timeout: 10000,
+      agent,
     }, (res) => {
       let body = "";
       res.on("data", (chunk) => { body += chunk; });
@@ -381,7 +401,12 @@ function listClaudeModelEntries(authToken) {
       res.on("error", reject);
     });
     req.on("timeout", () => req.destroy(new Error("Anthropic models API timed out.")));
-    req.on("error", reject);
+    req.on("error", (err) => {
+      if (agent || !isCertTrustError(err)) { reject(err); return; }
+      loadWindowsRootAgent().then((rootAgent) => (rootAgent
+        ? listClaudeModelEntries(authToken, rootAgent).then(resolve, reject)
+        : reject(err)));
+    });
     req.end();
   });
 }
@@ -403,10 +428,34 @@ async function getClaudeModelCatalog(options = {}) {
   }
 }
 
-function runClaudeArcBotRequest({ event, requestId, requestState, model, reasoningEffort, systemText, messages, attachments, usage }) {
-  const authToken = loadClaudeAuthToken();
-  if (!authToken) {
-    return Promise.resolve({ ok: false, needsAuth: true, error: "Claude is not authenticated. Run: claude login" });
+// The Claude CLI to run a turn with: its native program, or Node with its script.
+// The .cmd launcher is skipped, because cmd.exe would mangle the JSON arguments.
+function getClaudeCliSpawnSpec() {
+  const configured = String(process.env.ARCRHO_CLAUDE_CMD || "").trim();
+  if (configured) {
+    return /\.(c?js|mjs)$/iu.test(configured)
+      ? { command: process.execPath, commandArgs: [configured] }
+      : { command: configured, commandArgs: [] };
+  }
+  const launcher = getClaudeCommand();
+  if (!launcher) return null;
+  if (!/\.(cmd|bat)$/iu.test(launcher)) return { command: launcher, commandArgs: [] };
+  const packageDir = path.join(path.dirname(launcher), "node_modules", "@anthropic-ai", "claude-code");
+  const nativeCli = path.join(packageDir, "bin", "claude.exe");
+  if (fs.existsSync(nativeCli)) return { command: nativeCli, commandArgs: [] };
+  const scriptCli = path.join(packageDir, "cli.js");
+  const bundledNode = path.join(getBundledNodePortableRoot(), "node.exe");
+  if (fs.existsSync(scriptCli) && fs.existsSync(bundledNode)) return { command: bundledNode, commandArgs: [scriptCli] };
+  return null;
+}
+
+// A Claude turn runs through the Claude CLI under the active Claude account. A
+// skill turn hands the CLI ArcBot's tools; each call shows in the work log.
+async function runClaudeArcBotRequest({ event, requestId, requestState, model, reasoningEffort, systemText, messages, attachments, usage, tools = [], runTool = null, cwd }) {
+  const spec = getClaudeCliSpawnSpec();
+  if (!spec) {
+    void installClaudeCli();
+    return { ok: false, error: "The Claude CLI is being installed. Try again in a minute." };
   }
   // Current Claude models think adaptively; effort is the only depth control, and Haiku takes none.
   const modelOption = (claudeModelCatalogCache || getFallbackClaudeModelCatalog()).models
@@ -415,7 +464,7 @@ function runClaudeArcBotRequest({ event, requestId, requestState, model, reasoni
   const effort = supportedEfforts.includes(reasoningEffort)
     ? reasoningEffort
     : modelOption?.defaultReasoningEffort || "";
-  const anthropicMessages = (Array.isArray(messages) ? messages : [])
+  const chat = (Array.isArray(messages) ? messages : [])
     .filter((m) => m.role === "user" || m.role === "assistant")
     .map((m, i, arr) => {
       let content = String(m.content || "");
@@ -424,87 +473,47 @@ function runClaudeArcBotRequest({ event, requestId, requestState, model, reasoni
       }
       return { role: m.role, content };
     });
-  if (!anthropicMessages.length) {
-    return Promise.resolve({ ok: false, error: "No messages to send." });
-  }
-  const bodyObj = {
-    model,
-    max_tokens: effort ? 64000 : 8192,
-    system: systemText,
-    messages: anthropicMessages,
-    stream: true,
-  };
-  if (effort) bodyObj.output_config = { effort };
-  const requestBodyStr = JSON.stringify(bodyObj);
-  const https = require("https");
-  return new Promise((resolve) => {
-    const reqHeaders = {
-      ...getClaudeApiHeaders(authToken),
-      "content-type": "application/json",
-      "content-length": Buffer.byteLength(requestBodyStr),
-    };
-    const req = https.request({
-      hostname: "api.anthropic.com",
-      path: "/v1/messages",
-      method: "POST",
-      headers: reqHeaders,
-    }, (res) => {
-      if (res.statusCode !== 200) {
-        let errorText = "";
-        res.on("data", (chunk) => { errorText += chunk; });
-        res.on("end", () => resolve({
-          ok: false,
-          needsAuth: res.statusCode === 401,
-          error: `Anthropic API error ${res.statusCode}: ${String(errorText).slice(0, 300)}`,
-        }));
-        return;
-      }
-      if (requestState) requestState.cancelProcess = () => { req.destroy(); return true; };
-      let fullText = "";
-      let buffer = "";
-      let inputTokens = 0;
-      let outputTokens = 0;
-      res.on("data", (chunk) => {
-        if (requestState?.canceled) { req.destroy(); return; }
-        buffer += chunk.toString("utf8");
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const data = line.slice(6).trim();
-          if (data === "[DONE]") return;
-          try {
-            const evt = JSON.parse(data);
-            if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
-              fullText += evt.delta.text;
-              sendArcBotActivity(event, requestId, "stdout", evt.delta.text);
-            } else if (evt.type === "message_delta" && evt.usage) {
-              outputTokens = Number(evt.usage.output_tokens || 0);
-            } else if (evt.type === "message_start" && evt.message?.usage) {
-              inputTokens = Number(evt.message.usage.input_tokens || 0);
-            }
-          } catch {}
-        }
-      });
-      res.on("end", () => {
-        if (requestState?.canceled) { resolve({ ok: false, canceled: true, error: "Request canceled." }); return; }
-        if (inputTokens || outputTokens) {
-          const total = inputTokens + outputTokens;
-          sendArcBotActivity(event, requestId, "usage",
-            `Context: ~${total.toLocaleString()} tokens (${inputTokens.toLocaleString()} in, ${outputTokens.toLocaleString()} out).`,
-            { usage: { ...(usage || {}), estimatedTokens: total } });
-        }
-        resolve({ ok: true, stdout: fullText });
-      });
-      res.on("error", (err) => resolve({ ok: false, error: String(err?.message || err || "Claude stream error.") }));
-    });
-    req.on("error", (err) => {
-      if (requestState?.canceled) resolve({ ok: false, canceled: true, error: "Request canceled." });
-      else resolve({ ok: false, error: String(err?.message || err || "Claude request failed.") });
-    });
-    req.write(requestBodyStr);
-    req.end();
+  const loggedTool = runTool && (async (params) => {
+    sendArcBotActivity(event, requestId, "command", `${params.tool}\n${JSON.stringify(params.arguments)}`, { itemId: params.callId });
+    try {
+      const output = await runTool(params);
+      sendArcBotActivity(event, requestId, "command-output", `\n${output}`, { itemId: params.callId });
+      return output;
+    } catch (error) {
+      sendArcBotActivity(event, requestId, "command-output", `\n${String(error?.message || error || "Tool call failed.")}`, { itemId: params.callId });
+      throw error;
+    }
   });
+  const result = await runClaudeCliTurn({
+    ...spec,
+    env: arcBotAccounts ? arcBotAccounts.envFor(arcBotAccounts.active("claude"), process.env) : { ...process.env },
+    cwd: cwd || getArcBotHostCwd(),
+    model,
+    effort,
+    systemText,
+    messages: chat,
+    tools,
+    runTool: loggedTool,
+    requestState,
+    // The reply streams into the chat bubble; commentary and thinking go to the work log.
+    onText: (chunk) => sendArcBotActivity(event, requestId, "assistant-delta", chunk),
+    onReset: (text) => {
+      sendArcBotActivity(event, requestId, "assistant-reset", "");
+      if (text) sendArcBotActivity(event, requestId, "assistant-delta", text);
+    },
+    onCommentary: ({ id, text }) => sendArcBotActivity(event, requestId, "commentary", text, { itemId: id }),
+    onThinking: ({ id, text }) => sendArcBotActivity(event, requestId, "thinking", text, { itemId: id }),
+    onThinkingTokens: (tokens) => sendArcBotActivity(event, requestId, "thinking-tokens", "", { tokens }),
+  });
+  if (!result.ok) return result;
+  const { inputTokens, outputTokens } = result.usage || {};
+  if (inputTokens || outputTokens) {
+    const total = inputTokens + outputTokens;
+    sendArcBotActivity(event, requestId, "usage",
+      `Context: ~${total.toLocaleString()} tokens (${inputTokens.toLocaleString()} in, ${outputTokens.toLocaleString()} out).`,
+      { usage: { ...(usage || {}), estimatedTokens: total } });
+  }
+  return { ok: true, stdout: result.stdout };
 }
 
 function getArcBotRuntimeModel(model) {
@@ -1425,7 +1434,7 @@ class CodexAppServerClient {
       approvalPolicy: "never",
       sandbox: mode === "edit" ? "workspace-write" : "read-only",
       ephemeral: true,
-      dynamicTools: [PROJECT_READ_TOOL],
+      dynamicTools: [PROJECT_READ_TOOL, RUN_MACRO_TOOL],
     });
     const threadId = String(result?.thread?.id || "");
     if (!threadId) throw new Error("Codex app-server did not return a thread id.");
@@ -1508,7 +1517,7 @@ async function startCodexWarmThread({ isCanceled, mode, codexCwd, model, ensureC
   return { canceled: false, client, threadId };
 }
 
-async function runCodexWarmTurn({ event, requestId, requestState, payload, mode, model, reasoningEffort, codexCwd, codexSandbox, prompt, ensureClient = ensureCodexAppServerStarted }) {
+async function runCodexWarmTurn({ event, requestId, requestState, payload, mode, model, reasoningEffort, codexCwd, codexSandbox, prompt, skill = null, ensureClient = ensureCodexAppServerStarted }) {
   let client = null;
   let threadId = "";
   let turnId = "";
@@ -1657,14 +1666,7 @@ async function runCodexWarmTurn({ event, requestId, requestState, payload, mode,
   client.toolHandlers.set(threadId, async params => {
     if (canceled || requestState?.canceled || (turnId && params.turnId !== turnId)) throw new Error("The ArcBot turn is no longer active.");
     sendArcBotActivity(event, requestId, "command", `${params.tool}\n${JSON.stringify(params.arguments)}`, { itemId: params.callId });
-    const output = await readArcBotProject(params, payload.activeContext, async (script, input) => {
-      const result = await runHostCommand(PYTHON_EXE, ["-X", "utf8", "-c", script], {
-        // No shell: a Python path with spaces ("C:\Program Files\...") breaks cmd.exe parsing.
-        input, env: getArcBotCodexEnv(), windowsHide: true, shell: false, timeoutMs: CODEX_ASSISTANT_TIMEOUT_MS,
-      });
-      if (!result.ok) throw new Error(result.stderr || result.error || "Project read failed.");
-      return result.stdout;
-    }).catch(error => {
+    const output = await executeArcBotTool(params, payload.activeContext, skill).catch(error => {
       sendArcBotActivity(event, requestId, "command-output", `\n${error.message || error}`, { itemId: params.callId });
       throw error;
     });
@@ -2173,20 +2175,24 @@ function readBundledArcBotPromptTemplate() {
 // Gateway; nothing here opens or seeds that folder over the share. When the
 // server holds no entry prompt, or cannot be asked, ArcBot uses the prompt
 // bundled with the app.
-function requestArcBotPromptFiles() {
+function requestAppServerJson(route, body = null, timeoutMs = ARCBOT_PROMPT_FILES_TIMEOUT_MS) {
   const baseUrl = String(getAppServerUrl() || "").trim();
   if (!baseUrl) return Promise.resolve({ error: "The Arco app server is not available." });
   return new Promise((resolve) => {
-    const req = http.get(`${baseUrl}/arcbot/prompt-files`, (res) => {
-      let body = "";
+    const payloadText = body == null ? "" : JSON.stringify(body);
+    const req = http.request(`${baseUrl}${route}`, {
+      method: body == null ? "GET" : "POST",
+      headers: body == null ? {} : { "content-type": "application/json", "content-length": Buffer.byteLength(payloadText) },
+    }, (res) => {
+      let text = "";
       res.setEncoding("utf8");
       res.on("data", (chunk) => {
-        body += chunk;
+        text += chunk;
       });
       res.on("end", () => {
         let parsed = null;
         try {
-          parsed = JSON.parse(body || "{}");
+          parsed = JSON.parse(text || "{}");
         } catch {
           parsed = null;
         }
@@ -2198,9 +2204,48 @@ function requestArcBotPromptFiles() {
         resolve({ error: detail });
       });
     });
-    req.setTimeout(ARCBOT_PROMPT_FILES_TIMEOUT_MS, () => req.destroy(new Error("timed out")));
+    req.setTimeout(timeoutMs, () => req.destroy(new Error("timed out")));
     req.on("error", (err) => resolve({ error: String(err?.message || err || "request failed") }));
+    req.end(payloadText);
   });
+}
+
+function requestArcBotPromptFiles() {
+  return requestAppServerJson("/arcbot/prompt-files");
+}
+
+// ArcBot's skills live on the server under shared\agent-skills and are read the
+// same way as the prompt files. Without a skill id the answer is the menu list;
+// with one, that skill also carries its instructions and reference files.
+function requestAgentSkills(skillId = "") {
+  return requestAppServerJson(`/arcbot/agent-skills${skillId ? `?skill_id=${encodeURIComponent(skillId)}` : ""}`);
+}
+
+// The running skill must still fit the page the user has open: a DFM skill needs a DFM window.
+function skillAppliesToContext(skill, context) {
+  if (!skill.scope) return true;
+  return [context?.pageType, context?.nestedPageType, context?.activeNestedWindow?.kind].includes(skill.scope);
+}
+
+async function runArcBotPython(script, input) {
+  const result = await runHostCommand(PYTHON_EXE, ["-X", "utf8", "-c", script], {
+    // No shell: a Python path with spaces ("C:\Program Files\...") breaks cmd.exe parsing.
+    input, env: getArcBotCodexEnv(), windowsHide: true, shell: false, timeoutMs: CODEX_ASSISTANT_TIMEOUT_MS,
+  });
+  if (!result.ok) throw new Error(result.stderr || result.error || "Project read failed.");
+  return result.stdout;
+}
+
+// One place runs a tool call for both providers; the macro tool answers only for the running skill.
+async function executeArcBotTool(params, context, skill) {
+  if (params.tool === RUN_MACRO_TOOL.name) {
+    return runSkillMacro(params, skill, async (route, body) => {
+      const answer = await requestAppServerJson(route, body, CODEX_ASSISTANT_TIMEOUT_MS);
+      if (answer.error) throw new Error(answer.error);
+      return answer;
+    });
+  }
+  return readArcBotProject(params, context, runArcBotPython);
 }
 
 function readArcBotSharedInstructions(promptFiles) {
@@ -2311,7 +2356,8 @@ function buildAssistantPrompt(
   activeJson = null,
   editSession = null,
   attachments = [],
-  promptFiles = null
+  promptFiles = null,
+  skill = null
 ) {
   const safeMessages = Array.isArray(messages) ? messages.slice(-12) : [];
   const safeAttachments = Array.isArray(attachments)
@@ -2370,7 +2416,7 @@ function buildAssistantPrompt(
     ACTIVE_JSON_DATA: editSession?.jsonPath
       ? `The active JSON-backed file is available as ${activeJsonName} in the current working folder. Use the Arco Python API helper for DFM reads and edits before falling back to raw JSON inspection. When using the public Arco Python API directly, use ArcRhoClient(${JSON.stringify(exchangeRoot || ".")}) so API reads and writes stay inside the local exchange workspace.`
       : (activeJson ? JSON.stringify(activeJson, null, 2) : "No active JSON-backed data was loaded."),
-    SHARED_INSTRUCTIONS: `${readArcBotSharedInstructions(promptFiles)}\n\n${fs.readFileSync(path.join(__dirname, "prompts", "arcbot_runtime_workflow.md"), "utf8")}`,
+    SHARED_INSTRUCTIONS: `${readArcBotSharedInstructions(promptFiles)}\n\n${fs.readFileSync(path.join(__dirname, "prompts", "arcbot_runtime_workflow.md"), "utf8")}${skill ? `\n\n${buildSkillPrompt(skill)}` : ""}`,
     ATTACHMENT_TEXT: attachmentText,
     TRANSCRIPT: transcript || "User: Hello",
   });
@@ -2421,7 +2467,8 @@ function estimateArcBotContextUsage(prompt, messages, activeContext, activeJson,
 
 function sendArcBotActivity(event, requestId, type, text, extra = {}) {
   const logger = arcBotRequestLoggers.get(String(requestId || ""));
-  if (logger && type !== "assistant-delta") logger.activity(type, text, extra);
+  // Streamed pieces would flood the request log; the finished reply is logged instead.
+  if (logger && !["assistant-delta", "thinking", "thinking-tokens"].includes(type)) logger.activity(type, text, extra);
   if (!event?.sender || !requestId) return;
   try {
     event.sender.send("codex-assistant-event", {
@@ -2540,7 +2587,7 @@ ipcMain.handle("codex-assistant-status", async () => {
     return {
       installed: false,
       authenticated: false,
-      claudeAuthenticated: !!loadClaudeAuthToken(),
+      claudeAuthenticated: hasClaudeSignIn(),
       version: "",
       loginEmail: "",
       setupAction,
@@ -2559,7 +2606,7 @@ ipcMain.handle("codex-assistant-status", async () => {
   return {
     installed: true,
     authenticated: auth.ok,
-    claudeAuthenticated: !!loadClaudeAuthToken(),
+    claudeAuthenticated: hasClaudeSignIn(),
     version: combinedCommandOutput(version).split(/\r?\n/)[0] || "codex",
     loginEmail: auth.ok ? readCodexLoginEmail(authOutput) : extractEmailFromText(authOutput),
     authStatus: authOutput,
@@ -2629,6 +2676,11 @@ ipcMain.handle("codex-assistant-prompt-guide-load", async () => {
   } catch (err) {
     return { ok: false, error: String(err?.message || err || "Could not load ArcBot prompt guide.") };
   }
+});
+
+ipcMain.handle("codex-assistant-skills-list", async () => {
+  const answer = await requestAgentSkills();
+  return answer.error ? { ok: false, error: String(answer.error), skills: [] } : { ok: true, skills: answer.skills || [] };
 });
 
 ipcMain.handle("codex-assistant-install", async () => {
@@ -2894,7 +2946,8 @@ ipcMain.handle("codex-assistant-session-delete", async (_event, payload) => {
 
 ipcMain.handle("codex-assistant-send", async (event, payload) => {
   const requestId = String(payload?.requestId || "");
-  const requestedMode = String(payload?.mode || "edit").trim().toLowerCase();
+  // A skill only advises, so its turn is always a read-only review.
+  const requestedMode = payload?.skillId ? "review" : String(payload?.mode || "edit").trim().toLowerCase();
   const mode = requestedMode === "approve" ? "approve" : requestedMode;
   const promptMode = mode === "approve" ? "edit" : mode;
   const model = normalizeArcBotModel(payload?.model);
@@ -3039,6 +3092,19 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
   });
   const promptFiles = await requestArcBotPromptFiles();
   if (promptFiles?.error) requestLog.mark("prompt_files_unavailable", { error: promptFiles.error });
+  let skill = null;
+  if (payload?.skillId) {
+    const skillAnswer = await requestAgentSkills(String(payload.skillId));
+    skill = (skillAnswer.skills || []).find((item) => item.id === payload.skillId && item.instructions) || null;
+    const skillError = skillAnswer.error
+      || (!skill && `The skill "${payload.skillId}" was not found on the server.`)
+      || (!skillAppliesToContext(skill, activeContext) && `The ${skill.title} skill needs a ${skill.scope.toUpperCase()} window open.`);
+    if (skillError) {
+      activeCodexAssistantRequests.delete(requestId);
+      return finishArcBotRequest({ ok: false, needsAuth: false, error: String(skillError) }, "failed");
+    }
+    requestLog.mark("skill_loaded", { skillId: skill.id, version: skill.version });
+  }
   const rawPrompt = buildAssistantPrompt(
     payload?.messages,
     promptMode,
@@ -3048,7 +3114,8 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
     activeJson,
     editSession,
     attachments,
-    promptFiles
+    promptFiles,
+    skill
   );
   const prompt = clampCodexPrompt(rawPrompt);
   requestLog.end("build_prompt", {
@@ -3083,10 +3150,13 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
       requestState,
       model,
       reasoningEffort,
-      systemText: buildClaudeSystemPrompt(mode, activeContext, activeJson),
+      systemText: buildClaudeSystemPrompt(mode, activeContext, activeJson, skill),
       messages: payload?.messages,
       attachments,
       usage,
+      cwd: codexCwd,
+      // Claude has tools only while a skill runs.
+      ...(skill ? { tools: [PROJECT_READ_TOOL, RUN_MACRO_TOOL], runTool: (params) => executeArcBotTool(params, activeContext, skill) } : {}),
     });
     requestLog.end("claude_request", {
       ok: !!result?.ok,
@@ -3116,6 +3186,7 @@ ipcMain.handle("codex-assistant-send", async (event, payload) => {
         codexCwd,
         codexSandbox,
         prompt,
+        skill,
       });
       requestLog.end("warm_codex_turn", {
         ok: !!result?.ok,
@@ -3333,7 +3404,9 @@ module.exports = {
     getClaudeCredentialsPath,
     getNodeBackedCodexSpec,
     launchDetachedArcBotProcess,
+    listClaudeModelEntries,
     reconcileArcBotReasoningEffort,
+    runClaudeArcBotRequest,
     runCodexCommand,
     runCodexWarmTurn,
     startCodexWarmThread,

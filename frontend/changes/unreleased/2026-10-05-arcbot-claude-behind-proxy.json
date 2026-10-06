@@ -1,0 +1,9 @@
+{
+  "type": "fix",
+  "scope": "arcbot",
+  "audience": "user",
+  "summary": "ArcBot's Claude models now work with a Claude subscription sign-in: each reply runs through the Claude Code app instead of failing with a rate-limit or certificate error.",
+  "details": [
+    "Claude's model list also connects on PCs whose security software inspects web traffic."
+  ]
+}

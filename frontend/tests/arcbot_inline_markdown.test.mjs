@@ -11,6 +11,10 @@ function createElementStub(tag) {
     target: "",
     rel: "",
     children: [],
+    classList: { toggle() {} },
+    get childNodes() {
+      return this.children;
+    },
     _text: "",
     set textContent(value) {
       this._text = String(value ?? "");
@@ -34,7 +38,7 @@ globalThis.document = {
   createTextNode: (text) => ({ tag: "#text", children: [], textContent: String(text ?? "") }),
 };
 
-const { appendAssistantInlineMarkdown } = await import("../ui/ai-assistant/messages.js");
+const { appendAssistantInlineMarkdown, renderAssistantMarkdown } = await import("../ui/ai-assistant/messages.js");
 const { renderSqlAiReviewResponse } = await import("../ui/ai-assistant/skills.js");
 
 function render(markdown) {
@@ -66,6 +70,23 @@ test("unescaped markup still renders as markup", () => {
   assert.equal(root.children[0].textContent, "Summary");
   assert.equal(root.children[2].textContent, "SELECT 1");
   assert.equal(root.children[4].href, "https://example.com/sql");
+});
+
+test("a markdown heading renders as a section title, not as hash marks", () => {
+  const root = createElementStub("div");
+  renderAssistantMarkdown(root, "- carried forward.\n## Summary\n- **Findings:** 2026 is high at 8m.\n# Top ##");
+  assert.deepEqual(root.children.map((child) => child.tag), ["ul", "h4", "ul", "h3"]);
+  assert.equal(root.children[1].className, "aiAssistantHeading");
+  assert.equal(root.children[1].textContent, "Summary");
+  assert.equal(root.children[3].textContent, "Top");
+  assert.doesNotMatch(root.textContent, /#/);
+});
+
+test("a hash without a following space stays ordinary text", () => {
+  const root = createElementStub("div");
+  renderAssistantMarkdown(root, "#3 is the latest origin");
+  assert.deepEqual(root.children.map((child) => child.tag), ["p"]);
+  assert.equal(root.textContent, "#3 is the latest origin");
 });
 
 test("a review finding survives the escape and render round trip word for word", () => {
