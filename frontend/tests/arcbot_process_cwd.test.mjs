@@ -131,6 +131,17 @@ test("ArcBot login reports asynchronous spawn failures from the writable host cw
   assert.notEqual(loginCall.options.cwd, packagedAppRoot);
 });
 
+test("repeat ArcBot sign-in clicks share one launch instead of opening a window each", async () => {
+  const before = detachedSpawnCalls.length;
+  const login = handlers.get("codex-assistant-login");
+  const results = await Promise.all([1, 2, 3].map(() => login(null, { provider: "openai" })));
+  assert.equal(detachedSpawnCalls.length - before, 1);
+  assert.ok(results.every((result) => result.ok === false && result.error === "spawn EPERM"));
+
+  await login(null, { provider: "openai" });
+  assert.equal(detachedSpawnCalls.length - before, 2);
+});
+
 function fakeAppServerProcess() {
   const proc = new EventEmitter();
   proc.stdout = new EventEmitter();

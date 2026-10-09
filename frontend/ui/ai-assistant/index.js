@@ -149,6 +149,7 @@ let assistantModelCatalogChecked = false;
 let assistantModelDefaultVerified = false;
 let assistantModelCatalogRequest = null;
 let assistantInstallJustSucceeded = false;
+let assistantLoginPending = false;
 let suppressLauncherClick = false;
 let assistantLauncherVisible = true;
 let assistantUserAvatarName = "Arcode";
@@ -3733,7 +3734,7 @@ async function installCodexCli() {
 
 async function loginCodexCli() {
   const host = getHostApi();
-  if (!host?.codexAssistantLogin) return;
+  if (!host?.codexAssistantLogin || assistantLoginPending) return;
   const usingClaude = isClaudeModel();
   const confirmed = window.confirm(
     usingClaude
@@ -3741,6 +3742,13 @@ async function loginCodexCli() {
       : "Open Codex sign-in now?\n\nA terminal window will run: codex login"
   );
   if (!confirmed) return;
+  // The first Claude sign-in installs the CLI first, so the window can take a minute to appear.
+  assistantLoginPending = true;
+  const loginBtn = $("aiAssistantLoginBtn");
+  if (loginBtn) loginBtn.disabled = true;
+  setStatus(usingClaude
+    ? "Opening Claude sign-in... The first time can take a minute while the Claude CLI installs."
+    : "Opening Codex sign-in...");
   try {
     // Signs in the account chosen in Settings; ArcBot notices when the window finishes.
     const result = await host.codexAssistantLogin({ provider: usingClaude ? "anthropic" : "openai" });
@@ -3752,6 +3760,9 @@ async function loginCodexCli() {
     void assistantAccounts?.refresh();
   } catch (err) {
     setStatus(String(err?.message || err || `Could not start ${usingClaude ? "Claude" : "Codex"} sign-in.`), "error");
+  } finally {
+    assistantLoginPending = false;
+    if (loginBtn) loginBtn.disabled = false;
   }
 }
 

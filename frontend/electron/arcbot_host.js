@@ -2758,8 +2758,20 @@ function installClaudeCli() {
   return claudeCliInstall;
 }
 
+// A sign-in can wait minutes on the CLI install; repeat clicks share it instead of each opening a window.
+const arcBotLoginLaunches = new Map();
+
+function launchArcBotAccountLogin(account) {
+  const pending = arcBotLoginLaunches.get(account.id);
+  if (pending) return pending;
+  const launch = launchArcBotAccountLoginWindow(account)
+    .finally(() => { arcBotLoginLaunches.delete(account.id); });
+  arcBotLoginLaunches.set(account.id, launch);
+  return launch;
+}
+
 // Opens the vendor sign-in in its own window under the account's folder.
-async function launchArcBotAccountLogin(account) {
+async function launchArcBotAccountLoginWindow(account) {
   let result;
   if (account.provider === "claude") {
     let claudeCmd = getClaudeCommand();
