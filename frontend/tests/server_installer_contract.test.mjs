@@ -90,6 +90,14 @@ test("desktop setup closes every process running from the install folder before 
   );
   assert.match(nsh, /-InstallDir "\$INSTDIR" -DetectOnly/);
   assert.match(nsh, /MB_RETRYCANCEL[^\n]*could not be closed[^\n]*Task Manager/);
+  // A process stuck in Windows' own teardown goes within minutes, so setup
+  // waits that out with a status line before it asks the user.
+  assert.match(
+    nsh,
+    /DetailPrint "Waiting for Windows to finish closing \$\(\^Name\)\.\.\."\n[^\n]*close_arcrho_processes\.ps1" -InstallDir "\$INSTDIR" -WaitSeconds 300'[\s\S]*?MB_RETRYCANCEL/
+  );
+  assert.match(closer, /\[int\]\$WaitSeconds = 15/);
+  assert.match(closer, /Wait-ForExit \$WaitSeconds/);
   assert.match(closer, /Win32_Process/);
   assert.match(closer, /CloseMainWindow\(\)/);
   assert.match(closer, /Stop-Process -Id \$process\.ProcessId -Force/);

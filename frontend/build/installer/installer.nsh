@@ -73,6 +73,15 @@ ShowUninstDetails show
     ${If} $0 == 0
       ${ExitDo}
     ${EndIf}
+    ; A process Windows is still tearing down cannot be ended, even from Task
+    ; Manager, but goes on its own within minutes, so wait before asking.
+    DetailPrint "Waiting for Windows to finish closing $(^Name)..."
+    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\close_arcrho_processes.ps1" -InstallDir "$INSTDIR" -WaitSeconds 300'
+    Pop $0
+    Pop $1
+    ${If} $0 == 0
+      ${ExitDo}
+    ${EndIf}
     MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$(^Name) is still running and could not be closed:$\r$\n$\r$\n$1$\r$\nEnd it in Task Manager, or restart the computer if it cannot be ended, then click Retry." /SD IDCANCEL IDRETRY +2
     Quit
   ${Loop}

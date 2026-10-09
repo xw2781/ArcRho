@@ -6,10 +6,15 @@
 # Exit code 0: nothing from the folder is running any more. Exit code 1: the
 # processes written to stdout are still running (or, with -DetectOnly, were
 # found running and left alone).
+#
+# -WaitSeconds is how long to wait after the forced stop. A process Windows is
+# still tearing down cannot be ended by anyone, Task Manager included, but goes
+# on its own within minutes, so setup calls again with a long wait before asking.
 param(
     [Parameter(Mandatory = $true)]
     [string]$InstallDir,
-    [switch]$DetectOnly
+    [switch]$DetectOnly,
+    [int]$WaitSeconds = 15
 )
 
 $ErrorActionPreference = "Continue"
@@ -56,7 +61,7 @@ $remaining = Wait-ForExit 3
 foreach ($process in $remaining) {
     Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
 }
-$remaining = Wait-ForExit 15
+$remaining = Wait-ForExit $WaitSeconds
 if ($remaining.Count -eq 0) { exit 0 }
 Write-ProcessList $remaining
 exit 1
